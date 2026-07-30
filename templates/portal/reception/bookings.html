@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Bookings — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Bookings</h1>
+    <p class="page-header__sub">Requests waiting on you, and what's coming up</p>
+  </div>
+  <div style="display:flex;gap:.5rem">
+    <a class="btn btn--secondary" href="{% url 'reception_home' %}">Today's queue</a>
+    <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Awaiting confirmation</h2>
+    <span class="badge {% if pending %}badge--warning{% else %}badge--grey{% endif %}">{{ pending|length }}</span>
+  </div>
+
+  {% if pending %}
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table">
+        <thead>
+          <tr><th>When</th><th>Patient</th><th>{{ patient_id_label }}</th><th>Doctor</th>
+              <th>Reason</th><th>Requested by</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for visit in pending %}
+            <tr>
+              <td class="nowrap mono">{{ visit.scheduled_start|date:"j M" }} {{ visit.scheduled_start|time:"H:i" }}</td>
+              <td class="strong">{{ visit.patient.full_name }}</td>
+              <td class="mono faint">{{ visit.patient.patient_id }}</td>
+              <td>{{ visit.doctor.display_name }}</td>
+              <td>{{ visit.reason|default:"—" }}</td>
+              <td class="faint">{% if visit.booked_by %}{{ visit.booked_by.display_name }}{% else %}Patient online{% endif %}</td>
+              <td class="row-actions" style="display:flex;gap:.375rem;justify-content:flex-end">
+                <form method="post" action="{% url 'reception_move_visit' visit.pk 'CONFIRMED' %}">
+                  {% csrf_token %}
+                  <button class="btn btn--primary" type="submit">Confirm</button>
+                </form>
+                <form method="post" action="{% url 'reception_move_visit' visit.pk 'CANCELLED' %}">
+                  {% csrf_token %}
+                  <button class="btn btn--secondary" type="submit">Decline</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card__body">
+      <div class="empty">
+        <div class="empty__icon">✓</div>
+        <div class="empty__title">Nothing waiting</div>
+        <div class="empty__hint">Requests patients make online land here for you to confirm.</div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Confirmed &amp; upcoming</h2>
+    <span class="badge badge--grey">{{ upcoming|length }}</span>
+  </div>
+  {% if upcoming %}
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table">
+        <thead>
+          <tr><th>When</th><th>Patient</th><th>{{ patient_id_label }}</th><th>Doctor</th><th>Reason</th><th>Contact</th></tr>
+        </thead>
+        <tbody>
+          {% for visit in upcoming %}
+            <tr>
+              <td class="nowrap mono">{{ visit.scheduled_start|date:"j M" }} {{ visit.scheduled_start|time:"H:i" }}</td>
+              <td class="strong">{{ visit.patient.full_name }}</td>
+              <td class="mono faint">{{ visit.patient.patient_id }}</td>
+              <td>{{ visit.doctor.display_name }}</td>
+              <td>{{ visit.reason|default:"—" }}</td>
+              <td class="mono">{{ visit.patient.contact_phone }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card__body"><p class="faint small" style="margin:0">Nothing booked beyond today.</p></div>
+  {% endif %}
+</div>
+
+{% endblock %}

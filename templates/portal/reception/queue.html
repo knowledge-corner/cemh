@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Reception — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">{% if is_today %}Today's clinic{% else %}Clinic — {{ day|date:"j F Y" }}{% endif %}</h1>
+    <p class="page-header__sub">
+      {{ request.user.display_name }} &middot; {{ day|date:"l, j F Y" }} &middot; {{ total }} appointment{{ total|pluralize }}
+    </p>
+  </div>
+  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    <a class="btn btn--secondary" href="?day={{ prev_day|date:'Y-m-d' }}">&larr; {{ prev_day|date:"j M" }}</a>
+    {% if not is_today %}<a class="btn btn--secondary" href="{% url 'reception_home' %}">Today</a>{% endif %}
+    <a class="btn btn--secondary" href="?day={{ next_day|date:'Y-m-d' }}">{{ next_day|date:"j M" }} &rarr;</a>
+    <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
+    <a class="btn btn--dark" href="{% url 'reception_bookings' %}">Requests</a>
+  </div>
+</div>
+
+{% comment %}
+The board reloads itself every 30 seconds. A receptionist leaves this open all
+day, and a stale board is worse than useless — it sends the wrong patient in.
+{% endcomment %}
+<div id="queue-board"
+     {% if is_today %}hx-get="{% url 'reception_board' %}"
+     hx-trigger="every 30s"
+     hx-swap="innerHTML"{% endif %}>
+  {% include "portal/reception/_board.html" %}
+</div>
+
+<div id="modal-host"></div>
+{% endblock %}

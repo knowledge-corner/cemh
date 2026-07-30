@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Account not linked — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+<div class="card page--narrow">
+  <div class="card__body">
+    <div class="empty">
+      <div class="empty__icon">🔗</div>
+      <div class="empty__title">Your account is not linked to a patient record</div>
+      <div class="empty__hint">
+        Appointments are booked against your clinic record. Please telephone
+        {% if clinic_phone %}the clinic on {{ clinic_phone }}{% else %}the clinic{% endif %}
+        and we will connect your account.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

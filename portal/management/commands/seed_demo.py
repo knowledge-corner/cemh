@@ -19,13 +19,14 @@ from decimal import Decimal
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from accounts.models import DoctorProfile, Role
 from appointments.models import Visit, VisitStatus
+from billing.models import RECEIPT_SEQUENCE, Charge, Payment, Receipt
 from clinical.models import ClinicalNote, Diagnosis, Investigation, InvestigationCategory
-from patients.models import Patient, PatientHistory
+from patients.models import PATIENT_ID_SEQUENCE, Patient, PatientHistory
 from pharmacy.models import Prescription, PrescriptionItem
 
 User = get_user_model()
@@ -62,6 +63,7 @@ class Command(BaseCommand):
         self.stdout.write("    adway       Dr. Adway Kulkarni     (doctor)")
         self.stdout.write("    vrushali    Dr. Vrushali Kulkarni  (doctor, paediatric)")
         self.stdout.write("    reception   Sunita Rane            (receptionist)")
+        self.stdout.write("    patient     Sunita Menon           (patient portal)")
         self.stdout.write("")
         for patient in Patient.objects.order_by("patient_id"):
             self.stdout.write(
@@ -72,9 +74,26 @@ class Command(BaseCommand):
     # ── Teardown ──────────────────────────────────────────────────────────
 
     def _clear(self):
-        """Remove previously seeded demo records so the command is re-runnable."""
+        """
+        Remove previously seeded demo records so the command is re-runnable.
+
+        Order matters: visits protect patients, and payments protect charges, so
+        the chain has to come apart from the outside in. Deleting a visit takes
+        its note, prescription and charge with it; deleting a patient takes their
+        history, diagnoses, investigations and measurements.
+        """
+        Receipt.objects.all().delete()
+        Payment.objects.all().delete()
+        Visit.objects.all().delete()
         Patient.objects.all().delete()
         User.objects.filter(is_superuser=False).delete()
+
+        # Restart UHID and receipt numbering so demo data is reproducible.
+        # Only ever done here — in the real clinic the sequences must keep
+        # climbing, because a reused identifier is far worse than a gap.
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER SEQUENCE {PATIENT_ID_SEQUENCE} RESTART WITH 1")
+            cursor.execute(f"ALTER SEQUENCE {RECEIPT_SEQUENCE} RESTART WITH 1")
 
     # ── Staff ─────────────────────────────────────────────────────────────
 
@@ -130,9 +149,84 @@ class Command(BaseCommand):
 
         self._short_stature_child(doctors["paediatric"], today)
         self._type1_diabetes_child(doctors["paediatric"], today)
-        self._hypothyroid_adult(doctors["adult"], today)
+        hypothyroid = self._hypothyroid_adult(doctors["adult"], today)
         self._type2_diabetes_adult(doctors["adult"], today)
         self._pcos_adult(doctors["adult"], today)
+
+        self._give_patient_portal_login(hypothyroid)
+        self._pending_requests(doctors, today)
+        self._ready_to_bill(doctors["adult"], today)
+
+    # ── Extras that give the reception and patient screens something to show ──
+
+    def _give_patient_portal_login(self, patient):
+        """One patient with a login, so the patient portal is reviewable."""
+        user = User.objects.create_user(
+            username="patient",
+            email="patient@example.in",
+            password=DEMO_PASSWORD,
+            first_name=patient.first_name,
+            last_name=patient.last_name,
+            phone=patient.phone,
+            role=Role.PATIENT,
+        )
+        patient.user = user
+        patient.save(update_fields=["user", "updated_at"])
+
+    def _pending_requests(self, doctors, today):
+        """Online requests sitting on reception's confirmation list."""
+        for patient, doctor, days, hour, reason in [
+            (Patient.objects.get(first_name="Priya"), doctors["adult"], 3, 11, "PCOS review"),
+            (Patient.objects.get(first_name="Ishita"), doctors["paediatric"], 6, 15, "Insulin dose review"),
+        ]:
+            start = timezone.make_aware(
+                timezone.datetime.combine(today + timedelta(days=days), timezone.datetime.min.time())
+            ) + timedelta(hours=hour)
+            Visit.objects.create(
+                patient=patient, doctor=doctor,
+                scheduled_start=start, scheduled_end=start + timedelta(minutes=20),
+                reason=reason, is_follow_up=True,
+                # No booked_by: this came from the patient, not the desk.
+            )
+
+    def _ready_to_bill(self, doctor, today):
+        """A patient the doctor has finished with, waiting to pay."""
+        patient = Patient.objects.get(first_name="Priya")
+        now = timezone.localtime()
+        start = now.replace(hour=9, minute=30, second=0, microsecond=0)
+
+        visit = Visit.objects.create(
+            patient=patient, doctor=doctor,
+            scheduled_start=start, scheduled_end=start + timedelta(minutes=20),
+            reason="PCOS follow-up", is_follow_up=True,
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            visit.transition_to(status, by_user=doctor)
+
+        ClinicalNote.objects.create(
+            visit=visit, patient=patient, author=doctor,
+            complaints="Cycles regular over the last three months.",
+            assessment="Good response to metformin and lifestyle change.",
+            plan="Continue current regimen. Review in 3 months.",
+        )
+
+        prescription = Prescription.objects.create(
+            visit=visit, patient=patient, doctor=doctor,
+            advice="Continue daily walking. Maintain current diet.",
+            follow_up_date=today + timedelta(days=90),
+        )
+        PrescriptionItem.objects.create(
+            prescription=prescription, drug_name="Metformin", strength="500 mg",
+            dosage="1 tablet", frequency="Twice daily after meals",
+            duration="3 months", order=0,
+        )
+        prescription.generate()
+
+        Charge.objects.create(
+            visit=visit, patient=patient,
+            consultation_fee=Decimal("800.00"), set_by=doctor,
+        )
 
     # -- Case 1: paediatric short stature, the classic referral -------------
 
@@ -286,6 +380,7 @@ class Command(BaseCommand):
               "Continue levothyroxine 75 mcg. Start cholecalciferol 60,000 IU weekly x 8.")],
         )
         self._todays_visit(patient, doctor, VisitStatus.CONFIRMED, "Annual review")
+        return patient
 
     # -- Case 4: adult type 2 diabetes -------------------------------------
 

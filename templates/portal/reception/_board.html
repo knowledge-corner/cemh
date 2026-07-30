@@ -1,0 +1,91 @@
+{% comment %}
+The queue board. Each column is a stage of the visit, and each card carries only
+the actions legal from its current state — so an out-of-order click is not
+possible from the interface, as well as being refused by the model.
+{% endcomment %}
+
+<div class="board">
+  {% for column in columns %}
+    <section class="board__col board__col--{{ column.key }}">
+      <header class="board__head">
+        <h2>{{ column.label }}</h2>
+        <span class="board__count">{{ column.count }}</span>
+      </header>
+
+      <div class="board__cards">
+        {% for visit in column.visits %}
+          <article class="pcard">
+            <div class="pcard__top">
+              <span class="pcard__time">{{ visit.scheduled_start|time:"H:i" }}</span>
+              {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
+            </div>
+
+            <p class="pcard__name">{{ visit.patient.full_name }}</p>
+            <p class="pcard__meta">
+              <span class="mono">{{ visit.patient.patient_id }}</span>
+              &middot; {{ visit.patient.age_display }} {{ visit.patient.get_sex_display|slice:":1" }}
+            </p>
+            <p class="pcard__meta">{{ visit.doctor.display_name }}</p>
+            {% if visit.reason %}<p class="pcard__reason">{{ visit.reason }}</p>{% endif %}
+
+            {% if visit.status == "ARRIVED" and visit.waiting_minutes is not None %}
+              <p class="pcard__waiting {% if visit.waiting_minutes > 30 %}pcard__waiting--long{% endif %}">
+                Waiting {{ visit.waiting_minutes }} min
+              </p>
+            {% endif %}
+
+            <p class="pcard__meta">
+              <a href="tel:{{ visit.patient.contact_phone }}" class="mono">{{ visit.patient.contact_phone }}</a>
+            </p>
+
+            <div class="pcard__actions">
+              {% if visit.status == "BOOKED" %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="CONFIRMED" label="Confirm" primary=1 %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="CANCELLED" label="Cancel" %}
+              {% elif visit.status == "CONFIRMED" %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="ARRIVED" label="Mark arrived" primary=1 %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="NO_SHOW" label="No show" %}
+              {% elif visit.status == "ARRIVED" %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="IN_CABIN" label="Send to cabin" primary=1 %}
+              {% elif visit.status == "CONSULTED" %}
+                <a class="btn btn--primary" href="{% url 'reception_billing' visit.pk %}">Collect fee</a>
+              {% elif visit.status == "BILLED" %}
+                <a class="btn btn--secondary" href="{% url 'reception_billing' visit.pk %}">Receipt</a>
+                <form method="post" action="{% url 'reception_complete_visit' visit.pk %}" style="display:inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn--secondary">Check out</button>
+                </form>
+              {% endif %}
+            </div>
+          </article>
+        {% empty %}
+          <p class="board__empty">—</p>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</div>
+
+{% if cancelled %}
+  <div class="card" style="margin-top:1rem">
+    <div class="card__header">
+      <h2 class="card__title">Cancelled &amp; no-shows</h2>
+      <span class="badge badge--grey">{{ cancelled|length }}</span>
+    </div>
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table">
+        <tbody>
+          {% for visit in cancelled %}
+            <tr>
+              <td class="mono nowrap">{{ visit.scheduled_start|time:"H:i" }}</td>
+              <td>{{ visit.patient.full_name }}</td>
+              <td class="mono faint">{{ visit.patient.patient_id }}</td>
+              <td>{{ visit.doctor.display_name }}</td>
+              <td>{% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}

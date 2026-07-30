@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}New booking — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">New booking</h1>
+    <p class="page-header__sub">At the desk or over the telephone</p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
+</div>
+
+<form method="post" action="{% url 'reception_new_booking' %}">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <ul class="messages">{% for e in form.non_field_errors %}<li class="error">{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <div class="booking-grid">
+
+    {# ── 1. Who ────────────────────────────────────────────────────── #}
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">1 &middot; Patient</h2>
+        <a class="btn-edit btn-edit--solid" href="{% url 'reception_register_patient' %}">+ New patient</a>
+      </div>
+      <div class="card__body">
+        <div class="field">
+          <label class="field__label" for="patient-search">Search by name, {{ patient_id_label }} or mobile</label>
+          <input class="input" type="search" id="patient-search" autocomplete="off"
+                 placeholder="Start typing…"
+                 hx-get="{% url 'reception_patient_lookup' %}"
+                 hx-trigger="keyup changed delay:250ms, search"
+                 hx-target="#patient-results"
+                 name="q">
+        </div>
+
+        <div id="patient-results">
+          {% if chosen_patient %}
+            {% include "portal/reception/_patient_chosen.html" with patient=chosen_patient %}
+          {% endif %}
+        </div>
+
+        {{ form.patient }}
+        {% for e in form.patient.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+      </div>
+    </div>
+
+    {# ── 2. When ──────────────────────────────────────────────────── #}
+    <div class="card">
+      <div class="card__header"><h2 class="card__title">2 &middot; Doctor &amp; date</h2></div>
+      <div class="card__body">
+        <div class="field">
+          <label class="field__label" for="{{ form.doctor.id_for_label }}">Doctor</label>
+          {{ form.doctor }}
+          {% for e in form.doctor.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="{{ form.day.id_for_label }}">Date</label>
+          {{ form.day }}
+          {% for e in form.day.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="{{ form.reason.id_for_label }}">Reason for visit</label>
+          {{ form.reason }}
+        </div>
+
+        <div class="field field--check">
+          {{ form.is_follow_up }}
+          <label class="field__label" for="{{ form.is_follow_up.id_for_label }}">Follow-up visit</label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 3. Slot ──────────────────────────────────────────────────── #}
+    <div class="card booking-grid__slots">
+      <div class="card__header"><h2 class="card__title">3 &middot; Available times</h2></div>
+      <div class="card__body">
+        {{ form.slot }}
+        {% for e in form.slot.errors %}<div class="field__error" style="margin-bottom:.5rem">{{ e }}</div>{% endfor %}
+        <div id="slot-options">
+          <p class="faint small" style="margin:0">Choose a doctor and date to see free times.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
+    <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
+    <button type="submit" class="btn btn--primary">Confirm booking</button>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Ask the server for free slots whenever the doctor or the date changes.
+  // Availability is the server's business — it depends on other bookings.
+  (function () {
+    const doctor = document.getElementById('{{ form.doctor.id_for_label }}');
+    const day = document.getElementById('{{ form.day.id_for_label }}');
+    const target = document.getElementById('slot-options');
+
+    function refresh() {
+      if (!doctor.value || !day.value) return;
+      htmx.ajax('GET', '{% url "reception_slots" %}?doctor=' + encodeURIComponent(doctor.value) +
+                       '&day=' + encodeURIComponent(day.value),
+                { target: target, swap: 'innerHTML' });
+    }
+
+    doctor.addEventListener('change', refresh);
+    day.addEventListener('change', refresh);
+    if (doctor.value && day.value) refresh();
+  })();
+</script>
+{% endblock %}

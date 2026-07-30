@@ -1,0 +1,9 @@
+{% comment %}
+Moves a visit one step. Posts to the server and swaps the whole board back, so
+the patient appears in their new column immediately.
+{% endcomment %}
+<button type="button"
+        class="btn {% if primary %}btn--primary{% else %}btn--secondary{% endif %}"
+        hx-post="{% url 'reception_move_visit' visit.pk to %}"
+        hx-target="#queue-board"
+        hx-swap="innerHTML">{{ label }}</button>

@@ -1,0 +1,38 @@
+{% comment %}Search results for the booking form's patient picker.{% endcomment %}
+
+{% if results %}
+  <ul class="picklist">
+    {% for p in results %}
+      <li>
+        <button type="button" class="picklist__item"
+                data-id="{{ p.pk }}"
+                data-label="{{ p.full_name }} — {{ p.patient_id }}"
+                onclick="choosePatient(this)">
+          <span class="picklist__name">{{ p.full_name }}</span>
+          <span class="picklist__meta">
+            <span class="mono">{{ p.patient_id }}</span>
+            &middot; {{ p.age_display }} {{ p.get_sex_display|slice:":1" }}
+            &middot; <span class="mono">{{ p.contact_phone }}</span>
+          </span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query|length >= 2 %}
+  <div class="alert-strip alert-strip--warning">
+    <div>
+      <span class="alert-strip__title">No match for “{{ query }}”</span><br>
+      <a href="{% url 'reception_register_patient' %}">Register a new patient</a>
+    </div>
+  </div>
+{% endif %}
+
+<script>
+  function choosePatient(button) {
+    document.querySelector('input[name="patient"]').value = button.dataset.id;
+    document.getElementById('patient-results').innerHTML =
+      '<div class="chosen"><span class="chosen__label">Selected</span>' +
+      '<span class="chosen__name"></span></div>';
+    document.querySelector('.chosen__name').textContent = button.dataset.label;
+  }
+</script>

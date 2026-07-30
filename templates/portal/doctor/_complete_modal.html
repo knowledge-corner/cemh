@@ -1,0 +1,59 @@
+{% comment %}
+End-of-consultation dialog: the fee and the prescription go to reception
+together, in one action.
+{% endcomment %}
+
+<div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
+  <div class="modal modal--narrow" role="dialog" aria-modal="true" aria-labelledby="complete-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="complete-title">Complete consultation</h2>
+      <button type="button" class="modal__close" aria-label="Close"
+              onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
+    </div>
+
+    <form method="post" action="{{ action }}"
+          hx-post="{{ action }}" hx-target="#modal-host" hx-swap="innerHTML">
+      {% csrf_token %}
+
+      <div class="modal__body">
+        <p class="muted" style="margin-bottom:1rem">
+          {{ patient.full_name }} will move to reception's billing list with the fee below
+          and the prescription for this visit.
+        </p>
+
+        <div class="form-grid">
+          {% for field in form %}
+            <div class="field">
+              <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="alert-strip {% if prescription and prescription.items.exists %}alert-strip--info{% else %}alert-strip--warning{% endif %}"
+             style="margin-top:1rem">
+          <div>
+            {% if prescription and prescription.items.exists %}
+              <span class="alert-strip__title">Prescription ready</span><br>
+              {{ prescription.items.count }} medication line{{ prescription.items.count|pluralize }}
+              will be released for printing.
+            {% else %}
+              <span class="alert-strip__title">No medication added</span><br>
+              You can still finish — reception will receive an advice-only prescription.
+              Add medication first from the Prescriptions tab if that is not what you want.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="modal__footer">
+        <button type="button" class="btn btn--secondary"
+                onclick="document.getElementById('modal-host').innerHTML = '';">Cancel</button>
+        <button type="submit" class="btn btn--primary">Send to reception</button>
+      </div>
+    </form>
+
+  </div>
+</div>

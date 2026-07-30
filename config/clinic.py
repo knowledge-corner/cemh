@@ -56,6 +56,31 @@ OPTIONAL_APPS = tuple(
     if app.strip()
 )
 
+# ── Consulting hours ──────────────────────────────────────────────────────────
+#
+# Used to offer appointment slots. Kept as configuration rather than a model
+# because a single-doctor clinic's hours change rarely; if a clinic needs
+# per-doctor or per-day variation, this is the thing to promote to a model.
+
+# Monday = 0 … Sunday = 6. Sunday is closed by default.
+WORKING_DAYS = tuple(
+    int(d) for d in os.environ.get("WORKING_DAYS", "0,1,2,3,4,5").split(",") if d.strip()
+)
+
+CONSULTING_START = os.environ.get("CONSULTING_START", "10:00")
+CONSULTING_END = os.environ.get("CONSULTING_END", "18:00")
+
+# Length of one appointment slot, in minutes.
+SLOT_MINUTES = int(os.environ.get("SLOT_MINUTES", "20"))
+
+# How many days ahead patients may book.
+BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "45"))
+
+# ── Billing ───────────────────────────────────────────────────────────────────
+
+CURRENCY_SYMBOL = os.environ.get("CURRENCY_SYMBOL", "₹")
+DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
+
 # ── Clinical defaults ─────────────────────────────────────────────────────────
 
 # A patient is offered growth charts below this age, in years.

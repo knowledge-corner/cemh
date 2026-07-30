@@ -12,11 +12,17 @@
       <a href="{% url 'doctor_home' %}">&larr; Back to today's clinic</a>
     </p>
   </div>
-  {% if active_visit %}
-    <div>
+  <div style="display:flex;align-items:center;gap:.75rem">
+    {% if active_visit %}
       {% include "portal/doctor/_status_badge.html" with status=active_visit.status label=active_visit.get_status_display %}
-    </div>
-  {% endif %}
+    {% endif %}
+    {% if active_visit and active_visit.status == "IN_CABIN" %}
+      {# The one action that ends the consultation: fee plus prescription, together. #}
+      <button type="button" class="btn btn--primary"
+              hx-get="{% url 'doctor_complete_consultation' patient.patient_id %}"
+              hx-target="#modal-host" hx-swap="innerHTML">Complete consultation</button>
+    {% endif %}
+  </div>
 </div>
 
 <div class="chart">

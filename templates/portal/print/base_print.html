@@ -1,0 +1,40 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}{{ clinic_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="stylesheet" href="{% static 'css/print.css' %}">
+</head>
+<body class="printable">
+
+<div class="print-toolbar">
+  <button type="button" class="btn btn--primary" onclick="window.print()">Print</button>
+  <button type="button" class="btn btn--secondary" onclick="window.close()">Close</button>
+</div>
+
+<div class="sheet">
+
+  <header class="sheet__head">
+    <div class="sheet__brand">
+      {% include "branding/logo.html" with css_class="sheet__logo" %}
+      <div>
+        <p class="sheet__clinic">{{ clinic_name }}</p>
+        <p class="sheet__tagline">{{ clinic_tagline }}</p>
+      </div>
+    </div>
+    <div class="sheet__contact">
+      {% if clinic_address %}<p>{{ clinic_address }}</p>{% endif %}
+      {% if clinic_phone %}<p>Tel {{ clinic_phone }}</p>{% endif %}
+    </div>
+  </header>
+
+  {% block sheet %}{% endblock %}
+
+</div>
+
+</body>
+</html>

@@ -619,6 +619,198 @@ p { margin: 0 0 .75rem; }
 .field--check { display: flex; align-items: center; gap: .5rem; }
 .field--check .field__label { margin-bottom: 0; }
 
+/* ── Reception queue board ─────────────────────────────────────────────── */
+
+/* Columns are stages of a visit. Horizontal scroll on the board itself so the
+   page never scrolls sideways. */
+.board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: .75rem;
+  overflow-x: auto;
+  padding-bottom: .5rem;
+  align-items: start;
+}
+
+.board__col {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  min-width: 0;
+}
+.board__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .625rem .75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.board__head h2 {
+  margin: 0;
+  font-size: .6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--brand-dark);
+}
+.board__count {
+  background: var(--brand-dark);
+  color: #fff;
+  font-size: .6875rem;
+  font-weight: 700;
+  min-width: 1.25rem;
+  text-align: center;
+  padding: .0625rem .375rem;
+  border-radius: 100px;
+}
+/* The two columns that need acting on carry the accent. */
+.board__col--waiting .board__head { background: var(--warning-bg); }
+.board__col--to_bill .board__head { background: var(--brand-teal-soft); }
+
+.board__cards { padding: .625rem; display: flex; flex-direction: column; gap: .625rem; }
+.board__empty { color: var(--text-faint); text-align: center; margin: .5rem 0; font-size: .8125rem; }
+
+.pcard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .625rem .75rem;
+  background: var(--surface);
+}
+.pcard__top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .375rem; }
+.pcard__time { font-family: var(--font-mono); font-weight: 700; font-size: .8125rem; }
+.pcard__name { margin: 0; font-weight: 600; font-size: .875rem; }
+.pcard__meta { margin: 0; font-size: .75rem; color: var(--text-muted); }
+.pcard__reason { margin: .25rem 0 0; font-size: .75rem; color: var(--text); }
+.pcard__waiting {
+  margin: .375rem 0 0;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pcard__waiting--long { color: var(--danger); }
+.pcard__actions { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .625rem; }
+.pcard__actions .btn { padding: .3125rem .625rem; font-size: .75rem; }
+
+/* ── Booking ───────────────────────────────────────────────────────────── */
+
+.booking-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .booking-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .booking-grid__slots { grid-column: 1 / -1; }
+}
+.booking-grid .card { margin-top: 0; }
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: .375rem;
+}
+.slot {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: .4375rem .25rem;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.slot:hover { border-color: var(--brand-teal); color: var(--brand-teal-dark); }
+.slot--on {
+  background: var(--brand-teal);
+  border-color: var(--brand-teal);
+  color: #fff;
+  font-weight: 700;
+}
+
+.picklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }
+.picklist__item {
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .5rem .625rem;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: .0625rem;
+}
+.picklist__item:hover { border-color: var(--brand-teal); background: var(--brand-teal-soft); }
+.picklist__name { font-weight: 600; font-size: .875rem; }
+.picklist__meta { font-size: .75rem; color: var(--text-muted); }
+
+.chosen {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  padding: .5rem .75rem;
+  background: var(--brand-teal-soft);
+  border: 1px solid var(--brand-teal);
+  border-radius: var(--radius);
+}
+.chosen__label {
+  font-size: .625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--brand-teal-dark);
+}
+.chosen__name { font-weight: 600; font-size: .875rem; }
+
+/* ── Billing ───────────────────────────────────────────────────────────── */
+
+.billing-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .billing-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+}
+.billing-grid > div > .card:first-child { margin-top: 0; }
+.total-row td { border-top: 1px solid var(--border-strong); }
+
+/* ── Patient portal ────────────────────────────────────────────────────── */
+
+.appt {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .875rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.appt:last-child { border-bottom: none; }
+.appt__when {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 62px;
+  padding: .375rem;
+  background: var(--brand-teal-soft);
+  border-radius: var(--radius);
+}
+.appt__date { font-size: .75rem; font-weight: 700; color: var(--brand-teal-dark); text-transform: uppercase; }
+.appt__time { font-size: .9375rem; font-weight: 700; color: var(--brand-dark); }
+.appt__body { flex: 1; min-width: 0; }
+.appt__side { display: flex; flex-direction: column; align-items: flex-end; gap: .375rem; }
+
+.modal--narrow { max-width: 520px; }
+
 /* ── Utilities ─────────────────────────────────────────────────────────── */
 
 .stack > * + * { margin-top: 1rem; }

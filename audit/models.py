@@ -24,6 +24,22 @@ class AuditAction(models.TextChoices):
     LOGOUT = "LOGOUT", "Logged out"
 
 
+class AccessLogQuerySet(models.QuerySet):
+    """
+    Refuses bulk modification.
+
+    Overriding ``Model.delete`` alone is not enough — ``queryset.delete()`` and
+    ``queryset.update()`` go straight to SQL and never call it. Closing both
+    here is what makes "append-only" true rather than merely intended.
+    """
+
+    def delete(self):
+        raise ValueError("Audit log entries cannot be deleted.")
+
+    def update(self, **kwargs):
+        raise ValueError("Audit log entries cannot be modified.")
+
+
 class AccessLog(models.Model):
     """One recorded action against a record."""
 
@@ -56,6 +72,8 @@ class AccessLog(models.Model):
     path = models.CharField(max_length=300, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    objects = AccessLogQuerySet.as_manager()
 
     class Meta:
         ordering = ["-created_at"]

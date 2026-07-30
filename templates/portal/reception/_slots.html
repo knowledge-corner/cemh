@@ -1,0 +1,37 @@
+{% comment %}
+Free appointment times. Clicking one fills the hidden `slot` field — the value
+is a full timestamp, so the form never has to re-derive a time from a label.
+{% endcomment %}
+
+{% if closed %}
+  <div class="alert-strip alert-strip--warning">
+    <div><span class="alert-strip__title">Clinic closed</span><br>
+      {{ day|date:"l, j F" }} is not a consulting day.</div>
+  </div>
+{% elif slots %}
+  <p class="faint small" style="margin:0 0 .625rem">
+    {{ slots|length }} free slot{{ slots|length|pluralize }} with {{ doctor.display_name }}
+    on {{ day|date:"j F" }}
+  </p>
+  <div class="slot-grid">
+    {% for start, end in slots %}
+      <button type="button" class="slot" data-slot="{{ start|date:'c' }}"
+              onclick="pickSlot(this)">{{ start|time:"H:i" }}</button>
+    {% endfor %}
+  </div>
+{% elif doctor and day %}
+  <div class="alert-strip alert-strip--warning">
+    <div><span class="alert-strip__title">Fully booked</span><br>
+      No free slots with {{ doctor.display_name }} on {{ day|date:"j F" }}. Try another date.</div>
+  </div>
+{% else %}
+  <p class="faint small" style="margin:0">Choose a doctor and date to see free times.</p>
+{% endif %}
+
+<script>
+  function pickSlot(button) {
+    document.querySelectorAll('.slot').forEach(function (s) { s.classList.remove('slot--on'); });
+    button.classList.add('slot--on');
+    document.querySelector('input[name="slot"]').value = button.dataset.slot;
+  }
+</script>

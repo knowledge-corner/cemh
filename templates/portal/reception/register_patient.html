@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Register patient — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Register a new patient</h1>
+    <p class="page-header__sub">A {{ patient_id_label }} is issued automatically on saving</p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'reception_new_booking' %}">Cancel</a>
+</div>
+
+<div class="card page--narrow">
+  <div class="card__body">
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <ul class="messages">{% for e in form.non_field_errors %}<li class="error">{{ e }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      <div class="form-grid">
+        {% for field in form %}
+          <div class="field">
+            <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+            {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
+        <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
+        <button type="submit" class="btn btn--primary">Register &amp; book</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

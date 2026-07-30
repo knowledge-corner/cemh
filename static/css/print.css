@@ -1,0 +1,145 @@
+/*
+ * Printed prescriptions and receipts.
+ *
+ * These go to a patient on paper, so the sheet is laid out for A4 and the
+ * screen view is a preview of it — what you see is what comes out of the
+ * printer, minus the toolbar.
+ */
+
+body.printable {
+  background: var(--surface-muted);
+  padding: 1.25rem;
+}
+
+.print-toolbar {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+  max-width: 210mm;
+  margin: 0 auto .75rem;
+}
+
+.sheet {
+  max-width: 210mm;
+  min-height: 250mm;
+  margin: 0 auto;
+  background: var(--surface);
+  padding: 18mm 16mm;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-bottom: .75rem;
+  border-bottom: 3px solid var(--brand-teal);
+}
+.sheet__brand { display: flex; align-items: center; gap: .75rem; color: var(--brand-dark); }
+.sheet__logo { width: 42px; height: 42px; flex-shrink: 0; }
+.sheet__clinic { margin: 0; font-size: 1.0625rem; font-weight: 700; color: var(--brand-dark); }
+.sheet__tagline {
+  margin: 0;
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--brand-teal-dark);
+}
+.sheet__contact { text-align: right; font-size: .6875rem; color: var(--text-muted); max-width: 240px; }
+.sheet__contact p { margin: 0 0 .125rem; }
+
+.sheet__title {
+  margin: 1.25rem 0 .75rem;
+  font-size: 1.125rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--brand-dark);
+}
+
+.sheet__patient {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .5rem 1.25rem;
+  margin: 0 0 1rem;
+  padding-bottom: .875rem;
+  border-bottom: 1px solid var(--border);
+}
+.sheet__patient div { display: flex; flex-direction: column; }
+.sheet__patient dt {
+  font-size: .625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-faint);
+}
+.sheet__patient dd { margin: 0; font-size: .875rem; font-weight: 600; }
+
+.sheet__allergy {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-left: 3px solid var(--danger);
+  padding: .5rem .75rem;
+  font-size: .8125rem;
+  margin-bottom: 1rem;
+}
+
+.rx { flex: 1; }
+.rx__mark {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin-bottom: .375rem;
+}
+
+.sheet__table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.sheet__table th {
+  text-align: left;
+  font-size: .625rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-faint);
+  padding: .375rem .5rem;
+  border-bottom: 1px solid var(--border-strong);
+}
+.sheet__table td { padding: .4375rem .5rem; border-bottom: 1px solid var(--border); }
+.sheet__subrow td { font-size: .75rem; color: var(--text-muted); padding-top: 0; border-bottom: 1px solid var(--border); }
+
+.sheet__section { margin-top: 1rem; }
+.sheet__section h2 {
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--brand-teal-dark);
+  margin-bottom: .25rem;
+}
+.sheet__section p { font-size: .8125rem; margin: 0; }
+
+.sheet__method { font-size: .8125rem; color: var(--text-muted); margin-top: 1rem; }
+
+.sheet__sign {
+  margin-top: auto;
+  padding-top: 2rem;
+  text-align: right;
+}
+.sheet__signature { max-height: 46px; display: block; margin-left: auto; margin-bottom: .25rem; }
+.sheet__doctor {
+  margin: 0;
+  font-weight: 700;
+  font-size: .875rem;
+  border-top: 1px solid var(--border-strong);
+  padding-top: .375rem;
+  display: inline-block;
+  min-width: 180px;
+}
+.sheet__qual, .sheet__reg { margin: 0; font-size: .6875rem; color: var(--text-muted); }
+
+@media print {
+  @page { size: A4; margin: 0; }
+  body.printable { background: #fff; padding: 0; }
+  .print-toolbar { display: none !important; }
+  .sheet { box-shadow: none; margin: 0; max-width: none; min-height: 0; }
+}

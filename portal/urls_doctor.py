@@ -31,4 +31,9 @@ urlpatterns = [
         views_edit.generate_prescription,
         name="doctor_generate_prescription",
     ),
+    path(
+        "patient/<str:patient_id>/complete/",
+        views_edit.complete_consultation,
+        name="doctor_complete_consultation",
+    ),
 ]

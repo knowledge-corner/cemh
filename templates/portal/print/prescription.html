@@ -1,0 +1,82 @@
+{% extends "portal/print/base_print.html" %}
+
+{% block title %}Prescription — {{ patient.full_name }}{% endblock %}
+
+{% block sheet %}
+
+<h1 class="sheet__title">Prescription</h1>
+
+<dl class="sheet__patient">
+  <div><dt>Patient</dt><dd>{{ patient.full_name }}</dd></div>
+  <div><dt>{{ patient_id_label }}</dt><dd class="mono">{{ patient.patient_id }}</dd></div>
+  <div><dt>Age / Sex</dt><dd>{{ patient.age_display }} &middot; {{ patient.get_sex_display }}</dd></div>
+  <div><dt>Date</dt><dd>{{ visit.scheduled_start|date:"j F Y" }}</dd></div>
+</dl>
+
+{% if patient.history.allergies %}
+  <p class="sheet__allergy"><strong>Allergies:</strong> {{ patient.history.allergies }}</p>
+{% endif %}
+
+<div class="rx">
+  <span class="rx__mark">&#8478;</span>
+
+  {% if items %}
+    <table class="sheet__table">
+      <thead>
+        <tr><th>Medication</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th></tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <td class="strong">{{ item.drug_name }}</td>
+            <td>{{ item.strength|default:"" }}</td>
+            <td>{{ item.dosage|default:"" }}</td>
+            <td>{{ item.frequency|default:"" }}</td>
+            <td>{{ item.duration|default:"" }}</td>
+          </tr>
+          {% if item.instructions %}
+            <tr class="sheet__subrow"><td colspan="5">{{ item.instructions }}</td></tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No medication prescribed.</p>
+  {% endif %}
+</div>
+
+{% if prescription.advice %}
+  <section class="sheet__section">
+    <h2>Advice</h2>
+    <p>{{ prescription.advice|linebreaksbr }}</p>
+  </section>
+{% endif %}
+
+{% if prescription.investigations_advised %}
+  <section class="sheet__section">
+    <h2>Investigations advised</h2>
+    <p>{{ prescription.investigations_advised|linebreaksbr }}</p>
+  </section>
+{% endif %}
+
+{% if prescription.follow_up_date %}
+  <section class="sheet__section">
+    <h2>Follow-up</h2>
+    <p>{{ prescription.follow_up_date|date:"j F Y" }}{% if prescription.follow_up_notes %} — {{ prescription.follow_up_notes }}{% endif %}</p>
+  </section>
+{% endif %}
+
+<footer class="sheet__sign">
+  {% if doctor_profile.signature %}
+    <img src="{{ doctor_profile.signature.url }}" alt="" class="sheet__signature">
+  {% endif %}
+  <p class="sheet__doctor">Dr. {{ visit.doctor.display_name }}</p>
+  {% if doctor_profile.qualification %}
+    <p class="sheet__qual">{{ doctor_profile.qualification }}</p>
+  {% endif %}
+  {% if doctor_profile.registration_number %}
+    <p class="sheet__reg">Reg. No. {{ doctor_profile.registration_number }}</p>
+  {% endif %}
+</footer>
+
+{% endblock %}

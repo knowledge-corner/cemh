@@ -63,7 +63,11 @@ ALLOWED_TRANSITIONS = {
 
 #: Statuses that no longer occupy a slot, so they are excluded from the
 #: double-booking constraint and from the day's queue.
-INACTIVE_STATUSES = {VisitStatus.CANCELLED, VisitStatus.NO_SHOW, VisitStatus.COMPLETED}
+#:
+#: Ordered, not a set: this list goes into a database constraint, and a set's
+#: iteration order varies between runs, which makes ``makemigrations`` detect a
+#: change on every invocation.
+INACTIVE_STATUSES = (VisitStatus.CANCELLED, VisitStatus.NO_SHOW, VisitStatus.COMPLETED)
 
 
 class InvalidTransition(ValidationError):
@@ -157,7 +161,7 @@ class Visit(models.Model):
                      RangeOperators.OVERLAPS),
                     ("doctor", RangeOperators.EQUAL),
                 ],
-                condition=~Q(status__in=list(INACTIVE_STATUSES)),
+                condition=~Q(status__in=list(INACTIVE_STATUSES)),  # noqa: E501 — order is fixed above
             ),
         ]
 

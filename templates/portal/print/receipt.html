@@ -1,0 +1,49 @@
+{% extends "portal/print/base_print.html" %}
+
+{% block title %}Receipt {{ receipt.receipt_number }}{% endblock %}
+
+{% block sheet %}
+
+<h1 class="sheet__title">Receipt</h1>
+
+<dl class="sheet__patient">
+  <div><dt>Receipt no.</dt><dd class="mono">{{ receipt.receipt_number }}</dd></div>
+  <div><dt>Date</dt><dd>{{ receipt.issued_at|date:"j F Y, H:i" }}</dd></div>
+  <div><dt>Patient</dt><dd>{{ patient.full_name }}</dd></div>
+  <div><dt>{{ patient_id_label }}</dt><dd class="mono">{{ patient.patient_id }}</dd></div>
+</dl>
+
+<table class="sheet__table">
+  <tbody>
+    <tr><td>Consultation</td><td class="table__num">{{ clinic_currency }}{{ charge.consultation_fee }}</td></tr>
+    {% if charge.procedure_fee %}
+      <tr><td>Procedure / other charges</td><td class="table__num">{{ clinic_currency }}{{ charge.procedure_fee }}</td></tr>
+    {% endif %}
+    {% if charge.discount %}
+      <tr><td>Discount</td><td class="table__num">− {{ clinic_currency }}{{ charge.discount }}</td></tr>
+    {% endif %}
+    <tr class="total-row">
+      <td class="strong">Total</td>
+      <td class="table__num strong">{{ clinic_currency }}{{ charge.total }}</td>
+    </tr>
+    <tr class="total-row">
+      <td class="strong">Received</td>
+      <td class="table__num strong">{{ clinic_currency }}{{ payment.amount }}</td>
+    </tr>
+    {% if charge.balance > 0 %}
+      <tr><td>Balance outstanding</td><td class="table__num">{{ clinic_currency }}{{ charge.balance }}</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<p class="sheet__method">
+  Paid by {{ payment.get_method_display }}{% if payment.reference %},
+  reference <span class="mono">{{ payment.reference }}</span>{% endif %}.
+</p>
+
+<footer class="sheet__sign">
+  <p class="sheet__doctor">{{ payment.received_by.display_name|default:"" }}</p>
+  <p class="sheet__qual">For {{ clinic_name }}</p>
+</footer>
+
+{% endblock %}

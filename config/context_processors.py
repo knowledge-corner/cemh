@@ -14,6 +14,7 @@ def clinic_branding(request):
         # The clinic calls the patient identifier a UHID; templates use this
         # label so another clinic can call it something else.
         "patient_id_label": clinic.PATIENT_ID_LABEL,
+        "clinic_currency": clinic.CURRENCY_SYMBOL,
         # Lets templates hide UI belonging to a speciality app this clinic
         # has not enabled, without importing the app.
         "growth_enabled": "growth" in settings.INSTALLED_APPS,

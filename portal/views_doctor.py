@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.permissions import role_required
 from accounts.models import Role
+from appointments.models import VisitStatus
 from audit.services import record_patient_view
 from patients.models import Patient
 
@@ -33,6 +34,22 @@ TAB_LABELS = [
     ("growth", "Growth Chart"),
     ("prescriptions", "Prescriptions"),
 ]
+
+
+def _current_visit(patient):
+    """
+    The visit this chart is open for.
+
+    Order matters: the patient sitting in the cabin comes first, then anything
+    else happening today, and only then the next thing in the diary. Taking the
+    latest active visit instead would let a follow-up booked for next month hide
+    the consultation actually in progress.
+    """
+    return (
+        patient.visits.filter(status=VisitStatus.IN_CABIN).order_by("-scheduled_start").first()
+        or patient.visits.for_date().active().order_by("scheduled_start").first()
+        or patient.visits.active().order_by("scheduled_start").first()
+    )
 
 
 def _visible_tabs(patient):
@@ -89,7 +106,7 @@ def patient_dashboard(request, patient_id):
         "patient": patient,
         "tabs": list(_visible_tabs(patient)),
         "active_tab": "summary",
-        "active_visit": patient.visits.active().order_by("-scheduled_start").first(),
+        "active_visit": _current_visit(patient),
     }
     context.update(services.summary_context(patient))
     return render(request, "portal/doctor/dashboard.html", context)

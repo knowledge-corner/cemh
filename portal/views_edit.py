@@ -17,6 +17,8 @@ The flow is the same everywhere:
 from dataclasses import dataclass
 from typing import Callable
 
+from django.conf import settings
+from django.db import transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
@@ -24,6 +26,7 @@ from django.utils import timezone
 
 from accounts.models import Role
 from accounts.permissions import role_required
+from appointments.models import VisitStatus
 from audit.services import record
 from audit.models import AuditAction
 from clinical.models import ClinicalNote, Diagnosis, Investigation
@@ -252,6 +255,68 @@ def edit_record(request, patient_id, kind, pk=None):
             "title": spec.add_title if is_new else spec.title,
             "action": request.path,
             "is_new": is_new,
+        },
+    )
+
+
+@role_required(Role.DOCTOR)
+def complete_consultation(request, patient_id):
+    """
+    End the consultation: record the fee, issue the prescription, hand over.
+
+    This is the trigger the clinic described — one action that sets the fee,
+    releases the prescription for printing and moves the visit to CONSULTED, so
+    the patient appears on reception's billing list with everything they need.
+    """
+    patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
+    visit = patient.visits.filter(status=VisitStatus.IN_CABIN).order_by("-scheduled_start").first()
+
+    if visit is None:
+        raise Http404("This patient is not currently in the cabin.")
+
+    charge = getattr(visit, "charge", None)
+    prescription = getattr(visit, "prescription", None)
+
+    if request.method == "POST":
+        form = clinic_forms.ChargeForm(request.POST, instance=charge)
+        if form.is_valid():
+            with transaction.atomic():
+                charge = form.save(commit=False)
+                charge.visit = visit
+                charge.patient = patient
+                charge.set_by = request.user
+                charge.save()
+
+                # Issue whatever prescription exists; an empty one is still the
+                # signal that the consultation is over.
+                if prescription is None:
+                    prescription = Prescription.objects.create(
+                        visit=visit, patient=patient, doctor=request.user
+                    )
+                prescription.generate()
+
+                visit.transition_to(VisitStatus.CONSULTED, by_user=request.user)
+
+            record(
+                request, AuditAction.UPDATE, obj=visit, patient=patient,
+                description="Consultation completed; fee and prescription sent to reception",
+            )
+            return HttpResponse(_refreshed_panels(request, patient, "prescriptions"))
+    else:
+        initial = {}
+        if charge is None:
+            initial["consultation_fee"] = settings.CLINIC.DEFAULT_CONSULTATION_FEE
+        form = clinic_forms.ChargeForm(instance=charge, initial=initial)
+
+    return render(
+        request,
+        "portal/doctor/_complete_modal.html",
+        {
+            "patient": patient,
+            "visit": visit,
+            "form": form,
+            "prescription": prescription,
+            "action": request.path,
         },
     )
 
