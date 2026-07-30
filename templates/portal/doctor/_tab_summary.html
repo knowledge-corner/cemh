@@ -1,0 +1,99 @@
+{% comment %}
+Summary tab — the overview the doctor lands on. Standing background first, then
+the visit history grouped into the time bands clinicians actually think in.
+{% endcomment %}
+
+{% if history %}
+  <section style="margin-bottom:1.25rem">
+    <h3 style="color:var(--brand-dark)">Background</h3>
+    <div class="table-scroll">
+      <table class="table">
+        <tbody>
+          {% if history.presenting_complaints %}
+            <tr><th style="width:190px">Presenting complaints</th><td>{{ history.presenting_complaints|linebreaksbr }}</td></tr>
+          {% endif %}
+          {% if history.past_medical_history %}
+            <tr><th>Past medical history</th><td>{{ history.past_medical_history|linebreaksbr }}</td></tr>
+          {% endif %}
+          {% if history.family_history %}
+            <tr><th>Family history</th><td>{{ history.family_history|linebreaksbr }}</td></tr>
+          {% endif %}
+          {% if patient.is_paediatric and history.birth_history %}
+            <tr><th>Birth &amp; development</th><td>{{ history.birth_history|linebreaksbr }}</td></tr>
+          {% endif %}
+          {% if history.current_medications %}
+            <tr><th>Current medications</th><td>{{ history.current_medications|linebreaksbr }}</td></tr>
+          {% endif %}
+          {% if history.surgical_history %}
+            <tr><th>Surgical history</th><td>{{ history.surgical_history|linebreaksbr }}</td></tr>
+          {% endif %}
+          {% if history.lifestyle_notes %}
+            <tr><th>Lifestyle</th><td>{{ history.lifestyle_notes|linebreaksbr }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+<section style="margin-bottom:1.25rem">
+  <h3 style="color:var(--brand-dark)">Visit history <span class="faint small">({{ visit_count }} total)</span></h3>
+
+  {% if visit_groups %}
+    <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:110px">When</th>
+            <th>Seen by</th>
+            <th>Reason</th>
+            <th>Assessment</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for label, visits in visit_groups %}
+            <tr class="table__group"><td colspan="5">{{ label }}</td></tr>
+            {% for visit in visits %}
+              <tr>
+                <td class="nowrap">{{ visit.scheduled_start|date:"j M Y" }}</td>
+                <td class="nowrap">{{ visit.doctor.display_name }}</td>
+                <td>{{ visit.reason|default:"—" }}</td>
+                <td>{{ visit.note.assessment|default:"—"|truncatechars:70 }}</td>
+                <td>{% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}</td>
+              </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      <div class="empty__title">No visits recorded yet</div>
+      <div class="empty__hint">This is the patient's first attendance.</div>
+    </div>
+  {% endif %}
+</section>
+
+{% if recent_investigations %}
+  <section>
+    <h3 style="color:var(--brand-dark)">Recent investigations</h3>
+    <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr><th>Date</th><th>Test</th><th>Result</th><th>Reference</th></tr>
+        </thead>
+        <tbody>
+          {% for result in recent_investigations %}
+            <tr>
+              <td class="nowrap">{{ result.performed_on|date:"j M Y" }}</td>
+              <td>{{ result.test_name }}</td>
+              <td class="{% if result.is_abnormal %}abnormal{% endif %}">{{ result.display_value }}</td>
+              <td class="faint">{{ result.reference_range|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}

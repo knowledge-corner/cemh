@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ patient.full_name }} ({{ patient.patient_id }}) — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Patient chart</h1>
+    <p class="page-header__sub">
+      <a href="{% url 'doctor_home' %}">&larr; Back to today's clinic</a>
+    </p>
+  </div>
+  {% if active_visit %}
+    <div>
+      {% include "portal/doctor/_status_badge.html" with status=active_visit.status label=active_visit.get_status_display %}
+    </div>
+  {% endif %}
+</div>
+
+<div class="chart">
+
+  {# ── Patient sidebar: stays on screen while the doctor works ──────────── #}
+  <aside class="storyboard">
+    {% include "portal/doctor/_storyboard.html" %}
+  </aside>
+
+  {# ── Chart area ───────────────────────────────────────────────────────── #}
+  <div>
+    <div class="tabs" role="tablist">
+      {% for key, label in tabs %}
+        <button class="tab"
+                role="tab"
+                type="button"
+                id="tab-{{ key }}"
+                aria-selected="{% if key == active_tab %}true{% else %}false{% endif %}"
+                aria-controls="tab-panel"
+                hx-get="{% url 'doctor_patient_tab' patient.patient_id key %}"
+                hx-target="#tab-panel"
+                hx-swap="innerHTML"
+                hx-indicator="#tab-panel"
+                hx-on::after-request="document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t === this ? 'true' : 'false'))">
+          {{ label }}
+        </button>
+      {% endfor %}
+    </div>
+
+    <div class="tab-panel" id="tab-panel" role="tabpanel" aria-labelledby="tab-summary">
+      {% include "portal/doctor/_tab_summary.html" %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% if growth_enabled and patient.is_paediatric %}
+    {% comment %}
+    Loaded here rather than in the growth fragment: the tab arrives over HTMX,
+    and an external script inside the swapped HTML would still be loading when
+    the fragment's initialiser ran.
+    {% endcomment %}
+    <script src="{% static 'js/vendor/chart.umd.js' %}"></script>
+    <script src="{% static 'js/growth_chart.js' %}"></script>
+  {% endif %}
+{% endblock %}

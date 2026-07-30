@@ -1,0 +1,97 @@
+{% comment %}
+The patient sidebar — identity and the handful of facts that must be visible at
+every moment of the consultation, whichever tab is open. Allergies sit near the
+top for the obvious reason.
+{% endcomment %}
+
+<div class="storyboard__identity">
+  <div class="storyboard__avatar">{{ patient.first_name|first|upper }}{{ patient.last_name|first|upper }}</div>
+  <p class="storyboard__name">{{ patient.full_name }}</p>
+  <p class="storyboard__meta">
+    {{ patient.get_sex_display }} &middot; {{ patient.age_display }}
+    &middot; {{ patient.date_of_birth|date:"j M Y" }}
+  </p>
+  <span class="storyboard__uhid">{{ patient.patient_id }}</span>
+</div>
+
+{# Allergies: the single most consequential thing on this panel. #}
+{% if history and history.has_allergies %}
+  <div class="storyboard__section">
+    <div class="alert-strip alert-strip--danger">
+      <div>
+        <span class="alert-strip__title">Allergies</span><br>
+        {{ history.allergies|linebreaksbr }}
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="storyboard__section">
+    <div class="alert-strip alert-strip--info">
+      <div><span class="alert-strip__title">Allergies</span><br>None recorded</div>
+    </div>
+  </div>
+{% endif %}
+
+<div class="storyboard__section">
+  <p class="storyboard__label">Contact</p>
+  <dl class="storyboard__row"><dt>Mobile</dt><dd class="mono">{{ patient.contact_phone|default:"—" }}</dd></dl>
+  {% if patient.is_paediatric and patient.guardian_name %}
+    <dl class="storyboard__row"><dt>Guardian</dt><dd>{{ patient.guardian_name }}</dd></dl>
+  {% endif %}
+  {% if patient.blood_group %}
+    <dl class="storyboard__row"><dt>Blood group</dt><dd>{{ patient.blood_group }}</dd></dl>
+  {% endif %}
+</div>
+
+{% if active_diagnoses %}
+  <div class="storyboard__section">
+    <p class="storyboard__label">Active problems ({{ active_diagnoses|length }})</p>
+    <ul class="storyboard__list">
+      {% for diagnosis in active_diagnoses %}
+        <li>{{ diagnosis.description }}
+          <span class="faint small">— since {{ diagnosis.diagnosed_on|date:"M Y" }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if latest_measurement %}
+  <div class="storyboard__section">
+    <p class="storyboard__label">Latest measurements</p>
+    {% if latest_measurement.height_cm %}
+      <dl class="storyboard__row"><dt>Height</dt><dd>{{ latest_measurement.height_cm }} cm</dd></dl>
+    {% endif %}
+    {% if latest_measurement.weight_kg %}
+      <dl class="storyboard__row"><dt>Weight</dt><dd>{{ latest_measurement.weight_kg }} kg</dd></dl>
+    {% endif %}
+    {% if latest_measurement.bmi %}
+      <dl class="storyboard__row"><dt>BMI</dt><dd>{{ latest_measurement.bmi }}</dd></dl>
+    {% endif %}
+    <p class="faint small" style="margin:.375rem 0 0">
+      Recorded {{ latest_measurement.measured_on|date:"j M Y" }}
+    </p>
+  </div>
+{% endif %}
+
+{% if last_note and last_note.blood_pressure %}
+  <div class="storyboard__section">
+    <p class="storyboard__label">Last recorded vitals</p>
+    <dl class="storyboard__row"><dt>BP</dt><dd>{{ last_note.blood_pressure }} mmHg</dd></dl>
+    {% if last_note.pulse %}
+      <dl class="storyboard__row"><dt>Pulse</dt><dd>{{ last_note.pulse }} /min</dd></dl>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="storyboard__section">
+  <p class="storyboard__label">Attendance</p>
+  <dl class="storyboard__row"><dt>Total visits</dt><dd>{{ visit_count }}</dd></dl>
+  {% if last_visit %}
+    <dl class="storyboard__row">
+      <dt>Last seen</dt><dd>{{ last_visit.scheduled_start|date:"j M Y" }}</dd>
+    </dl>
+  {% endif %}
+  <dl class="storyboard__row">
+    <dt>Registered</dt><dd>{{ patient.registered_on|date:"M Y" }}</dd>
+  </dl>
+</div>

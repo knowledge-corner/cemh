@@ -1,0 +1,58 @@
+/*
+ * CLINIC THEME — the entire visual identity lives in this one file.
+ *
+ * This is the per-clinic customisation layer. To re-skin the application for a
+ * different clinic, change the values below and nothing else. No template and
+ * no other stylesheet hard-codes a colour.
+ *
+ * Current palette is taken from the Centre for Endocrine & Metabolic Health
+ * printed patient file: charcoal header band, teal accent, pale grey-green page.
+ */
+
+:root {
+  /* ── Brand ──────────────────────────────────────────────────────────── */
+  --brand-dark:        #414e54;   /* header band, footer, sidebar heading   */
+  --brand-dark-soft:   #4d5c63;   /* hover state on dark surfaces           */
+  --brand-teal:        #17a398;   /* primary accent — the clinic's colour   */
+  --brand-teal-dark:   #128b81;   /* hover / active accent                  */
+  --brand-teal-soft:   #e3f4f2;   /* tinted background for accent areas     */
+
+  /* ── Surfaces ───────────────────────────────────────────────────────── */
+  --page-bg:           #eaf0f0;   /* pale grey-green page background        */
+  --surface:           #ffffff;   /* cards, panels                          */
+  --surface-muted:     #f4f8f8;   /* table stripes, inset panels            */
+  --border:            #d8e2e2;
+  --border-strong:     #c2d0d0;
+
+  /* ── Text ───────────────────────────────────────────────────────────── */
+  --text:              #2e3a40;
+  --text-muted:        #6b7b82;
+  --text-faint:        #93a3a8;
+  --text-on-dark:      #ffffff;
+
+  /* ── Clinical status colours ────────────────────────────────────────── */
+  /* Used for allergy banners, abnormal results and queue states. These are
+     deliberately not brand colours — a red must read as a warning. */
+  --danger:            #c0392b;
+  --danger-bg:         #fdeceb;
+  --warning:           #b9770e;
+  --warning-bg:        #fdf4e3;
+  --success:           #1e8449;
+  --success-bg:        #e8f6ee;
+  --info:              #1f6f8b;
+  --info-bg:           #e8f2f6;
+
+  /* ── Typography ─────────────────────────────────────────────────────── */
+  --font-sans: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", Consolas, monospace;
+
+  /* ── Shape ──────────────────────────────────────────────────────────── */
+  --radius:            8px;
+  --radius-lg:         12px;
+  --shadow-sm:         0 1px 2px rgba(46, 58, 64, .06);
+  --shadow:            0 2px 8px rgba(46, 58, 64, .08);
+
+  /* ── Layout ─────────────────────────────────────────────────────────── */
+  --sidebar-width:     290px;
+  --topbar-height:     52px;
+}

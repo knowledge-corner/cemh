@@ -10,6 +10,7 @@ urlpatterns = [
     path("admin/", lambda r: redirect("/")),
     path("", include("accounts.urls")),
     path("doctor/", include("portal.urls_doctor")),
+    path("", include("portal.urls")),
 ]
 
 if settings.DEBUG:

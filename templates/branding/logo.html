@@ -1,0 +1,16 @@
+{% comment %}
+Clinic mark — a stylised thyroid, matching the emblem on the clinic's printed
+patient file. Inline SVG so it inherits `currentColor` and needs no extra request.
+
+Per-clinic branding: replace this file to re-brand. Nothing else references the mark.
+{% endcomment %}
+<svg class="{{ css_class|default:'topbar__logo' }}" viewBox="0 0 64 64" fill="none"
+     xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <path d="M32 20v10" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="32" cy="15" r="4" fill="currentColor"/>
+  <path d="M32 30c-4-6-11-8-15-4-4.5 4.5-3 14 2 18 5 4 12 2 13-5 .5-3.5 0-6 0-9z"
+        fill="currentColor"/>
+  <path d="M32 30c4-6 11-8 15-4 4.5 4.5 3 14-2 18-5 4-12 2-13-5-.5-3.5 0-6 0-9z"
+        fill="currentColor"/>
+  <path d="M20 50l-5 6M44 50l5 6" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

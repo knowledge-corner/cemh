@@ -1,0 +1,50 @@
+{% comment %}
+Investigations grouped by test rather than by date, because the clinical
+question is "how has this patient's TSH moved", not "what was done in March".
+{% endcomment %}
+
+{% if has_results %}
+  <div class="stack">
+    {% for test_name, results in grouped_investigations.items %}
+      <section class="card">
+        <div class="card__header">
+          <h3 class="card__title">{{ test_name }}</h3>
+          <span class="badge badge--grey">{{ results|length }} result{{ results|length|pluralize }}</span>
+        </div>
+        <div class="card__body card__body--flush table-scroll">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:120px">Date</th>
+                <th>Result</th>
+                <th>Reference range</th>
+                <th>Lab</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for result in results %}
+                <tr>
+                  <td class="nowrap">{{ result.performed_on|date:"j M Y" }}</td>
+                  <td class="{% if result.is_abnormal %}abnormal{% endif %}">
+                    {{ result.display_value }}
+                    {% if result.is_abnormal %}<span class="badge badge--danger" style="margin-left:.375rem">Abnormal</span>{% endif %}
+                  </td>
+                  <td class="faint">{{ result.reference_range|default:"—" }}</td>
+                  <td class="faint">{{ result.lab_name|default:"—" }}</td>
+                  <td class="faint">{{ result.notes|default:"—"|truncatechars:50 }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">🧪</div>
+    <div class="empty__title">No investigations recorded</div>
+    <div class="empty__hint">Lab results and imaging reports will appear here, grouped by test.</div>
+  </div>
+{% endif %}

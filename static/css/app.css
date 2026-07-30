@@ -1,0 +1,511 @@
+/*
+ * Application styles.
+ *
+ * Every colour here comes from a custom property defined in theme.css — never
+ * a literal. That is what makes re-skinning for another clinic a one-file job.
+ *
+ * Layout follows the convention clinicians already know from hospital EHRs: a
+ * fixed patient sidebar that stays on screen while the doctor works, and a
+ * tabbed chart area beside it.
+ */
+
+/* ── Reset & base ──────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--page-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--brand-teal-dark); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3, h4 { margin: 0 0 .5rem; font-weight: 600; line-height: 1.25; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; }
+h4 { font-size: .875rem; }
+
+p { margin: 0 0 .75rem; }
+
+/* ── Top bar ───────────────────────────────────────────────────────────── */
+
+.topbar {
+  height: var(--topbar-height);
+  background: var(--brand-dark);
+  color: var(--text-on-dark);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  color: var(--text-on-dark);
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+.topbar__brand:hover { text-decoration: none; opacity: .9; }
+.topbar__logo { width: 26px; height: 26px; flex-shrink: 0; }
+.topbar__name { font-size: .9375rem; }
+.topbar__tagline {
+  font-size: .6875rem;
+  font-weight: 400;
+  color: rgba(255,255,255,.65);
+  display: block;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.topbar__spacer { flex: 1; }
+
+.topbar__user {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  font-size: .8125rem;
+  color: rgba(255,255,255,.85);
+}
+.topbar__role {
+  background: rgba(255,255,255,.14);
+  padding: .125rem .5rem;
+  border-radius: 100px;
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.topbar__logout {
+  color: rgba(255,255,255,.85);
+  border: 1px solid rgba(255,255,255,.28);
+  padding: .25rem .625rem;
+  border-radius: var(--radius);
+  background: none;
+  font: inherit;
+  font-size: .8125rem;
+  cursor: pointer;
+}
+.topbar__logout:hover { background: rgba(255,255,255,.1); text-decoration: none; }
+
+/* The teal rule under the header — lifted straight from the clinic's file. */
+.brand-rule { height: 4px; background: var(--brand-teal); }
+
+/* ── Page shell ────────────────────────────────────────────────────────── */
+
+.page { padding: 1.25rem; max-width: 1600px; margin: 0 auto; }
+.page--narrow { max-width: 900px; }
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.page-header__title { margin: 0; }
+.page-header__sub { color: var(--text-muted); font-size: .875rem; margin: .125rem 0 0; }
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card + .card { margin-top: 1rem; }
+.card__header {
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+.card__title {
+  margin: 0;
+  font-size: .8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--brand-dark);
+}
+.card__body { padding: 1rem; }
+.card__body--flush { padding: 0; }
+
+/* ── Doctor dashboard layout ───────────────────────────────────────────── */
+
+.chart {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .chart { grid-template-columns: 1fr; }
+}
+
+/* ── Patient sidebar ───────────────────────────────────────────────────── */
+
+.storyboard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: sticky;
+  top: calc(var(--topbar-height) + 1.25rem);
+  box-shadow: var(--shadow-sm);
+}
+
+.storyboard__identity {
+  background: var(--brand-dark);
+  color: var(--text-on-dark);
+  padding: 1rem;
+  text-align: center;
+}
+.storyboard__avatar {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: var(--brand-teal);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.375rem;
+  font-weight: 600;
+  margin: 0 auto .5rem;
+  letter-spacing: .02em;
+}
+.storyboard__name { font-size: 1.0625rem; font-weight: 600; margin: 0; }
+.storyboard__meta { font-size: .8125rem; color: rgba(255,255,255,.75); margin: .125rem 0 0; }
+.storyboard__uhid {
+  display: inline-block;
+  margin-top: .5rem;
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  background: rgba(255,255,255,.14);
+  padding: .1875rem .5rem;
+  border-radius: var(--radius);
+  letter-spacing: .04em;
+}
+
+.storyboard__section { padding: .75rem 1rem; border-top: 1px solid var(--border); }
+.storyboard__label {
+  font-size: .6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-faint);
+  margin: 0 0 .375rem;
+}
+.storyboard__row {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+  font-size: .8125rem;
+  padding: .125rem 0;
+}
+.storyboard__row dt { color: var(--text-muted); margin: 0; }
+.storyboard__row dd { margin: 0; font-weight: 600; text-align: right; }
+
+.storyboard__list { list-style: none; margin: 0; padding: 0; font-size: .8125rem; }
+.storyboard__list li { padding: .1875rem 0; }
+.storyboard__list li + li { border-top: 1px dashed var(--border); }
+
+/* Alert strips — allergies and the like must be impossible to miss. */
+.alert-strip {
+  padding: .5rem .75rem;
+  border-radius: var(--radius);
+  font-size: .8125rem;
+  display: flex;
+  gap: .5rem;
+  align-items: flex-start;
+}
+.alert-strip + .alert-strip { margin-top: .5rem; }
+.alert-strip--danger  { background: var(--danger-bg);  color: var(--danger);  border-left: 3px solid var(--danger); }
+.alert-strip--warning { background: var(--warning-bg); color: var(--warning); border-left: 3px solid var(--warning); }
+.alert-strip--info    { background: var(--info-bg);    color: var(--info);    border-left: 3px solid var(--info); }
+.alert-strip__title { font-weight: 700; }
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: .125rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 0 .5rem;
+  overflow-x: auto;
+}
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: .75rem .875rem;
+  font: inherit;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .12s, border-color .12s;
+}
+.tab:hover { color: var(--brand-teal-dark); text-decoration: none; }
+.tab[aria-selected="true"] {
+  color: var(--brand-teal-dark);
+  border-bottom-color: var(--brand-teal);
+}
+
+.tab-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: 1rem;
+  min-height: 320px;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+
+.table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.table th {
+  text-align: left;
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  font-weight: 700;
+  padding: .5rem .625rem;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.table td { padding: .5rem .625rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table tbody tr:hover { background: var(--surface-muted); }
+.table__num { text-align: right; font-family: var(--font-mono); }
+
+/* Wide tables scroll inside their own box rather than the page. */
+.table-scroll { overflow-x: auto; }
+
+/* Time-period grouping in the visit list, as clinicians expect to see it. */
+.table__group td {
+  background: var(--surface-muted);
+  font-weight: 700;
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  padding: .375rem .625rem;
+}
+
+/* ── Badges ────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  padding: .125rem .5rem;
+  border-radius: 100px;
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge--teal    { background: var(--brand-teal-soft); color: var(--brand-teal-dark); }
+.badge--grey    { background: var(--surface-muted);   color: var(--text-muted); border: 1px solid var(--border); }
+.badge--danger  { background: var(--danger-bg);       color: var(--danger); }
+.badge--warning { background: var(--warning-bg);      color: var(--warning); }
+.badge--success { background: var(--success-bg);      color: var(--success); }
+.badge--info    { background: var(--info-bg);         color: var(--info); }
+
+/* ── Forms & buttons ───────────────────────────────────────────────────── */
+
+.field { margin-bottom: .875rem; }
+.field__label {
+  display: block;
+  font-size: .6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin-bottom: .3125rem;
+}
+.field__help { font-size: .75rem; color: var(--text-muted); margin-top: .25rem; }
+.field__error { font-size: .75rem; color: var(--danger); margin-top: .25rem; }
+
+.input {
+  width: 100%;
+  padding: .5rem .625rem;
+  font: inherit;
+  font-size: .875rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--brand-teal);
+  box-shadow: 0 0 0 3px var(--brand-teal-soft);
+}
+.input--mono { font-family: var(--font-mono); letter-spacing: .06em; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .375rem;
+  padding: .5rem .875rem;
+  font: inherit;
+  font-size: .8125rem;
+  font-weight: 600;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { text-decoration: none; }
+.btn--primary { background: var(--brand-teal); color: #fff; }
+.btn--primary:hover { background: var(--brand-teal-dark); }
+.btn--secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+.btn--secondary:hover { background: var(--surface-muted); }
+.btn--dark { background: var(--brand-dark); color: #fff; }
+.btn--dark:hover { background: var(--brand-dark-soft); }
+.btn--block { width: 100%; }
+
+/* ── Search bar on the doctor's home page ──────────────────────────────── */
+
+.lookup {
+  display: flex;
+  gap: .5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.lookup .field { margin-bottom: 0; flex: 1 1 240px; }
+
+/* ── Messages ──────────────────────────────────────────────────────────── */
+
+.messages { list-style: none; margin: 0 0 1rem; padding: 0; }
+.messages li {
+  padding: .625rem .875rem;
+  border-radius: var(--radius);
+  font-size: .875rem;
+  margin-bottom: .5rem;
+  border-left: 3px solid;
+}
+.messages .error   { background: var(--danger-bg);  color: var(--danger);  border-color: var(--danger); }
+.messages .warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+.messages .success { background: var(--success-bg); color: var(--success); border-color: var(--success); }
+.messages .info    { background: var(--info-bg);    color: var(--info);    border-color: var(--info); }
+
+/* ── Empty states ──────────────────────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--text-muted);
+}
+.empty__icon { font-size: 1.75rem; opacity: .35; margin-bottom: .5rem; }
+.empty__title { font-weight: 600; color: var(--text); margin-bottom: .25rem; }
+.empty__hint { font-size: .8125rem; }
+
+/* ── Login page ────────────────────────────────────────────────────────── */
+
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--page-bg);
+}
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.login-card__header {
+  background: var(--brand-dark);
+  color: var(--text-on-dark);
+  padding: 1.75rem 1.5rem 1.5rem;
+  text-align: center;
+}
+.login-card__logo { width: 48px; height: 48px; margin-bottom: .625rem; }
+.login-card__name { font-size: 1.0625rem; font-weight: 700; margin: 0; line-height: 1.3; }
+.login-card__tagline {
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.65);
+  margin: .375rem 0 0;
+}
+.login-card__body { padding: 1.5rem; }
+.login-card__footer {
+  padding: .875rem 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: .75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Growth charts ─────────────────────────────────────────────────────── */
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+.chart-box { border: 1px solid var(--border); border-radius: var(--radius); padding: .875rem; }
+.chart-box__title {
+  font-size: .8125rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin: 0 0 .125rem;
+}
+.chart-box__latest { font-size: .75rem; color: var(--text-muted); margin: 0 0 .625rem; }
+.chart-box__canvas { position: relative; height: 300px; }
+
+/* ── Queue list ────────────────────────────────────────────────────────── */
+
+.queue__time { font-family: var(--font-mono); font-weight: 600; white-space: nowrap; }
+.queue__name { font-weight: 600; }
+.queue__uhid { font-family: var(--font-mono); font-size: .75rem; color: var(--text-muted); }
+
+/* ── Utilities ─────────────────────────────────────────────────────────── */
+
+.stack > * + * { margin-top: 1rem; }
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+.small { font-size: .75rem; }
+.mono { font-family: var(--font-mono); }
+.nowrap { white-space: nowrap; }
+.text-right { text-align: right; }
+.strong { font-weight: 600; }
+.abnormal { color: var(--danger); font-weight: 600; }
+
+.htmx-request .tab-panel { opacity: .55; transition: opacity .12s; }
+
+@media print {
+  .topbar, .tabs, .brand-rule, .btn { display: none !important; }
+  body { background: #fff; }
+  .card, .tab-panel, .storyboard { border: none; box-shadow: none; }
+}

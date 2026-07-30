@@ -1,0 +1,108 @@
+{% comment %}
+Growth charts. The patient's own measurements are plotted over the published
+percentile curves, so short stature or a crossing of centiles is visible at a
+glance rather than inferred from a table of numbers.
+
+Chart.js is initialised from a script block below. Because this partial arrives
+over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
+{% endcomment %}
+{% load static growth_extras %}
+
+{% if latest_measurement %}
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card__body">
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:.8125rem">
+        {% if latest_measurement.height_cm %}
+          <div><span class="faint small">Height</span><br><strong>{{ latest_measurement.height_cm }} cm</strong></div>
+        {% endif %}
+        {% if latest_measurement.weight_kg %}
+          <div><span class="faint small">Weight</span><br><strong>{{ latest_measurement.weight_kg }} kg</strong></div>
+        {% endif %}
+        {% if latest_measurement.bmi %}
+          <div><span class="faint small">BMI</span><br><strong>{{ latest_measurement.bmi }} kg/m&sup2;</strong></div>
+        {% endif %}
+        {% if mid_parental_height %}
+          <div><span class="faint small">Mid-parental target</span><br><strong>{{ mid_parental_height }} cm</strong></div>
+        {% endif %}
+        {% if latest_measurement.puberty_stage %}
+          <div><span class="faint small">Puberty</span><br><strong>Tanner {{ latest_measurement.puberty_stage }}</strong></div>
+        {% endif %}
+        <div><span class="faint small">Measured</span><br><strong>{{ latest_measurement.measured_on|date:"j M Y" }}</strong></div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if charts %}
+  <div class="chart-grid" id="growth-charts">
+    {% for chart in charts %}
+      <div class="chart-box">
+        <p class="chart-box__title">{{ chart.label }}</p>
+        <p class="chart-box__latest">
+          Latest: <strong>{{ chart.latest.value }} {{ chart.unit }}</strong>
+          {% if chart.latest.percentile is not None %}
+            &middot; {{ chart.latest.percentile }}th centile
+            <span class="faint">(z = {{ chart.latest.z }})</span>
+          {% else %}
+            <span class="faint">&middot; outside the published reference range</span>
+          {% endif %}
+        </p>
+        <div class="chart-box__canvas">
+          <canvas id="growth-chart-{{ forloop.counter }}"
+                  data-chart="{{ chart|chart_json }}"></canvas>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <p class="faint small" style="margin-top:1rem">
+    Percentile curves are drawn from published growth references
+    (WHO 0&ndash;5 years, CDC 2&ndash;20 years). Confirm with the treating doctor
+    which reference standard this clinic should chart against &mdash; see
+    <span class="mono">growth/reference/SOURCES.md</span>.
+  </p>
+
+  {% comment %}
+  Chart.js and the renderer are loaded by dashboard.html, before any tab is
+  swapped in. An external script tag inside an HTMX fragment would not have
+  finished loading by the time this initialiser ran.
+  {% endcomment %}
+  <script>renderGrowthCharts();</script>
+
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">📈</div>
+    <div class="empty__title">No measurements recorded</div>
+    <div class="empty__hint">
+      Height and weight recorded at visits will be plotted here against percentile curves.
+    </div>
+  </div>
+{% endif %}
+
+{% if measurements %}
+  <section class="card" style="margin-top:1rem">
+    <div class="card__header"><h3 class="card__title">Measurement history</h3></div>
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Age</th><th class="table__num">Height</th>
+            <th class="table__num">Weight</th><th class="table__num">BMI</th><th>Puberty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in measurements %}
+            <tr>
+              <td class="nowrap">{{ m.measured_on|date:"j M Y" }}</td>
+              <td class="nowrap faint">{{ m.age_years|floatformat:1 }} yr</td>
+              <td class="table__num">{{ m.height_cm|default:"—" }}</td>
+              <td class="table__num">{{ m.weight_kg|default:"—" }}</td>
+              <td class="table__num">{{ m.bmi|default:"—" }}</td>
+              <td>{% if m.puberty_stage %}Tanner {{ m.puberty_stage }}{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}

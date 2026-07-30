@@ -1,0 +1,62 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sign in — {{ clinic_name }}</title>
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+
+<div class="login-shell">
+  <div class="login-card">
+
+    <div class="login-card__header">
+      {% include "branding/logo.html" with css_class="login-card__logo" %}
+      <h1 class="login-card__name">{{ clinic_name }}</h1>
+      <p class="login-card__tagline">{{ clinic_tagline }}</p>
+    </div>
+
+    <div class="login-card__body">
+
+      {% if form.non_field_errors %}
+        <ul class="messages">
+          {% for error in form.non_field_errors %}<li class="error">{{ error }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+
+      <form method="post" action="{% url 'login' %}">
+        {% csrf_token %}
+
+        <div class="field">
+          <label class="field__label" for="{{ form.username.id_for_label }}">Username</label>
+          <input class="input" type="text" name="username" id="{{ form.username.id_for_label }}"
+                 autocomplete="username" autofocus required
+                 value="{{ form.username.value|default:'' }}">
+          {% for error in form.username.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="{{ form.password.id_for_label }}">Password</label>
+          <input class="input" type="password" name="password" id="{{ form.password.id_for_label }}"
+                 autocomplete="current-password" required>
+          {% for error in form.password.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+        </div>
+
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+        <button type="submit" class="btn btn--primary btn--block">Sign in</button>
+      </form>
+    </div>
+
+    <div class="login-card__footer">
+      Authorised clinic staff only. Access to patient records is logged.
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+{% comment %}
+Visit status as a colour-coded badge. One place decides the colour so the queue,
+the chart header and any future reception screen never disagree.
+{% endcomment %}
+{% if status == "IN_CABIN" %}<span class="badge badge--teal">{{ label }}</span>
+{% elif status == "ARRIVED" %}<span class="badge badge--warning">{{ label }}</span>
+{% elif status == "CONSULTED" or status == "BILLED" %}<span class="badge badge--info">{{ label }}</span>
+{% elif status == "COMPLETED" %}<span class="badge badge--success">{{ label }}</span>
+{% elif status == "CANCELLED" or status == "NO_SHOW" %}<span class="badge badge--danger">{{ label }}</span>
+{% else %}<span class="badge badge--grey">{{ label }}</span>{% endif %}

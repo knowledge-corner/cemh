@@ -1,0 +1,69 @@
+{% comment %}Prescriptions issued at each visit, newest first.{% endcomment %}
+
+{% if prescriptions %}
+  <div class="stack">
+    {% for prescription in prescriptions %}
+      <article class="card">
+        <div class="card__header">
+          <h3 class="card__title">{{ prescription.created_at|date:"j F Y" }}</h3>
+          <span>
+            {% if prescription.is_generated %}
+              <span class="badge badge--success">Issued</span>
+            {% else %}
+              <span class="badge badge--warning">Draft</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="card__body">
+
+          {% if prescription.items.all %}
+            <div class="table-scroll">
+              <table class="table">
+                <thead>
+                  <tr><th>Medication</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th></tr>
+                </thead>
+                <tbody>
+                  {% for item in prescription.items.all %}
+                    <tr>
+                      <td class="strong">{{ item.drug_name }}</td>
+                      <td>{{ item.strength|default:"—" }}</td>
+                      <td>{{ item.dosage|default:"—" }}</td>
+                      <td>{{ item.frequency|default:"—" }}</td>
+                      <td>{{ item.duration|default:"—" }}</td>
+                    </tr>
+                    {% if item.instructions %}
+                      <tr><td colspan="5" class="faint small">{{ item.instructions }}</td></tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="faint">No medication on this prescription.</p>
+          {% endif %}
+
+          {% if prescription.advice %}
+            <h4 style="margin-top:1rem">Advice</h4><p>{{ prescription.advice|linebreaksbr }}</p>
+          {% endif %}
+          {% if prescription.investigations_advised %}
+            <h4>Investigations advised</h4><p>{{ prescription.investigations_advised|linebreaksbr }}</p>
+          {% endif %}
+          {% if prescription.follow_up_date %}
+            <p class="small muted">
+              <strong>Follow-up:</strong> {{ prescription.follow_up_date|date:"j F Y" }}
+              {% if prescription.follow_up_notes %} — {{ prescription.follow_up_notes }}{% endif %}
+            </p>
+          {% endif %}
+
+          <p class="faint small" style="margin:.75rem 0 0">Issued by {{ prescription.doctor.display_name }}</p>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">℞</div>
+    <div class="empty__title">No prescriptions yet</div>
+    <div class="empty__hint">Prescriptions generated at the end of a consultation will appear here.</div>
+  </div>
+{% endif %}

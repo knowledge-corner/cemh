@@ -3,3 +3,4 @@ psycopg[binary]==3.3.4
 dj-database-url==2.3.0
 python-dotenv==1.0.1
 whitenoise==6.7.0
+Pillow==12.3.0

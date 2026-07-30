@@ -1,0 +1,59 @@
+{% comment %}
+Clinical notes, newest first. Each note reads the way the paper file did:
+complaints, examination, assessment, plan.
+{% endcomment %}
+
+{% if notes %}
+  <div class="stack">
+    {% for note in notes %}
+      <article class="card">
+        <div class="card__header">
+          <h3 class="card__title">{{ note.created_at|date:"j F Y" }}</h3>
+          <span class="faint small">{{ note.author.display_name }}</span>
+        </div>
+        <div class="card__body">
+
+          {% if note.blood_pressure or note.pulse or note.temperature_c %}
+            <p class="small muted" style="margin-bottom:.75rem">
+              {% if note.blood_pressure %}<strong>BP</strong> {{ note.blood_pressure }} mmHg{% endif %}
+              {% if note.pulse %} &middot; <strong>Pulse</strong> {{ note.pulse }}/min{% endif %}
+              {% if note.temperature_c %} &middot; <strong>Temp</strong> {{ note.temperature_c }}&deg;C{% endif %}
+            </p>
+          {% endif %}
+
+          {% if note.complaints %}
+            <h4>Complaints</h4><p>{{ note.complaints|linebreaksbr }}</p>
+          {% endif %}
+          {% if note.examination %}
+            <h4>Examination</h4><p>{{ note.examination|linebreaksbr }}</p>
+          {% endif %}
+          {% if note.assessment %}
+            <h4>Assessment</h4><p>{{ note.assessment|linebreaksbr }}</p>
+          {% endif %}
+          {% if note.plan %}
+            <h4>Plan</h4><p>{{ note.plan|linebreaksbr }}</p>
+          {% endif %}
+
+          {% if note.extra %}
+            <h4>Additional</h4>
+            <table class="table">
+              <tbody>
+                {% for key, value in note.extra.items %}
+                  <tr><th style="width:200px">{{ key|title }}</th><td>{{ value }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+
+          {% if note.is_empty %}<p class="faint">No detail recorded for this consultation.</p>{% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">📝</div>
+    <div class="empty__title">No clinical notes yet</div>
+    <div class="empty__hint">Notes written during consultations will appear here.</div>
+  </div>
+{% endif %}

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Doctor — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Today's clinic</h1>
+    <p class="page-header__sub">{{ request.user.display_name }} &middot; {% now "l, j F Y" %}</p>
+  </div>
+</div>
+
+{# The doctor's primary entry point: type the UHID from the patient's file. #}
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Open a patient record</h2>
+  </div>
+  <div class="card__body">
+    <form method="get" action="{% url 'doctor_home' %}" class="lookup">
+      <div class="field">
+        <label class="field__label" for="patient_id">{{ patient_id_label }} or mobile number</label>
+        <input class="input input--mono" type="text" name="patient_id" id="patient_id"
+               value="{{ query }}" placeholder="CEMH-26-00001" autofocus autocomplete="off">
+      </div>
+      <button type="submit" class="btn btn--primary">Open record</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Patient queue</h2>
+    <span class="badge badge--grey">{{ queue|length }} waiting</span>
+  </div>
+
+  {% if queue %}
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Patient</th>
+            <th>{{ patient_id_label }}</th>
+            <th>Age / Sex</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for visit in queue %}
+            <tr>
+              <td class="queue__time">{{ visit.scheduled_start|time:"H:i" }}</td>
+              <td class="queue__name">{{ visit.patient.full_name }}</td>
+              <td class="queue__uhid">{{ visit.patient.patient_id }}</td>
+              <td class="nowrap">{{ visit.patient.age_display }} &middot; {{ visit.patient.get_sex_display }}</td>
+              <td>{{ visit.reason|default:"—" }}</td>
+              <td>
+                {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
+              </td>
+              <td class="text-right">
+                <a class="btn btn--secondary" href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card__body">
+      <div class="empty">
+        <div class="empty__icon">🗓</div>
+        <div class="empty__title">No patients in the queue</div>
+        <div class="empty__hint">Patients appear here once reception marks them as arrived.</div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}
