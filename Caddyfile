@@ -1,0 +1,18 @@
+# Caddy obtains and renews the TLS certificate automatically.
+# Replace the domain below with the clinic's own domain before first deploy.
+
+{$SITE_DOMAIN:clinic.example.in} {
+	encode gzip
+
+	# Patient records must never be cached by a shared proxy.
+	header {
+		Cache-Control "no-store, no-cache, must-revalidate, private"
+		-Server
+	}
+
+	# Hashed static filenames are safe to cache hard.
+	@static path /static/*
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	reverse_proxy web:8000
+}

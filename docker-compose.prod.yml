@@ -1,0 +1,39 @@
+# Production: one droplet, one clinic.
+#
+# The database is NOT here on purpose — it is a DigitalOcean Managed Postgres
+# instance in the same region, reached via DATABASE_URL. Managed Postgres gives
+# automated daily backups and point-in-time recovery; a database container on
+# this droplet would give neither, and patient history is the one thing this
+# clinic cannot afford to lose.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    volumes:
+      - media:/data/media
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  media:
+  caddy_data:
+  caddy_config:
