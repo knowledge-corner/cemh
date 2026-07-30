@@ -490,6 +490,135 @@ p { margin: 0 0 .75rem; }
 .queue__name { font-weight: 600; }
 .queue__uhid { font-family: var(--font-mono); font-size: .75rem; color: var(--text-muted); }
 
+/* ── Edit affordances ──────────────────────────────────────────────────── */
+
+/* A small, quiet control that sits beside the thing it edits. Deliberately
+   low-contrast until hovered: the chart is for reading, and edit controls
+   should not compete with the clinical content. */
+.btn-edit {
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: .1875rem .5rem;
+  font: inherit;
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-edit:hover {
+  color: var(--brand-teal-dark);
+  border-color: var(--border-strong);
+  background: var(--surface);
+  text-decoration: none;
+}
+.btn-edit--solid {
+  color: var(--brand-teal-dark);
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+.btn-edit--solid:hover { background: var(--brand-teal-soft); }
+
+/* Edit control inside the dark sidebar header. */
+.storyboard__identity .btn-edit { color: rgba(255,255,255,.6); }
+.storyboard__identity .btn-edit:hover {
+  color: #fff;
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.28);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+.section-head h3 { margin: 0; color: var(--brand-dark); }
+
+.storyboard__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.storyboard__label-row .storyboard__label { margin-bottom: 0; }
+
+.row-actions { white-space: nowrap; text-align: right; }
+
+/* ── Modal ─────────────────────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(46, 58, 64, .55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(46, 58, 64, .28);
+  width: 100%;
+  max-width: 760px;
+  margin: auto;
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .875rem 1.25rem;
+  background: var(--brand-dark);
+  color: var(--text-on-dark);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.modal__title { margin: 0; font-size: .9375rem; font-weight: 600; }
+.modal__close {
+  appearance: none;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,.75);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 .25rem;
+}
+.modal__close:hover { color: #fff; }
+
+.modal__body { padding: 1.25rem; max-height: 65vh; overflow-y: auto; }
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  padding: .875rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 1rem;
+}
+/* Long-form clinical text gets the full width — a three-line textarea in a
+   third of a dialog is unusable for writing an examination note. */
+.form-grid .field:has(textarea) { grid-column: 1 / -1; }
+.field--check { display: flex; align-items: center; gap: .5rem; }
+.field--check .field__label { margin-bottom: 0; }
+
 /* ── Utilities ─────────────────────────────────────────────────────────── */
 
 .stack > * + * { margin-top: 1rem; }

@@ -1,0 +1,81 @@
+{% comment %}
+Edit dialog. Posts back to the URL that produced it; on success the server
+returns _saved.html, which closes this and refreshes the chart in place.
+{% endcomment %}
+
+<div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="modal-title">{{ title }}</h2>
+      <button type="button" class="modal__close" aria-label="Close"
+              onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
+    </div>
+
+    <form method="post" action="{{ action }}"
+          hx-post="{{ action }}"
+          hx-target="#modal-host"
+          hx-swap="innerHTML">
+      {% csrf_token %}
+
+      <div class="modal__body">
+
+        {% if form.non_field_errors %}
+          <ul class="messages">
+            {% for error in form.non_field_errors %}<li class="error">{{ error }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+
+        <div class="form-grid">
+          {% for field in form %}
+            <div class="field {% if field.field.widget.input_type == 'checkbox' %}field--check{% endif %}">
+              <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+
+        {% if formset %}
+          <h3 style="margin-top:1.25rem">Medication</h3>
+          {{ formset.management_form }}
+          <div class="table-scroll">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Drug</th><th>Strength</th><th>Dose</th>
+                  <th>Frequency</th><th>Duration</th><th>Instructions</th><th>Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item_form in formset %}
+                  <tr>
+                    {{ item_form.id }}
+                    <td>{{ item_form.drug_name }}</td>
+                    <td>{{ item_form.strength }}</td>
+                    <td>{{ item_form.dosage }}</td>
+                    <td>{{ item_form.frequency }}</td>
+                    <td>{{ item_form.duration }}</td>
+                    <td>{{ item_form.instructions }}</td>
+                    <td class="text-right">{% if item_form.instance.pk %}{{ item_form.DELETE }}{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+      </div>
+
+      <div class="modal__footer">
+        <button type="button" class="btn btn--secondary"
+                onclick="document.getElementById('modal-host').innerHTML = '';">Cancel</button>
+        <button type="submit" class="btn btn--primary">
+          {% if is_new %}Save{% else %}Save changes{% endif %}
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>

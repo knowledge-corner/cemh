@@ -12,28 +12,31 @@ top for the obvious reason.
     &middot; {{ patient.date_of_birth|date:"j M Y" }}
   </p>
   <span class="storyboard__uhid">{{ patient.patient_id }}</span>
+  <div style="margin-top:.625rem">
+    {% include "portal/doctor/_edit_button.html" with kind="patient" label="Edit details" %}
+  </div>
 </div>
 
 {# Allergies: the single most consequential thing on this panel. #}
-{% if history and history.has_allergies %}
-  <div class="storyboard__section">
+<div class="storyboard__section">
+  <div class="storyboard__label-row" style="margin-bottom:.375rem">
+    <p class="storyboard__label">Allergies</p>
+    {% include "portal/doctor/_edit_button.html" with kind="history" label="Edit" %}
+  </div>
+  {% if history and history.has_allergies %}
     <div class="alert-strip alert-strip--danger">
-      <div>
-        <span class="alert-strip__title">Allergies</span><br>
-        {{ history.allergies|linebreaksbr }}
-      </div>
+      <div>{{ history.allergies|linebreaksbr }}</div>
     </div>
-  </div>
-{% else %}
-  <div class="storyboard__section">
-    <div class="alert-strip alert-strip--info">
-      <div><span class="alert-strip__title">Allergies</span><br>None recorded</div>
-    </div>
-  </div>
-{% endif %}
+  {% else %}
+    <div class="alert-strip alert-strip--info"><div>None recorded</div></div>
+  {% endif %}
+</div>
 
 <div class="storyboard__section">
-  <p class="storyboard__label">Contact</p>
+  <div class="storyboard__label-row" style="margin-bottom:.375rem">
+    <p class="storyboard__label">Contact</p>
+    {% include "portal/doctor/_edit_button.html" with kind="patient" label="Edit" %}
+  </div>
   <dl class="storyboard__row"><dt>Mobile</dt><dd class="mono">{{ patient.contact_phone|default:"—" }}</dd></dl>
   {% if patient.is_paediatric and patient.guardian_name %}
     <dl class="storyboard__row"><dt>Guardian</dt><dd>{{ patient.guardian_name }}</dd></dl>
@@ -43,21 +46,32 @@ top for the obvious reason.
   {% endif %}
 </div>
 
-{% if active_diagnoses %}
-  <div class="storyboard__section">
+<div class="storyboard__section">
+  <div class="storyboard__label-row" style="margin-bottom:.375rem">
     <p class="storyboard__label">Active problems ({{ active_diagnoses|length }})</p>
+    {% include "portal/doctor/_edit_button.html" with kind="diagnosis" label="+ Add" %}
+  </div>
+  {% if active_diagnoses %}
     <ul class="storyboard__list">
       {% for diagnosis in active_diagnoses %}
-        <li>{{ diagnosis.description }}
-          <span class="faint small">— since {{ diagnosis.diagnosed_on|date:"M Y" }}</span></li>
+        <li>
+          {{ diagnosis.description }}
+          <span class="faint small">— since {{ diagnosis.diagnosed_on|date:"M Y" }}</span>
+          {% include "portal/doctor/_edit_button.html" with kind="diagnosis" pk=diagnosis.pk label="Edit" %}
+        </li>
       {% endfor %}
     </ul>
-  </div>
-{% endif %}
+  {% else %}
+    <p class="faint small" style="margin:0">None recorded</p>
+  {% endif %}
+</div>
 
 {% if latest_measurement %}
   <div class="storyboard__section">
-    <p class="storyboard__label">Latest measurements</p>
+    <div class="storyboard__label-row" style="margin-bottom:.375rem">
+      <p class="storyboard__label">Latest measurements</p>
+      {% include "portal/doctor/_edit_button.html" with kind="measurement" pk=latest_measurement.pk label="Edit" %}
+    </div>
     {% if latest_measurement.height_cm %}
       <dl class="storyboard__row"><dt>Height</dt><dd>{{ latest_measurement.height_cm }} cm</dd></dl>
     {% endif %}
@@ -75,7 +89,10 @@ top for the obvious reason.
 
 {% if last_note and last_note.blood_pressure %}
   <div class="storyboard__section">
-    <p class="storyboard__label">Last recorded vitals</p>
+    <div class="storyboard__label-row" style="margin-bottom:.375rem">
+      <p class="storyboard__label">Last recorded vitals</p>
+      {% include "portal/doctor/_edit_button.html" with kind="note" pk=last_note.pk label="Edit" %}
+    </div>
     <dl class="storyboard__row"><dt>BP</dt><dd>{{ last_note.blood_pressure }} mmHg</dd></dl>
     {% if last_note.pulse %}
       <dl class="storyboard__row"><dt>Pulse</dt><dd>{{ last_note.pulse }} /min</dd></dl>

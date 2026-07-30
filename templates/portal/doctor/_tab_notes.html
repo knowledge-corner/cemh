@@ -3,13 +3,21 @@ Clinical notes, newest first. Each note reads the way the paper file did:
 complaints, examination, assessment, plan.
 {% endcomment %}
 
+<div class="section-head">
+  <h3>Clinical notes</h3>
+  {% include "portal/doctor/_edit_button.html" with kind="note" label="+ New note" solid=1 %}
+</div>
+
 {% if notes %}
   <div class="stack">
     {% for note in notes %}
       <article class="card">
         <div class="card__header">
           <h3 class="card__title">{{ note.created_at|date:"j F Y" }}</h3>
-          <span class="faint small">{{ note.author.display_name }}</span>
+          <span>
+            <span class="faint small">{{ note.author.display_name }}</span>
+            {% include "portal/doctor/_edit_button.html" with kind="note" pk=note.pk label="Edit" %}
+          </span>
         </div>
         <div class="card__body">
 
@@ -54,6 +62,9 @@ complaints, examination, assessment, plan.
   <div class="empty">
     <div class="empty__icon">📝</div>
     <div class="empty__title">No clinical notes yet</div>
-    <div class="empty__hint">Notes written during consultations will appear here.</div>
+    <div class="empty__hint">
+      Notes written during consultations will appear here.
+      A note attaches to the visit the patient is here for today.
+    </div>
   </div>
 {% endif %}

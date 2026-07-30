@@ -22,7 +22,7 @@
 <div class="chart">
 
   {# ── Patient sidebar: stays on screen while the doctor works ──────────── #}
-  <aside class="storyboard">
+  <aside class="storyboard" id="patient-sidebar">
     {% include "portal/doctor/_storyboard.html" %}
   </aside>
 
@@ -52,6 +52,9 @@
   </div>
 
 </div>
+
+{# Every edit dialog on this page is swapped into here. #}
+<div id="modal-host"></div>
 {% endblock %}
 
 {% block extra_scripts %}

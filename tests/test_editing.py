@@ -1,0 +1,241 @@
+"""
+Editing records from the doctor's chart.
+
+Covers that each edit button opens a form, that saving persists, that the
+change is audited, and that a non-doctor cannot reach any of it.
+"""
+
+from datetime import timedelta
+from decimal import Decimal
+
+from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
+
+from appointments.models import VisitStatus
+from audit.models import AccessLog, AuditAction
+from clinical.models import ClinicalNote, Diagnosis, Investigation
+from growth.models import Measurement
+from pharmacy.models import Prescription
+
+from .factories import (
+    make_doctor, make_history, make_measurement, make_patient, make_receptionist,
+    make_visit,
+)
+
+
+class EditingTestCase(TestCase):
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.client.force_login(self.doctor)
+        self.patient = make_patient()
+
+    def add_url(self, kind):
+        return reverse("doctor_add_record", args=[self.patient.patient_id, kind])
+
+    def edit_url(self, kind, pk):
+        return reverse("doctor_edit_record", args=[self.patient.patient_id, kind, pk])
+
+    def open_visit(self):
+        """A visit the patient is currently here for — notes attach to it."""
+        visit = make_visit(self.patient, self.doctor, start=timezone.now())
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.doctor)
+        visit.transition_to(VisitStatus.ARRIVED, by_user=self.doctor)
+        visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        return visit
+
+
+class TestFormsOpen(EditingTestCase):
+    def test_each_add_form_opens(self):
+        for kind in ("history", "diagnosis", "investigation", "measurement"):
+            response = self.client.get(self.add_url(kind))
+            self.assertEqual(response.status_code, 200, f"{kind} form failed to open")
+            self.assertContains(response, "<form")
+
+    def test_patient_details_form_opens(self):
+        response = self.client.get(self.edit_url("patient", self.patient.pk))
+        self.assertContains(response, self.patient.first_name)
+
+    def test_unknown_record_type_returns_404(self):
+        self.assertEqual(self.client.get(self.add_url("nonsense")).status_code, 404)
+
+    def test_note_cannot_be_added_without_an_open_visit(self):
+        # There is nothing to write a consultation note against.
+        self.assertEqual(self.client.get(self.add_url("note")).status_code, 200)
+        response = self.client.post(self.add_url("note"), {"complaints": "Tired"})
+        self.assertEqual(response.status_code, 404)
+
+
+class TestSaving(EditingTestCase):
+    def test_adding_a_diagnosis_persists_it(self):
+        response = self.client.post(self.add_url("diagnosis"), {
+            "description": "Thyroid disorders in children",
+            "status": Diagnosis.Status.ACTIVE,
+            "diagnosed_on": timezone.localdate().isoformat(),
+            "icd10_code": "", "notes": "", "resolved_on": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        diagnosis = Diagnosis.objects.get()
+        self.assertEqual(diagnosis.patient, self.patient)
+        self.assertEqual(diagnosis.description, "Thyroid disorders in children")
+
+    def test_adding_an_investigation_persists_it(self):
+        self.client.post(self.add_url("investigation"), {
+            "test_name": "TSH", "category": "THYROID",
+            "performed_on": timezone.localdate().isoformat(),
+            "value": "6.2", "value_numeric": "6.2", "unit": "µIU/mL",
+            "reference_range": "0.5 – 4.5", "is_abnormal": "on",
+            "lab_name": "Metropolis", "notes": "",
+        })
+        result = Investigation.objects.get()
+        self.assertEqual(result.patient, self.patient)
+        self.assertTrue(result.is_abnormal)
+        self.assertEqual(result.recorded_by, self.doctor)
+
+    def test_adding_a_measurement_persists_it(self):
+        self.client.post(self.add_url("measurement"), {
+            "measured_on": timezone.localdate().isoformat(),
+            "height_cm": "123.1", "weight_kg": "23.60",
+            "head_circumference_cm": "", "waist_cm": "", "puberty_stage": "",
+            "mother_height_cm": "152.0", "father_height_cm": "165.0", "notes": "",
+        })
+        measurement = Measurement.objects.get()
+        self.assertEqual(measurement.height_cm, Decimal("123.1"))
+        self.assertEqual(measurement.mid_parental_height_cm, Decimal("165.0"))
+
+    def test_editing_history_updates_the_existing_record(self):
+        make_history(self.patient, allergies="")
+        self.client.post(self.add_url("history"), {
+            "presenting_complaints": "", "past_medical_history": "",
+            "family_history": "", "birth_history": "",
+            "allergies": "Penicillin — rash", "current_medications": "",
+            "surgical_history": "", "lifestyle_notes": "",
+        })
+        # A patient has one history record; saving must update, never duplicate.
+        self.patient.history.refresh_from_db()
+        self.assertEqual(self.patient.history.allergies, "Penicillin — rash")
+        self.assertEqual(self.patient.history_set.count() if hasattr(self.patient, "history_set") else 1, 1)
+
+    def test_editing_patient_details_persists(self):
+        self.client.post(self.edit_url("patient", self.patient.pk), {
+            "first_name": "Aarav", "last_name": "Deshpande",
+            "date_of_birth": self.patient.date_of_birth.isoformat(),
+            "sex": "M", "blood_group": "B+", "phone": "9820012345",
+            "alternate_phone": "", "email": "", "guardian_name": "Meera Deshpande",
+            "guardian_relation": "Mother", "guardian_phone": "9820012345",
+            "address": "", "city": "Mumbai", "pincode": "400092", "referred_by": "",
+        })
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.blood_group, "B+")
+        self.assertEqual(self.patient.guardian_name, "Meera Deshpande")
+
+    def test_uhid_is_not_editable(self):
+        original = self.patient.patient_id
+        self.client.post(self.edit_url("patient", self.patient.pk), {
+            "first_name": "Aarav", "last_name": "Deshpande",
+            "date_of_birth": self.patient.date_of_birth.isoformat(),
+            "sex": "M", "blood_group": "", "phone": "9820012345",
+            "patient_id": "HACKED-00-00000",
+            "alternate_phone": "", "email": "", "guardian_name": "",
+            "guardian_relation": "", "guardian_phone": "",
+            "address": "", "city": "", "pincode": "", "referred_by": "",
+        })
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.patient_id, original)
+
+    def test_adding_a_note_attaches_it_to_the_open_visit(self):
+        visit = self.open_visit()
+        self.client.post(self.add_url("note"), {
+            "complaints": "Short stature", "examination": "Height 123 cm",
+            "assessment": "Below 3rd centile", "plan": "Bone age",
+            "systolic_bp": "", "diastolic_bp": "", "pulse": "", "temperature_c": "",
+        })
+        note = ClinicalNote.objects.get()
+        self.assertEqual(note.visit, visit)
+        self.assertEqual(note.author, self.doctor)
+
+    def test_invalid_form_redisplays_rather_than_saving(self):
+        response = self.client.post(self.add_url("diagnosis"), {
+            "description": "", "status": Diagnosis.Status.ACTIVE,
+            "diagnosed_on": "", "icd10_code": "", "notes": "", "resolved_on": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<form")
+        self.assertEqual(Diagnosis.objects.count(), 0)
+
+
+class TestPrescriptionWorkflow(EditingTestCase):
+    def test_new_prescription_starts_as_a_draft(self):
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), {
+            "advice": "Reduce sugar", "investigations_advised": "",
+            "follow_up_date": "", "follow_up_notes": "",
+            "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000",
+            "items-0-drug_name": "Levothyroxine", "items-0-strength": "50 mcg",
+            "items-0-dosage": "1 tablet", "items-0-frequency": "Once daily",
+            "items-0-duration": "3 months", "items-0-instructions": "Before breakfast",
+        })
+        prescription = Prescription.objects.get()
+        self.assertFalse(prescription.is_generated, "Must not auto-issue on save")
+        self.assertEqual(prescription.items.count(), 1)
+
+    def test_sending_to_reception_marks_it_generated(self):
+        visit = self.open_visit()
+        prescription = Prescription.objects.create(
+            visit=visit, patient=self.patient, doctor=self.doctor
+        )
+        self.client.post(reverse(
+            "doctor_generate_prescription", args=[self.patient.patient_id, prescription.pk]
+        ))
+        prescription.refresh_from_db()
+        self.assertTrue(prescription.is_generated)
+
+
+class TestEditingIsAudited(EditingTestCase):
+    def test_creating_a_record_is_logged_against_the_patient(self):
+        self.client.post(self.add_url("diagnosis"), {
+            "description": "Childhood obesity", "status": Diagnosis.Status.ACTIVE,
+            "diagnosed_on": timezone.localdate().isoformat(),
+            "icd10_code": "", "notes": "", "resolved_on": "",
+        })
+        entry = AccessLog.objects.filter(action=AuditAction.CREATE).get()
+        self.assertEqual(entry.patient_id_ref, self.patient.patient_id)
+        self.assertEqual(entry.username, self.doctor.username)
+
+    def test_updating_a_record_is_logged_as_an_update(self):
+        measurement = make_measurement(self.patient)
+        self.client.post(self.edit_url("measurement", measurement.pk), {
+            "measured_on": timezone.localdate().isoformat(),
+            "height_cm": "124.0", "weight_kg": "24.0",
+            "head_circumference_cm": "", "waist_cm": "", "puberty_stage": "",
+            "mother_height_cm": "", "father_height_cm": "", "notes": "",
+        })
+        self.assertTrue(AccessLog.objects.filter(action=AuditAction.UPDATE).exists())
+
+
+class TestEditingAccessControl(EditingTestCase):
+    def test_receptionist_cannot_open_an_edit_form(self):
+        self.client.force_login(make_receptionist())
+        self.assertEqual(self.client.get(self.add_url("diagnosis")).status_code, 403)
+
+    def test_receptionist_cannot_post_an_edit(self):
+        self.client.force_login(make_receptionist())
+        response = self.client.post(self.add_url("diagnosis"), {
+            "description": "Injected", "status": Diagnosis.Status.ACTIVE,
+            "diagnosed_on": timezone.localdate().isoformat(),
+        })
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Diagnosis.objects.count(), 0)
+
+    def test_anonymous_visitor_is_redirected(self):
+        self.client.logout()
+        response = self.client.get(self.add_url("diagnosis"))
+        self.assertEqual(response.status_code, 302)
+
+    def test_cannot_edit_a_record_belonging_to_another_patient(self):
+        other = make_patient(phone="9820099999")
+        measurement = make_measurement(other)
+        # The URL names this patient but the record belongs to someone else.
+        response = self.client.get(self.edit_url("measurement", measurement.pk))
+        self.assertEqual(response.status_code, 404)

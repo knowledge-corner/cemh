@@ -1,0 +1,9 @@
+{% comment %}
+Response after a successful save.
+
+The two out-of-band divs replace the tab and the sidebar in place. Everything
+outside them is empty, which is what closes the modal — htmx swaps that empty
+remainder into the modal host.
+{% endcomment %}
+<div hx-swap-oob="innerHTML:#tab-panel">{{ tab_html|safe }}</div>
+<div hx-swap-oob="innerHTML:#patient-sidebar">{{ sidebar_html|safe }}</div>

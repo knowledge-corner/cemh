@@ -1,5 +1,10 @@
 {% comment %}Prescriptions issued at each visit, newest first.{% endcomment %}
 
+<div class="section-head">
+  <h3>Prescriptions</h3>
+  {% include "portal/doctor/_edit_button.html" with kind="prescription" label="+ New prescription" solid=1 %}
+</div>
+
 {% if prescriptions %}
   <div class="stack">
     {% for prescription in prescriptions %}
@@ -11,7 +16,14 @@
               <span class="badge badge--success">Issued</span>
             {% else %}
               <span class="badge badge--warning">Draft</span>
+              {# Finalising is the handover to reception, so it is a deliberate
+                 second action rather than a side effect of saving. #}
+              <button type="button" class="btn-edit btn-edit--solid"
+                      hx-post="{% url 'doctor_generate_prescription' patient.patient_id prescription.pk %}"
+                      hx-target="#modal-host"
+                      hx-swap="innerHTML">Send to reception</button>
             {% endif %}
+            {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
           </span>
         </div>
         <div class="card__body">
