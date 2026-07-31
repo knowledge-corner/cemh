@@ -1,4 +1,11 @@
-FROM python:3.12-slim
+# Two stages from one file.
+#
+#   docker compose up            → the `dev` stage: runserver, pytest available
+#   docker compose -f docker-compose.prod.yml up  → the `prod` stage: gunicorn
+#
+# They share every layer up to the requirements split, so building both is cheap.
+
+FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -11,12 +18,38 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements/ requirements/
+
+
+# ── Development ───────────────────────────────────────────────────────────────
+#
+# Includes pytest, so `docker compose exec web pytest` works. The source is bind
+# mounted by docker-compose.yml rather than copied, so edits are live and no
+# rebuild is needed to run a changed test.
+
+FROM base AS dev
+
+RUN pip install -r requirements/dev.txt
+
+EXPOSE 8000
+
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
+
+# ── Production ────────────────────────────────────────────────────────────────
+
+FROM base AS prod
+
 RUN pip install -r requirements/prod.txt
 
 COPY . .
 
 # Collected at build time so the container starts without touching the database.
 # A dummy SECRET_KEY is enough for collectstatic and never reaches runtime.
+#
+# This step is strict: CompressedManifestStaticFilesStorage rewrites URL
+# references inside CSS and JS and refuses to resolve a file that is missing, so
+# a dangling reference fails the build here. tests/test_static_build.py runs the
+# same command, so that failure surfaces in the suite rather than in a deploy.
 RUN SECRET_KEY=build-time-only \
     ALLOWED_HOSTS=localhost \
     DJANGO_SETTINGS_MODULE=config.settings.prod \

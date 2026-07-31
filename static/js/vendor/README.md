@@ -14,3 +14,20 @@ Served from this repository rather than a CDN, deliberately:
 
 To upgrade, fetch the new release from the npm registry and replace the file,
 then update the version in this table.
+
+## Strip the source-map comment
+
+npm builds end with a line like:
+
+```js
+//# sourceMappingURL=chart.umd.js.map
+```
+
+**Delete it.** The `.map` file is a development aid worth about a megabyte and
+is not shipped, so the comment points at nothing. In production
+`CompressedManifestStaticFilesStorage` rewrites URL references inside JS and
+refuses to resolve a file that is missing, so leaving the line in fails
+`collectstatic` — and therefore the whole Docker build — with `MissingFileError`.
+
+That strictness is worth keeping rather than switching off: it is the same check
+that would catch a stylesheet referencing a font or image nobody committed.

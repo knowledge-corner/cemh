@@ -14,35 +14,54 @@ Django 5.2 · PostgreSQL · server-rendered templates + HTMX · no JavaScript bu
 | Custom user model with doctor / receptionist / patient roles | Done |
 | Single login page, role-based routing to the right dashboard | Done |
 | Patients with a clinic-unique UHID | Done |
-| Visit lifecycle with enforced state transitions | Models done, reception screens pending |
+| Visit lifecycle with enforced state transitions | Done |
 | **Doctor's patient chart** — summary, notes, investigations, growth chart, prescriptions | Done |
-| Growth charts against published percentile references | Done |
+| Growth charts — WHO 0–5y, IAP 2015 5–18y, CDC fallback | Done |
+| Reception: booking, the confirmation-call list, the daily queue | Done |
+| Billing, receipts, printed prescriptions | Done |
+| Public one-page site with call and WhatsApp buttons | Done |
 | Append-only audit trail of patient-record access | Done |
-| Reception queue screens, online booking, billing screens | Models only |
+| Deployment to a live server | Not yet — see `docs/REQUIREMENTS.md`, S-1005 |
 
 ## Running it locally
 
+No `.env` file is needed for development. `manage.py` defaults to
+`config.settings.dev`, which supplies a development `SECRET_KEY` and expects
+PostgreSQL at `localhost:5432` as `clinic` / `clinic` / `clinic_pms`.
+`.env.example` is for production only.
+
 ### With Docker (nothing else to install)
 
+Postgres comes up alongside the app.
+
 ```bash
-docker compose up --build
+docker compose up --build -d          # -d, so the next commands get a prompt
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py seed_demo
+docker compose exec web pytest
 ```
+
+`docker compose ps` should show both `db` and `web` running. If `web` has
+exited instead, `docker compose logs web` says why.
 
 ### Against a local PostgreSQL
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements/dev.txt
 
-createdb clinic_pms
-export DATABASE_URL=postgres://USER:PASSWORD@localhost:5432/clinic_pms
+psql -U postgres -c "CREATE USER clinic WITH PASSWORD 'clinic' CREATEDB;"
+psql -U postgres -c "CREATE DATABASE clinic_pms OWNER clinic;"
 
 python manage.py migrate
 python manage.py seed_demo
 python manage.py runserver
 ```
+
+The database driver is **psycopg 3**, not psycopg2. `ModuleNotFoundError: No
+module named 'psycopg2'` means the requirements went into a different
+interpreter from the one running `manage.py` — check which one you are on with
+`python -c "import sys; print(sys.executable)"`.
 
 Then open <http://127.0.0.1:8000/login/>.
 

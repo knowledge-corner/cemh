@@ -10,7 +10,9 @@
 #
 services:
   web:
-    build: .
+    build:
+      context: .
+      target: prod
     restart: unless-stopped
     env_file: .env
     environment:

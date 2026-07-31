@@ -1,9 +1,13 @@
 # Local development only. Runs Postgres alongside the app so a developer needs
 # nothing installed but Docker.
 #
-#   docker compose up --build
+#   docker compose up --build -d      # -d, so the next commands get a prompt
 #   docker compose exec web python manage.py migrate
 #   docker compose exec web python manage.py seed_demo
+#   docker compose exec web pytest
+#
+# Then http://127.0.0.1:8000/ — sign in as vrushali / clinicdemo2026.
+# `docker compose logs -f web` if something does not come up.
 #
 services:
   db:
@@ -23,8 +27,9 @@ services:
       retries: 10
 
   web:
-    build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    build:
+      context: .
+      target: dev
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DATABASE_URL: postgres://clinic:clinic@db:5432/clinic_pms

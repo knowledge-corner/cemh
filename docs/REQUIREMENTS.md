@@ -21,7 +21,7 @@ here — they are where a defect would reach the clinic unnoticed.
 | Not started | 7 | 34 |
 | **Total scoped** | **55** | **224** |
 
-**212 automated tests** currently pass. 7 stories carry no automated cover;
+**215 automated tests** currently pass. 7 stories carry no automated cover;
 each is flagged in place and listed again under *Testing* at the end.
 
 ## How to read this
@@ -1037,7 +1037,7 @@ These are the places a regression would not be caught:
 ### Running the tests
 
 ```bash
-pytest                      # all 212
+pytest                      # all 215
 pytest tests/test_workflow.py   # the clinic day, booking to receipt
 pytest tests/test_growth_reference.py  # percentile maths vs published tables
 ```
