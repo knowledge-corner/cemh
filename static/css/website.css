@@ -1,0 +1,246 @@
+/*
+ * The public page.
+ *
+ * Separate from app.css on purpose: the clinical interface is dense and
+ * utilitarian, this is a shopfront, and mixing the two would make both worse.
+ * Colours still come from theme.css, so re-skinning a clinic changes both.
+ *
+ * The whole page exists to produce a phone call or a WhatsApp message, so the
+ * two buttons are the loudest thing on it and never more than a scroll away.
+ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1060px; margin-inline: auto; padding-inline: clamp(1rem, 5vw, 2rem); }
+
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--brand-teal-dark); }
+
+/* ── Call & WhatsApp ───────────────────────────────────────────────────── */
+
+.btn-call, .btn-wa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .625rem 1.125rem;
+  border-radius: 100px;
+  font-weight: 600;
+  font-size: .9375rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform .12s, box-shadow .12s;
+}
+.btn-call { background: var(--brand-teal); color: #fff; }
+.btn-call:hover { background: var(--brand-teal-dark); transform: translateY(-1px); }
+/* WhatsApp's own green — people look for it, so it should not be re-themed. */
+.btn-wa { background: #25d366; color: #08301a; }
+.btn-wa:hover { background: #1eb455; color: #fff; transform: translateY(-1px); }
+
+.btn-call--big, .btn-wa--big {
+  padding: .875rem 1.75rem;
+  font-size: 1.0625rem;
+  box-shadow: 0 3px 12px rgba(46, 58, 64, .16);
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+
+.site-head {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--brand-dark);
+  border-bottom: 4px solid var(--brand-teal);
+}
+.site-head__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: .75rem;
+  flex-wrap: wrap;
+}
+.site-brand { display: flex; align-items: center; gap: .75rem; text-decoration: none; }
+.site-brand__logo { width: 34px; height: 34px; color: #fff; flex-shrink: 0; }
+.site-brand__name {
+  display: block; color: #fff; font-weight: 700; font-size: 1rem; line-height: 1.25;
+}
+.site-brand__tag {
+  display: block;
+  color: rgba(255,255,255,.62);
+  font-size: .6875rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.site-head__actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.site-head__actions .btn-call { background: rgba(255,255,255,.14); }
+.site-head__actions .btn-call:hover { background: var(--brand-teal); }
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+
+.hero {
+  background: var(--page-bg);
+  padding-block: clamp(3rem, 9vw, 5.5rem);
+  text-align: center;
+}
+.hero h1 {
+  font-size: clamp(1.75rem, 5vw, 2.875rem);
+  color: var(--brand-dark);
+  margin-bottom: 1rem;
+}
+.hero__lede {
+  max-width: 40rem;
+  margin: 0 auto 2rem;
+  font-size: clamp(1rem, 2.2vw, 1.1875rem);
+  color: var(--text-muted);
+}
+.hero__actions {
+  display: flex;
+  gap: .75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.hero__hours { color: var(--text-muted); font-size: .875rem; }
+
+/* ── Bands ─────────────────────────────────────────────────────────────── */
+
+.band { padding-block: clamp(2.5rem, 7vw, 4rem); }
+.band--tint { background: var(--surface-muted); }
+.band__title {
+  font-size: clamp(1.25rem, 3vw, 1.625rem);
+  color: var(--brand-dark);
+  margin-bottom: 1.75rem;
+  text-align: center;
+}
+
+/* ── Doctors ───────────────────────────────────────────────────────────── */
+
+.doctors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  max-width: 760px;
+  margin-inline: auto;
+}
+.doctor {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--brand-teal);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+}
+.doctor__name { font-size: 1.125rem; color: var(--brand-dark); margin-bottom: .375rem; }
+.doctor__role {
+  color: var(--brand-teal-dark);
+  font-weight: 600;
+  font-size: .8125rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: .625rem;
+}
+.doctor__quals { color: var(--text-muted); font-size: .875rem; }
+
+/* ── Services ──────────────────────────────────────────────────────────── */
+
+.services {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+.service {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+}
+.service__title {
+  font-size: 1.0625rem;
+  color: var(--brand-dark);
+  padding-bottom: .625rem;
+  margin-bottom: .875rem;
+  border-bottom: 2px solid var(--brand-teal);
+}
+.service__list { list-style: none; margin: 0; padding: 0; }
+.service__list li {
+  position: relative;
+  padding-left: 1.25rem;
+  padding-block: .3125rem;
+  font-size: .9375rem;
+  color: var(--text);
+}
+.service__list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .875rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-teal);
+}
+
+/* ── Visiting ──────────────────────────────────────────────────────────── */
+
+.visit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+.visit__label {
+  font-size: .6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-faint);
+  margin-bottom: .375rem;
+}
+.visit__value { font-size: .9375rem; }
+.visit__value a { font-weight: 600; }
+.visit__note { font-size: .8125rem; color: var(--text-muted); margin-top: .375rem; }
+
+/* ── Closing call to action ────────────────────────────────────────────── */
+
+.cta {
+  background: var(--brand-dark);
+  color: #fff;
+  padding-block: clamp(2.5rem, 7vw, 4rem);
+  text-align: center;
+}
+.cta h2 { font-size: clamp(1.25rem, 3vw, 1.75rem); margin-bottom: .5rem; }
+.cta p { color: rgba(255,255,255,.72); margin-bottom: 1.75rem; }
+.cta__actions { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; }
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+.site-foot {
+  background: var(--surface-muted);
+  border-top: 1px solid var(--border);
+  padding-block: 1.5rem;
+}
+.site-foot__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: .8125rem;
+  color: var(--text-muted);
+}
+.site-foot a { color: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

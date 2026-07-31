@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_patient, views_reception
+from . import views_reception
 
 urlpatterns = [
     # ── Reception ────────────────────────────────────────────────────────
@@ -22,9 +22,6 @@ urlpatterns = [
     path("print/prescription/<int:pk>/", views_reception.print_prescription, name="print_prescription"),
     path("print/receipt/<int:pk>/", views_reception.print_receipt, name="print_receipt"),
 
-    # ── Patient ──────────────────────────────────────────────────────────
-    path("my/", views_patient.patient_home, name="patient_home"),
-    path("my/book/", views_patient.book, name="patient_book"),
-    path("my/book/slots/", views_patient.patient_slot_options, name="patient_slots"),
-    path("my/visit/<int:pk>/cancel/", views_patient.cancel_visit, name="patient_cancel_visit"),
+    # There is deliberately no patient portal. Patients book by telephone or
+    # WhatsApp from the public page; nothing about their record is online.
 ]

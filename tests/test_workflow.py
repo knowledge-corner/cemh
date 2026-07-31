@@ -93,13 +93,14 @@ class TestReceptionBooking(TestCase):
         payload.update(overrides)
         return payload
 
-    def test_reception_booking_is_confirmed_immediately(self):
+    def test_reception_booking_starts_unconfirmed(self):
         response = self.client.post(reverse("reception_new_booking"), self.booking_payload())
         self.assertEqual(response.status_code, 302)
 
         visit = Visit.objects.get()
-        # Taken by staff, so there is nothing left to confirm.
-        self.assertEqual(visit.status, VisitStatus.CONFIRMED)
+        # The receptionist still has to ring the patient on the day, so the
+        # booking is not confirmed until she has.
+        self.assertEqual(visit.status, VisitStatus.BOOKED)
         self.assertEqual(visit.booked_by, self.receptionist)
 
     def test_booking_a_taken_slot_is_refused_with_a_readable_error(self):
@@ -325,55 +326,22 @@ class TestBilling(TestCase):
         )
 
 
-class TestPatientPortal(TestCase):
-    def setUp(self):
-        self.doctor = make_doctor()
-        self.account = make_user(username="pt", email="pt@example.in")
-        self.patient = make_adult_patient(user=self.account)
-        self.client.force_login(self.account)
-        self.day = next_working_day()
-        self.slot = scheduling.available_slots(self.doctor, self.day)[0][0]
+class TestNoPatientPortal(TestCase):
+    """
+    Patients never sign in — they telephone or send a WhatsApp message from the
+    public page. These routes must be gone, not merely unlinked.
+    """
 
-    def test_portal_lists_their_own_appointments(self):
-        make_visit(self.patient, self.doctor, start=timezone.now() + timedelta(days=2))
-        response = self.client.get(reverse("patient_home"))
-        self.assertContains(response, self.doctor.display_name)
+    def test_portal_routes_no_longer_exist(self):
+        for path in ("/my/", "/my/book/", "/my/book/slots/"):
+            self.assertEqual(self.client.get(path).status_code, 404, msg=path)
 
-    def test_a_patient_request_lands_as_unconfirmed(self):
-        self.client.post(reverse("patient_book"), {
-            "doctor": self.doctor.pk,
-            "day": self.day.isoformat(),
-            "slot": self.slot.isoformat(),
-            "reason": "Follow-up",
-        })
-        visit = Visit.objects.get()
-        # Reception still decides what goes in the diary.
-        self.assertEqual(visit.status, VisitStatus.BOOKED)
-        self.assertIsNone(visit.booked_by)
-
-    def test_a_patient_can_cancel_their_own_appointment(self):
-        visit = make_visit(self.patient, self.doctor, start=timezone.now() + timedelta(days=2))
-        self.client.post(reverse("patient_cancel_visit", args=[visit.pk]))
-        visit.refresh_from_db()
-        self.assertEqual(visit.status, VisitStatus.CANCELLED)
-
-    def test_a_patient_cannot_cancel_somebody_elses_appointment(self):
-        someone_else = make_patient(phone="9820055555")
-        visit = make_visit(someone_else, self.doctor, start=timezone.now() + timedelta(days=2))
-        response = self.client.post(reverse("patient_cancel_visit", args=[visit.pk]))
-        self.assertEqual(response.status_code, 404)
-        visit.refresh_from_db()
-        self.assertEqual(visit.status, VisitStatus.BOOKED)
-
-    def test_an_unlinked_account_is_told_rather_than_erroring(self):
-        Patient.objects.filter(pk=self.patient.pk).update(user=None)
-        response = self.client.get(reverse("patient_book"))
-        self.assertContains(response, "not linked")
-
-    def test_a_patient_cannot_reach_a_clinical_chart(self):
-        other = make_patient(phone="9820066666")
+    def test_a_patient_account_still_cannot_reach_a_chart(self):
+        # Such an account can still exist; it must not see clinical records.
+        self.client.force_login(make_user())
+        patient = make_patient()
         response = self.client.get(
-            reverse("doctor_patient_dashboard", args=[other.patient_id])
+            reverse("doctor_patient_dashboard", args=[patient.patient_id])
         )
         self.assertEqual(response.status_code, 403)
 
@@ -418,3 +386,39 @@ class TestChartShowsTheVisitInProgress(TestCase):
             reverse("doctor_patient_dashboard", args=[self.patient.patient_id])
         )
         self.assertEqual(response.context["active_visit"], self.today_visit)
+
+
+class TestConfirmationCallIsVisibleWork(TestCase):
+    """
+    The board must separate patients still to ring from those already reached —
+    that separation is the whole point of the confirmation call.
+    """
+
+    def setUp(self):
+        self.receptionist = make_receptionist()
+        self.doctor = make_doctor()
+        self.client.force_login(self.receptionist)
+
+        self.to_ring = make_patient(phone="9820011111")
+        self.reached = make_patient(phone="9820022222")
+
+        make_visit(self.to_ring, self.doctor, start=timezone.now() + timedelta(hours=1))
+        confirmed = make_visit(
+            self.reached, self.doctor, start=timezone.now() + timedelta(hours=2)
+        )
+        confirmed.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+
+    def test_board_has_a_to_confirm_column(self):
+        response = self.client.get(reverse("reception_home"))
+        self.assertContains(response, "To confirm")
+        self.assertContains(response, "Confirmed")
+
+    def test_an_unconfirmed_booking_offers_the_number_to_ring(self):
+        response = self.client.get(reverse("reception_home"))
+        self.assertContains(response, f'tel:{self.to_ring.contact_phone}')
+
+    def test_confirming_moves_the_patient_across(self):
+        visit = Visit.objects.get(patient=self.to_ring)
+        self.client.post(reverse("reception_move_visit", args=[visit.pk, "CONFIRMED"]))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONFIRMED)

@@ -28,6 +28,16 @@ CLINIC_ADDRESS = os.environ.get(
 CLINIC_PHONE = os.environ.get("CLINIC_PHONE", "7045032951")
 CLINIC_EMAIL = os.environ.get("CLINIC_EMAIL", "")
 
+# Where the public page's WhatsApp button sends people. Defaults to the clinic
+# number rather than either doctor's mobile — change if appointment requests
+# should reach a doctor directly.
+WHATSAPP_NUMBER = os.environ.get("WHATSAPP_NUMBER", CLINIC_PHONE)
+WHATSAPP_MESSAGE = os.environ.get(
+    "WHATSAPP_MESSAGE",
+    "Hello, I would like to book an appointment at the "
+    "Centre for Endocrine & Metabolic Health.",
+)
+
 # ── Patient identifiers ───────────────────────────────────────────────────────
 
 # The clinic's paper file calls this the UHID (Unique Health Identification
@@ -73,8 +83,14 @@ CONSULTING_END = os.environ.get("CONSULTING_END", "18:00")
 # Length of one appointment slot, in minutes.
 SLOT_MINUTES = int(os.environ.get("SLOT_MINUTES", "20"))
 
-# How many days ahead patients may book.
+# How many days ahead reception may book.
 BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "45"))
+
+# Shown on the public page. Kept as plain text rather than derived from the
+# times above, because what a clinic advertises and what it schedules are not
+# always the same thing (lunch breaks, alternating doctors, and so on).
+CONSULTING_HOURS_DISPLAY = os.environ.get("CONSULTING_HOURS_DISPLAY", "10:00 am – 6:00 pm")
+WORKING_DAYS_DISPLAY = os.environ.get("WORKING_DAYS_DISPLAY", "Monday to Saturday")
 
 # ── Billing ───────────────────────────────────────────────────────────────────
 
@@ -86,11 +102,17 @@ DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
 # A patient is offered growth charts below this age, in years.
 PAEDIATRIC_AGE_LIMIT = int(os.environ.get("PAEDIATRIC_AGE_LIMIT", "18"))
 
-# Growth reference standard: "WHO", "IAP" or "CDC".
-# See growth/reference/SOURCES.md — WHO data ships for 0-5 years and CDC for
-# 2-20 years. IAP 2015 (Indian Academy of Paediatrics) tables must be added
-# before selecting "IAP".
-GROWTH_REFERENCE = os.environ.get("GROWTH_REFERENCE", "WHO")
+# Growth reference standard: "IAP", "WHO" or "CDC".
+#
+# "IAP" is what this clinic charts against — WHO standards below five years,
+# then the Indian Academy of Paediatrics 2015 revised charts for 5-18, which is
+# IAP's own published recommendation for Indian children.
+#
+# The IAP tables are NOT yet installed. Until they are, ages above five fall
+# through to CDC and every chart states the source that actually produced it,
+# so the fallback is visible rather than silent. See
+# growth/reference/SOURCES.md for how to install them.
+GROWTH_REFERENCE = os.environ.get("GROWTH_REFERENCE", "IAP")
 
 # Conditions this clinic treats, taken from its own services list. Used to
 # offer sensible diagnosis choices rather than a free-text box every time.

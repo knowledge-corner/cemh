@@ -47,6 +47,7 @@ LOCAL_APPS = [
     "billing",
     "audit",
     "portal",
+    "website",
 ]
 
 # Speciality apps — selected per clinic in config/clinic.py.

@@ -121,3 +121,64 @@ class TestReferenceCurves(SimpleTestCase):
         curves = ref.reference_curves(ref.HEAD_CIRCUMFERENCE_FOR_AGE, "M", 0, 120)
         highest = max(point["month"] for point in curves[50])
         self.assertLessEqual(highest, 60)
+
+
+class TestStandardSelection(SimpleTestCase):
+    """
+    The GROWTH_REFERENCE setting must actually choose the reference used. It
+    previously did not — the band map was hard-coded while the interface
+    displayed the setting, which implied a choice that was not wired up.
+    """
+
+    def test_who_standard_uses_who_then_cdc(self):
+        sources = [band[0] for band in ref._tables_for(ref.HEIGHT_FOR_AGE, "WHO")]
+        self.assertEqual(sources, ["who", "cdc"])
+
+    def test_iap_standard_puts_iap_between_who_and_cdc(self):
+        sources = [band[0] for band in ref._tables_for(ref.HEIGHT_FOR_AGE, "IAP")]
+        self.assertEqual(sources, ["who", "iap", "cdc"])
+
+    def test_cdc_standard_leads_with_cdc(self):
+        sources = [band[0] for band in ref._tables_for(ref.HEIGHT_FOR_AGE, "CDC")]
+        self.assertEqual(sources[0], "cdc")
+
+    def test_under_fives_use_who_whichever_standard_is_chosen(self):
+        # Every standard on offer recommends WHO below five; only what happens
+        # above five differs.
+        for standard in ("WHO", "IAP"):
+            with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE=standard)):
+                result = ref.assess(ref.HEIGHT_FOR_AGE, "M", 24, 87.0)
+            self.assertEqual(result["source"], "WHO", msg=f"standard={standard}")
+
+    def test_choosing_cdc_charts_an_under_five_against_cdc(self):
+        # Proves the setting really does change the answer, not just the order
+        # of a list nobody consults.
+        with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="CDC")):
+            result = ref.assess(ref.HEIGHT_FOR_AGE, "M", 36, 95.0)
+        self.assertEqual(result["source"], "CDC")
+
+    def test_an_unknown_standard_falls_back_to_the_default(self):
+        with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="NONSENSE")):
+            self.assertEqual(ref.active_standard(), ref.DEFAULT_STANDARD)
+
+    def test_a_selected_standard_with_no_tables_falls_back_visibly(self):
+        # IAP is selected but its tables are not installed. A school-age child
+        # must still be charted — against CDC — and must say so, rather than
+        # silently pretending to be IAP or refusing to chart at all.
+        with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="IAP")):
+            result = ref.assess(ref.HEIGHT_FOR_AGE, "F", 144, 150.0)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["source"], "CDC")
+        self.assertNotEqual(result["source"], "IAP")
+
+
+def _clinic_with(**overrides):
+    """A stand-in clinic config module with selected values overridden."""
+    import types
+
+    from django.conf import settings as django_settings
+
+    clone = types.SimpleNamespace(**vars(django_settings.CLINIC))
+    for key, value in overrides.items():
+        setattr(clone, key, value)
+    return clone

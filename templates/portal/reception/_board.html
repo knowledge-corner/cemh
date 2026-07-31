@@ -34,13 +34,23 @@ possible from the interface, as well as being refused by the model.
               </p>
             {% endif %}
 
-            <p class="pcard__meta">
-              <a href="tel:{{ visit.patient.contact_phone }}" class="mono">{{ visit.patient.contact_phone }}</a>
-            </p>
+            {% if visit.status == "BOOKED" %}
+              {# This card exists to be acted on by telephone, so the number leads. #}
+              <a href="tel:{{ visit.patient.contact_phone }}" class="pcard__call">
+                📞 {{ visit.patient.contact_phone }}
+              </a>
+              {% if visit.patient.is_paediatric and visit.patient.guardian_name %}
+                <p class="pcard__meta">Ask for {{ visit.patient.guardian_name }}</p>
+              {% endif %}
+            {% else %}
+              <p class="pcard__meta">
+                <a href="tel:{{ visit.patient.contact_phone }}" class="mono">{{ visit.patient.contact_phone }}</a>
+              </p>
+            {% endif %}
 
             <div class="pcard__actions">
               {% if visit.status == "BOOKED" %}
-                {% include "portal/reception/_move_button.html" with visit=visit to="CONFIRMED" label="Confirm" primary=1 %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="CONFIRMED" label="Confirmed by phone" primary=1 %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="CANCELLED" label="Cancel" %}
               {% elif visit.status == "CONFIRMED" %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="ARRIVED" label="Mark arrived" primary=1 %}

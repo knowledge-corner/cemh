@@ -15,13 +15,13 @@ here — they are where a defect would reach the clinic unnoticed.
 
 | | Stories | Points |
 |---|---:|---:|
-| Delivered | 43 | **170** |
-| Partially delivered | 1 | 5 |
-| Blocked on a decision | 1 | 5 |
-| Not started | 9 | 45 |
-| **Total scoped** | **54** | **225** |
+| Delivered | 42 | **169** |
+| Partially delivered | 2 | 10 |
+| Blocked on a decision | 0 | 0 |
+| Not started | 7 | 34 |
+| **Total scoped** | **52** | **213** |
 
-**135 automated tests** currently pass. 8 stories carry no automated cover;
+**154 automated tests** currently pass. 9 stories carry no automated cover;
 each is flagged in place and listed again under *Testing* at the end.
 
 ## How to read this
@@ -318,7 +318,7 @@ each is flagged in place and listed again under *Testing* at the end.
 **Acceptance criteria**
 
 - Search or register the patient, pick doctor and date, pick from free times.
-- A booking taken by staff is confirmed immediately — a person already decided it.
+- Every booking starts unconfirmed — the receptionist still has to ring the patient on the day, and confirming is that call.
 - If someone takes the slot first, the error is readable, not a crash.
 - A slot that is not on the chosen date is rejected.
 
@@ -335,6 +335,8 @@ each is flagged in place and listed again under *Testing* at the end.
 **Acceptance criteria**
 
 - A column per stage, with counts.
+- "To confirm" is separate from "Confirmed", so the receptionist can see exactly who she still has to telephone.
+- An unconfirmed card leads with the number to ring, as a tap-to-dial link, and names the guardian to ask for when the patient is a child.
 - Each card offers only the moves legal from that patient's current state.
 - Waiting time counts up and is highlighted past thirty minutes.
 - The board refreshes itself, because a stale board sends the wrong patient in.
@@ -343,6 +345,7 @@ each is flagged in place and listed again under *Testing* at the end.
 **Covered by**
 
 - `TestReceptionQueue (5 tests)`
+- `TestConfirmationCallIsVisibleWork (3 tests)`
 
 ---
 
@@ -443,7 +446,7 @@ each is flagged in place and listed again under *Testing* at the end.
 
 *Make a child's growth trajectory legible at a glance. Removable for clinics that do not need it.*
 
-**18 of 23 points delivered.**
+**21 of 26 points delivered.**
 
 ### S-501 · Record measurements at a visit
 
@@ -470,16 +473,18 @@ each is flagged in place and listed again under *Testing* at the end.
 
 **Acceptance criteria**
 
-- LMS method against published WHO (0–5y) and CDC (2–20y) tables.
+- LMS method against published reference tables.
 - Verified against the SD columns published alongside those tables.
 - Returns nothing rather than guessing when no reference covers the patient.
 - Sex-specific; declines to chart when sex is recorded as neither.
+- The standard in use is chosen by GROWTH_REFERENCE, and a standard whose tables are absent falls back to another — visibly, never silently.
 
 **Covered by**
 
 - `TestAgainstPublishedValues (2 tests)`
 - `TestZScoreAndPercentile (5 tests)`
 - `TestAssess (6 tests)`
+- `TestStandardSelection (7 tests)`
 
 ### S-503 · Plot the child against the centile curves
 
@@ -516,19 +521,41 @@ each is flagged in place and listed again under *Testing* at the end.
 - `TestMeasurement.test_mid_parental_height_adds_thirteen_for_a_boy`
 - `TestMeasurement.test_mid_parental_height_subtracts_thirteen_for_a_girl`
 
+### S-506 · Import supplied growth tables safely
+
+`3 points` · **Done**
+
+> As the clinic owner, I want new reference tables installed without a developer hand-editing clinical data.
+
+**Acceptance criteria**
+
+- A command converts a supplied CSV into the reference format.
+- If the file carries published centile columns, the LMS values must reproduce them or the import is refused, naming the rows that disagree.
+- A file with no centile columns imports but warns that it could not be checked.
+
+> ⚠️ **Test gap.** Exercised by hand against a known-good table and a deliberately corrupted one, which it correctly accepted and refused. Worth an automated test — this command is the gate on clinical reference data.
+
 ### S-505 · Chart against IAP 2015 Indian references
 
-`5 points` · **Blocked**
+`5 points` · **Partial**
 
 > As a paediatric endocrinologist, I want Indian children charted against Indian references, so that centiles reflect the population I treat.
 
 **Acceptance criteria**
 
-- IAP 2015 tables (5–18y) installed alongside WHO and CDC.
-- Selected per clinic by the GROWTH_REFERENCE setting.
-- Existing charts re-render against the chosen standard.
+- WHO below five years, IAP 2015 for 5–18 — IAP's own recommendation, and the standard the clinic has chosen.
+- Selected by GROWTH_REFERENCE, which is already set to IAP.
+- An import command converts supplied tables and refuses any whose LMS values do not reproduce the centiles printed beside them.
+- Until the tables are installed, ages above five fall back to CDC and every chart names the reference that actually produced it.
 
-> ⚠️ **Test gap.** BLOCKED on two things: Dr. Vrushali choosing the standard, and the IAP tables being obtained. The loading mechanism is built and takes a drop-in file — see growth/reference/SOURCES.md. Do not rely on the growth tab clinically until this is settled.
+*The clinic has chosen WHO 0–5y + IAP 5–18y.*
+
+**Covered by**
+
+- `TestStandardSelection.test_iap_standard_puts_iap_between_who_and_cdc`
+- `TestStandardSelection.test_a_selected_standard_with_no_tables_falls_back_visibly`
+
+> ⚠️ **Test gap.** The mechanism is finished and tested; the IAP 2015 LMS tables themselves are still needed from Dr. Vrushali. They were not invented — a wrong L, M or S value moves a child's centile, which is what a short-stature diagnosis turns on. Charts above five years remain CDC-based and say so until the tables arrive. See growth/reference/iap/README.md.
 
 ---
 
@@ -712,73 +739,66 @@ each is flagged in place and listed again under *Testing* at the end.
 
 ---
 
-## E9 · Patient portal
+## E9 · The public page
 
-*Patients can ask for an appointment without telephoning — but the clinic still decides the diary.*
+*One page that tells people what the clinic does and gets them to telephone or send a WhatsApp message. Patients never sign in.*
 
-**12 of 12 points delivered.**
+**8 of 8 points delivered.**
 
-### S-901 · See my own appointments
-
-`2 points` · **Done**
-
-> As a patient, I want to see what is booked and what I have attended, so that I do not have to ring to check.
-
-**Acceptance criteria**
-
-- Upcoming and past visits, with status.
-- Clinical notes and results are deliberately not shown here.
-
-**Covered by**
-
-- `TestPatientPortal.test_portal_lists_their_own_appointments`
-
-### S-902 · Request an appointment
+### S-901 · A single public page for the clinic
 
 `5 points` · **Done**
 
-> As a patient, I want to ask for a slot online, so that I can do it outside clinic hours.
+> As somebody looking for an endocrinologist, I want to see what this clinic treats and who its doctors are, so that I know it is the right place to ring.
 
 **Acceptance criteria**
 
-- Only genuinely free future times are offered.
-- The request arrives unconfirmed for reception to accept.
-- Bookings are limited to a configurable horizon.
+- Clinic name, address, consulting hours and both consultants with their qualifications.
+- What the clinic treats, in adult and paediatric columns, matching the printed brochure.
+- Readable on a phone, which is how most people will find it.
+- The only page in the system that search engines may index; everything behind the login stays hidden from them.
+- No patient information appears anywhere on it.
 
 **Covered by**
 
-- `TestPatientPortal.test_a_patient_request_lands_as_unconfirmed`
+- `TestPublicPage (9 tests)`
+- `TestPublicPageLeaksNothing (2 tests)`
+- `TestEverythingElseStillNeedsALogin (2 tests)`
 
-### S-903 · Cancel my own appointment
+### S-902 · Call and WhatsApp buttons that actually book
 
 `3 points` · **Done**
 
-> As a patient, I want to cancel online, so that the slot is freed for somebody else.
+> As somebody wanting an appointment, I want to reach the clinic in one tap, so that I do not have to fill in a form and wait.
 
 **Acceptance criteria**
 
-- I can cancel only my own appointments.
-- Cancelling releases the slot.
-- Once the visit is under way, cancelling online is refused.
+- Tap-to-dial and WhatsApp buttons, at the top of the page and again at the end.
+- The WhatsApp link carries the country code and a message already typed.
+- The page says plainly that bookings are by telephone, not online.
+- Which number receives them is configurable per clinic.
 
 **Covered by**
 
-- `TestPatientPortal.test_a_patient_can_cancel_their_own_appointment`
-- `TestPatientPortal.test_a_patient_cannot_cancel_somebody_elses_appointment`
+- `TestPublicPage.test_offers_a_telephone_link`
+- `TestPublicPage.test_offers_a_whatsapp_link_in_international_format`
 
-### S-904 · Tell me if my login is not linked to my record
+### S-903 · Patient portal — logins, appointment list, online booking
 
-`2 points` · **Done**
+`0 points` · **Withdrawn**
 
-> As a patient whose account is not yet matched to my file, I want to be told what to do, rather than seeing an error.
+> As a patient, I want to see my appointments and book online.
 
 **Acceptance criteria**
 
-- A clear message with the clinic's telephone number.
+- Built and working, then removed at the clinic's request.
+- Reception takes every booking; patients call or send a WhatsApp message.
+
+*Withdrawn, not forgotten. Recorded here so the decision is visible: the clinic decided patients should not book online, so a working portal was deleted rather than left behind an unused login.*
 
 **Covered by**
 
-- `TestPatientPortal.test_an_unlinked_account_is_told_rather_than_erroring`
+- `TestNoPatientPortal (2 tests) — asserts the routes are gone`
 
 ---
 
@@ -864,15 +884,7 @@ each is flagged in place and listed again under *Testing* at the end.
 
 ## Backlog — agreed but not started
 
-9 stories, 45 points.
-
-### S-1101 · Public information website
-
-`8 points` · **Backlog**
-
-> As a prospective patient, I want to read about the clinic and its services before booking.
-
-The booking flow is built; these are the pages that sit in front of it.
+7 stories, 34 points.
 
 ### S-1102 · Appointment reminders by SMS or WhatsApp
 
@@ -914,14 +926,6 @@ Hours are currently one setting for the whole clinic.
 
 The file field exists on the model and works in admin, but is not on the chart's add-result form.
 
-### S-1107 · Issue patient logins in bulk
-
-`3 points` · **Backlog**
-
-> As a receptionist, I want to give many patients portal access at once.
-
-Accounts are created one at a time in the admin today.
-
 ### S-1108 · Lock accounts after repeated failed sign-ins
 
 `2 points` · **Backlog**
@@ -942,9 +946,9 @@ Managed PostgreSQL provides the backups; the restore has never been rehearsed. T
 
 ## Testing
 
-**Automated.** 135 tests run in about 5 seconds against a real PostgreSQL database. `pytest` from the project root.
+**Automated.** The suite runs in seconds against a real PostgreSQL database — `pytest` from the project root. The figure above is counted from the suite itself when this document is generated, not written down.
 
-**Browser-driven.** The full booking-to-receipt path has been driven through a real browser. This found four bugs the unit tests had not — including one where a booked follow-up hid the doctor's Complete consultation action.
+**Browser-driven.** The full booking-to-receipt path, and the public page, have been driven through a real browser. This found four bugs the unit tests had not — including one where a booked follow-up hid the doctor's Complete consultation action.
 
 **Not yet covered.** Django admin screens, the deployment configuration, the removable-module guarantee, and the demo-data command. Each is noted against its story.
 
@@ -958,7 +962,8 @@ These are the places a regression would not be caught:
 |---|---|
 | S-104 · Staff accounts managed from the admin | No automated test — the admin screens are exercised by hand. Worth a smoke test before go-live. |
 | S-106 · Sessions expire and cookies are secure | Configuration rather than behaviour. Verified by `manage.py check --deploy`, which passes clean. |
-| S-505 · Chart against IAP 2015 Indian references | BLOCKED on two things: Dr. Vrushali choosing the standard, and the IAP tables being obtained. The loading mechanism is built and takes a drop-in file — see growth/reference/SOURCES.md. Do not rely on the growth tab clinically until this is settled. |
+| S-506 · Import supplied growth tables safely | Exercised by hand against a known-good table and a deliberately corrupted one, which it correctly accepted and refused. Worth an automated test — this command is the gate on clinical reference data. |
+| S-505 · Chart against IAP 2015 Indian references | The mechanism is finished and tested; the IAP 2015 LMS tables themselves are still needed from Dr. Vrushali. They were not invented — a wrong L, M or S value moves a child's centile, which is what a short-stature diagnosis turns on. Charts above five years remain CDC-based and say so until the tables arrive. See growth/reference/iap/README.md. |
 | S-1001 · 12-factor project on PostgreSQL, in Docker | No automated test. Verified by rebuilding the database from empty and running `check --deploy`, which passes. |
 | S-1002 · Realistic demo data on demand | No automated test — exercised manually on every rebuild. |
 | S-1003 · Re-skin for another clinic without forking | No automated test. Verified by editing theme.css and confirming the whole interface re-skins. |
@@ -968,7 +973,7 @@ These are the places a regression would not be caught:
 ### Running the tests
 
 ```bash
-pytest                      # all 135
+pytest                      # all 154
 pytest tests/test_workflow.py   # the clinic day, booking to receipt
 pytest tests/test_growth_reference.py  # percentile maths vs published tables
 ```

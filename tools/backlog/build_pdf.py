@@ -53,6 +53,7 @@ STATUS = {
     "partial": ("PARTIAL", AMBER, AMBER_WASH),
     "blocked": ("BLOCKED", RED, RED_WASH),
     "backlog": ("BACKLOG", MUTED, WASH),
+    "withdrawn": ("WITHDRAWN", MUTED, WASH),
 }
 
 PAGE_W, PAGE_H = A4
@@ -232,9 +233,11 @@ tbl.setStyle(TableStyle([("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1),
 flow.append(tbl)
 
 flow.append(Spacer(1, 10))
+TESTS = data.get("testCount")
 flow.append(Paragraph(
-    f"<b>135 automated tests</b> currently pass. {len(T['gaps'])} stories carry no automated "
-    f"cover; each is flagged where it appears and listed again under Testing.", S["body"]))
+    (f"<b>{TESTS} automated tests</b> currently pass. " if TESTS else "")
+    + f"{len(T['gaps'])} stories carry no automated cover; each is flagged where it "
+      f"appears and listed again under Testing.", S["body"]))
 
 flow.append(Spacer(1, 6))
 flow.append(Paragraph("HOW STORY POINTS ARE USED", S["label"]))
@@ -343,7 +346,7 @@ flow.append(Spacer(1, 10))
 flow.append(Paragraph("RUNNING THE TESTS", S["label"]))
 code_rows = [[Paragraph(c, S["code"])] for c in [
     "pytest&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-    "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # all 135",
+    "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # all " + str(TESTS or ""),
     "pytest tests/test_workflow.py&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "
     "# the clinic day, booking to receipt",
     "pytest tests/test_growth_reference.py # percentile maths vs published tables",

@@ -9,12 +9,17 @@ sys.path.insert(0, str(HERE))
 
 from data import (  # noqa: E402
     BACKLOG_ITEMS, BLOCKED, DONE, EPICS, PARTIAL, POINT_SCALE, STATUS_LABEL,
-    TESTING_NOTES,
+    TESTING_NOTES, WITHDRAWN,
 )
+from export import test_count  # noqa: E402
+
+TESTS = test_count()
+TESTS_PHRASE = f"**{TESTS} automated tests** currently pass." if TESTS else ""
 
 OUT = HERE.parent.parent / "docs" / "REQUIREMENTS.md"
 
-MARK = {DONE: "Done", PARTIAL: "Partial", BLOCKED: "Blocked"}
+MARK = {DONE: "Done", PARTIAL: "Partial", BLOCKED: "Blocked",
+        WITHDRAWN: "Withdrawn"}
 
 lines = []
 w = lines.append
@@ -62,7 +67,7 @@ w(f"| Blocked on a decision | {sum(1 for e in EPICS for s in e['stories'] if s['
 w(f"| Not started | {len(BACKLOG_ITEMS)} | {backlog} |")
 w(f"| **Total scoped** | **{story_count + len(BACKLOG_ITEMS)}** | **{delivered + partial + blocked + backlog}** |")
 w("")
-w(f"**135 automated tests** currently pass. {len(untested)} stories carry no automated cover;")
+w(f"{TESTS_PHRASE} {len(untested)} stories carry no automated cover;".strip())
 w("each is flagged in place and listed again under *Testing* at the end.")
 w("")
 
@@ -168,7 +173,7 @@ w("")
 w("### Running the tests")
 w("")
 w("```bash")
-w("pytest                      # all 135")
+w(f"pytest                      # all {TESTS or ''}".rstrip())
 w("pytest tests/test_workflow.py   # the clinic day, booking to receipt")
 w("pytest tests/test_growth_reference.py  # percentile maths vs published tables")
 w("```")

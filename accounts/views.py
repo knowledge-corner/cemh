@@ -39,7 +39,10 @@ def dashboard_redirect(request):
     if user.role == Role.RECEPTIONIST:
         return redirect("reception_home")
     if user.role == Role.PATIENT:
-        return redirect("patient_home")
+        # There is no patient portal — patients book by telephone or WhatsApp.
+        # Such an account has nothing to sign in for, so send it to the public
+        # page rather than leaving it on a dead end.
+        return redirect("website_home")
 
     # Administrators, and superusers with no clinical role, get the admin site.
     return redirect(f"/{settings.ADMIN_URL}")

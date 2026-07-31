@@ -34,6 +34,7 @@ const STATUS_STYLE = {
   partial: { label: "PARTIAL", color: AMBER, bg: AMBER_WASH },
   blocked: { label: "BLOCKED", color: "B03A2E", bg: "FBEAE8" },
   backlog: { label: "BACKLOG", color: MUTED, bg: WASH },
+  withdrawn: { label: "WITHDRAWN", color: MUTED, bg: WASH },
 };
 
 const today = new Date().toLocaleDateString("en-GB", {
@@ -202,8 +203,8 @@ body.push(table([
 ], [5426, 1800, 1800]));
 
 body.push(para([
-  text("135 automated tests", { bold: true }),
-  text(` currently pass. ${T.gaps.length} stories carry no automated cover; each is flagged ` +
+  text(data.testCount ? `${data.testCount} automated tests` : "", { bold: true }),
+  text(`${data.testCount ? " currently pass." : ""} ${T.gaps.length} stories carry no automated cover; each is flagged ` +
        `where it appears and listed again under Testing.`, {}),
 ], { before: 200, after: 200 }));
 
@@ -396,7 +397,7 @@ body.push(table([
 ], [2900, 6126]));
 
 body.push(label("Running the tests"));
-["pytest                                  # all 135",
+[`pytest                                  # all ${data.testCount || ""}`.trimEnd(),
  "pytest tests/test_workflow.py           # the clinic day, booking to receipt",
  "pytest tests/test_growth_reference.py   # percentile maths vs published tables",
 ].forEach((line) => body.push(new Paragraph({

@@ -667,9 +667,22 @@ p { margin: 0 0 .75rem; }
   padding: .0625rem .375rem;
   border-radius: 100px;
 }
-/* The two columns that need acting on carry the accent. */
+/* The three columns that need acting on carry the accent: patients to ring,
+   patients waiting to be sent in, and patients waiting to pay. */
+.board__col--to_confirm .board__head { background: var(--info-bg); }
 .board__col--waiting .board__head { background: var(--warning-bg); }
 .board__col--to_bill .board__head { background: var(--brand-teal-soft); }
+
+/* The number to ring is the point of the To-confirm card, so give it weight. */
+.pcard__call {
+  display: inline-block;
+  margin-top: .375rem;
+  font-family: var(--font-mono);
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--brand-teal-dark);
+}
+.pcard__call:hover { text-decoration: underline; }
 
 .board__cards { padding: .625rem; display: flex; flex-direction: column; gap: .625rem; }
 .board__empty { color: var(--text-faint); text-align: center; margin: .5rem 0; font-size: .8125rem; }

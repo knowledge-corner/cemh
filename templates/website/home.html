@@ -1,0 +1,157 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  {% comment %}
+  The one page in this application that should be found. Everything behind the
+  login stays noindex; this is the clinic's shopfront.
+  {% endcomment %}
+  <meta name="robots" content="index, follow">
+  <title>{{ clinic_name }} — {{ clinic_tagline }}, Borivali West, Mumbai</title>
+  <meta name="description"
+        content="{{ clinic_tagline }} in Borivali West, Mumbai. Diabetes, thyroid, growth and
+                 hormone disorders in adults and children. Call {{ clinic_phone }} to book.">
+
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  <link rel="stylesheet" href="{% static 'css/website.css' %}">
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap site-head__inner">
+    <a class="site-brand" href="#top">
+      {% include "branding/logo.html" with css_class="site-brand__logo" %}
+      <span>
+        <span class="site-brand__name">{{ clinic_name }}</span>
+        <span class="site-brand__tag">{{ clinic_tagline }}</span>
+      </span>
+    </a>
+    <div class="site-head__actions">
+      <a class="btn-call" href="tel:{{ clinic_phone }}">Call {{ clinic_phone }}</a>
+      {% if whatsapp_url %}
+        <a class="btn-wa" href="{{ whatsapp_url }}" target="_blank" rel="noopener">WhatsApp</a>
+      {% endif %}
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  {# ── Who we are ─────────────────────────────────────────────────────── #}
+  <section class="hero">
+    <div class="wrap">
+      <h1>{{ clinic_tagline }} in&nbsp;Borivali&nbsp;West</h1>
+      <p class="hero__lede">
+        Specialist care for diabetes, thyroid, growth and hormone disorders — for
+        adults and for children.
+      </p>
+      <div class="hero__actions">
+        <a class="btn-call btn-call--big" href="tel:{{ clinic_phone }}">
+          Call {{ clinic_phone }} to book
+        </a>
+        {% if whatsapp_url %}
+          <a class="btn-wa btn-wa--big" href="{{ whatsapp_url }}" target="_blank" rel="noopener">
+            Book on WhatsApp
+          </a>
+        {% endif %}
+      </div>
+      <p class="hero__hours">
+        {{ working_days }} &nbsp;·&nbsp; {{ consulting_hours }}
+      </p>
+    </div>
+  </section>
+
+  {# ── The doctors ────────────────────────────────────────────────────── #}
+  {% if doctors %}
+    <section class="band">
+      <div class="wrap">
+        <h2 class="band__title">Our consultants</h2>
+        <div class="doctors">
+          {% for doctor in doctors %}
+            <article class="doctor">
+              <h3 class="doctor__name">Dr. {{ doctor.display_name }}</h3>
+              {% if doctor.doctor_profile.speciality %}
+                <p class="doctor__role">{{ doctor.doctor_profile.speciality }}</p>
+              {% endif %}
+              {% if doctor.doctor_profile.qualification %}
+                <p class="doctor__quals">{{ doctor.doctor_profile.qualification }}</p>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {# ── What we treat ──────────────────────────────────────────────────── #}
+  <section class="band band--tint">
+    <div class="wrap">
+      <h2 class="band__title">What we treat</h2>
+      <div class="services">
+        {% for area, conditions in services.items %}
+          <div class="service">
+            <h3 class="service__title">{{ area }}</h3>
+            <ul class="service__list">
+              {% for condition in conditions %}<li>{{ condition }}</li>{% endfor %}
+            </ul>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {# ── Where we are ───────────────────────────────────────────────────── #}
+  <section class="band">
+    <div class="wrap">
+      <h2 class="band__title">Visiting us</h2>
+      <div class="visit">
+        <div class="visit__block">
+          <p class="visit__label">Address</p>
+          <p class="visit__value">{{ clinic_address }}</p>
+        </div>
+        <div class="visit__block">
+          <p class="visit__label">Consulting hours</p>
+          <p class="visit__value">{{ working_days }}<br>{{ consulting_hours }}</p>
+        </div>
+        <div class="visit__block">
+          <p class="visit__label">Appointments</p>
+          <p class="visit__value">
+            <a href="tel:{{ clinic_phone }}">{{ clinic_phone }}</a>
+          </p>
+          <p class="visit__note">By telephone or WhatsApp — we do not take online bookings.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Book ───────────────────────────────────────────────────────────── #}
+  <section class="cta">
+    <div class="wrap">
+      <h2>Book an appointment</h2>
+      <p>Speak to our reception and we will find you a time.</p>
+      <div class="cta__actions">
+        <a class="btn-call btn-call--big" href="tel:{{ clinic_phone }}">
+          Call {{ clinic_phone }}
+        </a>
+        {% if whatsapp_url %}
+          <a class="btn-wa btn-wa--big" href="{{ whatsapp_url }}" target="_blank" rel="noopener">
+            Message on WhatsApp
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap site-foot__inner">
+    <p>{{ clinic_name }} · {{ clinic_address }}</p>
+    <p><a href="{% url 'login' %}">Staff sign in</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

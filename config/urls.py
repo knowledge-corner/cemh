@@ -8,6 +8,8 @@ urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     # /admin/ is a decoy: it reveals nothing about where the real admin lives.
     path("admin/", lambda r: redirect("/")),
+    # The public page owns "/". Everything else needs a login.
+    path("", include("website.urls")),
     path("", include("accounts.urls")),
     path("doctor/", include("portal.urls_doctor")),
     path("", include("portal.urls")),

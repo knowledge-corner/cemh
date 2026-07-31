@@ -181,6 +181,7 @@ def growth_context(patient):
                     "date": measurement.measured_on.isoformat(),
                     "z": scored["z"] if scored else None,
                     "percentile": scored["percentile"] if scored else None,
+                    "source": scored["source"] if scored else None,
                 }
             )
 
@@ -199,6 +200,11 @@ def growth_context(patient):
         if not curves:
             continue
 
+        # Report the source that actually produced these values, not the one
+        # configured. A selected standard whose tables are missing falls back,
+        # and the doctor must be able to see that it did.
+        sources = sorted({p["source"] for p in points if p.get("source")})
+
         charts.append(
             {
                 "indicator": indicator,
@@ -209,6 +215,7 @@ def growth_context(patient):
                     {"percentile": p, "points": curves[p]} for p in sorted(curves)
                 ],
                 "latest": points[-1],
+                "sources": sources,
             }
         )
 
@@ -219,7 +226,13 @@ def growth_context(patient):
         "charts": charts,
         "latest_measurement": latest,
         "mid_parental_height": latest.mid_parental_height_cm if latest else None,
-        "reference_note": settings.CLINIC.GROWTH_REFERENCE,
+        "configured_standard": ref.active_standard(),
+        # True when the configured standard could not supply every chart and
+        # something else was used instead.
+        "using_fallback": any(
+            chart["sources"] and ref.active_standard() not in chart["sources"]
+            for chart in charts
+        ),
     }
 
 

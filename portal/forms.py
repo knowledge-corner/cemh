@@ -224,42 +224,17 @@ class BookingForm(forms.Form):
         slot = self.cleaned_data["slot"]
         return Visit.objects.create(
             patient=self.cleaned_data["patient"],
-            # `is_follow_up` is absent on the patient-facing subclass.
             doctor=self.cleaned_data["doctor"],
             scheduled_start=slot,
             scheduled_end=slot + scheduling.slot_length(),
             reason=self.cleaned_data.get("reason", ""),
             is_follow_up=self.cleaned_data.get("is_follow_up", False),
             booked_by=booked_by,
-            # Taken by a member of staff, so it is confirmed on the spot.
-            status=VisitStatus.CONFIRMED if booked_by else VisitStatus.BOOKED,
+            # Every booking starts unconfirmed. The receptionist telephones the
+            # patient on the appointment day, and confirming is that call — so
+            # the board can show her who she still has to ring.
+            status=VisitStatus.BOOKED,
         )
-
-
-class PatientBookingForm(BookingForm):
-    """
-    The same booking, made by the patient themselves.
-
-    The patient is fixed to whoever is signed in, and the request lands as
-    BOOKED so reception still confirms it.
-    """
-
-    def __init__(self, *args, patient=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._patient = patient
-        # The patient is whoever is signed in, so it is not theirs to choose.
-        del self.fields["patient"]
-        del self.fields["is_follow_up"]
-
-    def clean(self):
-        cleaned = super().clean()
-        cleaned["patient"] = self._patient
-        return cleaned
-
-    def save(self, booked_by=None):
-        # booked_by stays empty: the request came from the patient, not the desk,
-        # which is what leaves it BOOKED for reception to confirm.
-        return super().save(booked_by=None)
 
 
 def measurement_form_class():

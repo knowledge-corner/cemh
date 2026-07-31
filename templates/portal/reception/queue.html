@@ -16,7 +16,7 @@
     {% if not is_today %}<a class="btn btn--secondary" href="{% url 'reception_home' %}">Today</a>{% endif %}
     <a class="btn btn--secondary" href="?day={{ next_day|date:'Y-m-d' }}">{{ next_day|date:"j M" }} &rarr;</a>
     <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
-    <a class="btn btn--dark" href="{% url 'reception_bookings' %}">Requests</a>
+    <a class="btn btn--dark" href="{% url 'reception_bookings' %}">All bookings</a>
   </div>
 </div>
 

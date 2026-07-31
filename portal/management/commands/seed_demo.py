@@ -63,7 +63,6 @@ class Command(BaseCommand):
         self.stdout.write("    adway       Dr. Adway Kulkarni     (doctor)")
         self.stdout.write("    vrushali    Dr. Vrushali Kulkarni  (doctor, paediatric)")
         self.stdout.write("    reception   Sunita Rane            (receptionist)")
-        self.stdout.write("    patient     Sunita Menon           (patient portal)")
         self.stdout.write("")
         for patient in Patient.objects.order_by("patient_id"):
             self.stdout.write(
@@ -130,7 +129,7 @@ class Command(BaseCommand):
             registration_number="MH-DEMO-11483",
         )
 
-        User.objects.create_user(
+        receptionist = User.objects.create_user(
             username="reception",
             email="reception@example.in",
             password=DEMO_PASSWORD,
@@ -140,7 +139,7 @@ class Command(BaseCommand):
             role=Role.RECEPTIONIST,
         )
 
-        return {"adult": adway, "paediatric": vrushali}
+        return {"adult": adway, "paediatric": vrushali, "reception": receptionist}
 
     # ── Patients ──────────────────────────────────────────────────────────
 
@@ -149,32 +148,22 @@ class Command(BaseCommand):
 
         self._short_stature_child(doctors["paediatric"], today)
         self._type1_diabetes_child(doctors["paediatric"], today)
-        hypothyroid = self._hypothyroid_adult(doctors["adult"], today)
+        self._hypothyroid_adult(doctors["adult"], today)
         self._type2_diabetes_adult(doctors["adult"], today)
         self._pcos_adult(doctors["adult"], today)
 
-        self._give_patient_portal_login(hypothyroid)
-        self._pending_requests(doctors, today)
+        self._awaiting_confirmation(doctors, today)
         self._ready_to_bill(doctors["adult"], today)
 
-    # ── Extras that give the reception and patient screens something to show ──
+    # ── Extras that give the reception screens something to show ─────────────
 
-    def _give_patient_portal_login(self, patient):
-        """One patient with a login, so the patient portal is reviewable."""
-        user = User.objects.create_user(
-            username="patient",
-            email="patient@example.in",
-            password=DEMO_PASSWORD,
-            first_name=patient.first_name,
-            last_name=patient.last_name,
-            phone=patient.phone,
-            role=Role.PATIENT,
-        )
-        patient.user = user
-        patient.save(update_fields=["user", "updated_at"])
+    def _awaiting_confirmation(self, doctors, today):
+        """
+        Bookings reception has taken but not yet confirmed by telephone.
 
-    def _pending_requests(self, doctors, today):
-        """Online requests sitting on reception's confirmation list."""
+        These are what fills the queue board's "To confirm" column, so the
+        calling workflow is visible in the demo.
+        """
         for patient, doctor, days, hour, reason in [
             (Patient.objects.get(first_name="Priya"), doctors["adult"], 3, 11, "PCOS review"),
             (Patient.objects.get(first_name="Ishita"), doctors["paediatric"], 6, 15, "Insulin dose review"),
@@ -186,7 +175,8 @@ class Command(BaseCommand):
                 patient=patient, doctor=doctor,
                 scheduled_start=start, scheduled_end=start + timedelta(minutes=20),
                 reason=reason, is_follow_up=True,
-                # No booked_by: this came from the patient, not the desk.
+                booked_by=doctors["reception"],
+                # Left BOOKED: the confirmation call has not been made yet.
             )
 
     def _ready_to_bill(self, doctor, today):

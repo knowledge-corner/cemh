@@ -51,6 +51,12 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
           {% else %}
             <span class="faint">&middot; outside the published reference range</span>
           {% endif %}
+          {% comment %}
+          The standard that actually produced this chart, which is not always
+          the one configured — a selected standard with no tables installed
+          falls back, and that must be visible.
+          {% endcomment %}
+          <br><span class="faint small">Plotted against {{ chart.sources|join:" + " }}</span>
         </p>
         <div class="chart-box__canvas">
           <canvas id="growth-chart-{{ forloop.counter }}"
@@ -60,12 +66,25 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
     {% endfor %}
   </div>
 
-  <p class="faint small" style="margin-top:1rem">
-    Percentile curves are drawn from published growth references
-    (WHO 0&ndash;5 years, CDC 2&ndash;20 years). Confirm with the treating doctor
-    which reference standard this clinic should chart against &mdash; see
-    <span class="mono">growth/reference/SOURCES.md</span>.
-  </p>
+  {% if using_fallback %}
+    <div class="alert-strip alert-strip--warning" style="margin-top:1rem">
+      <div>
+        <span class="alert-strip__title">
+          This clinic is set to chart against {{ configured_standard }}, but those
+          tables are not installed
+        </span><br>
+        The charts above were drawn against the references named under each one.
+        Install the {{ configured_standard }} tables to switch over &mdash; see
+        <span class="mono">growth/reference/iap/README.md</span>.
+      </div>
+    </div>
+  {% else %}
+    <p class="faint small" style="margin-top:1rem">
+      Percentile curves are drawn from published growth references, named under
+      each chart. This clinic is configured to use
+      <strong>{{ configured_standard }}</strong>.
+    </p>
+  {% endif %}
 
   {% comment %}
   Chart.js and the renderer are loaded by dashboard.html, before any tab is

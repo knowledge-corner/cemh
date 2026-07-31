@@ -38,8 +38,12 @@ from . import forms as clinic_forms
 # ── Queue ─────────────────────────────────────────────────────────────────────
 
 #: Columns of the queue board, in the order a patient moves through them.
+#:
+#: "To confirm" is separate from "Confirmed" on purpose: the receptionist rings
+#: each patient on the appointment day, and this is how she sees who is left.
 QUEUE_COLUMNS = [
-    ("expected", "Expected", (VisitStatus.BOOKED, VisitStatus.CONFIRMED)),
+    ("to_confirm", "To confirm", (VisitStatus.BOOKED,)),
+    ("confirmed", "Confirmed", (VisitStatus.CONFIRMED,)),
     ("waiting", "In the waiting room", (VisitStatus.ARRIVED,)),
     ("with_doctor", "With the doctor", (VisitStatus.IN_CABIN,)),
     ("to_bill", "Ready to bill", (VisitStatus.CONSULTED,)),

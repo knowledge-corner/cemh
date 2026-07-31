@@ -13,12 +13,14 @@ DONE = "done"
 PARTIAL = "partial"
 BLOCKED = "blocked"
 BACKLOG = "backlog"
+WITHDRAWN = "withdrawn"
 
 STATUS_LABEL = {
     DONE: "Done",
     PARTIAL: "Partial",
     BLOCKED: "Blocked",
     BACKLOG: "Backlog",
+    WITHDRAWN: "Withdrawn",
 }
 
 POINT_SCALE = [
@@ -256,7 +258,8 @@ EPICS = [
                       "not keeping a caller waiting.",
                 criteria=[
                     "Search or register the patient, pick doctor and date, pick from free times.",
-                    "A booking taken by staff is confirmed immediately — a person already decided it.",
+                    "Every booking starts unconfirmed — the receptionist still has to ring "
+                    "the patient on the day, and confirming is that call.",
                     "If someone takes the slot first, the error is readable, not a crash.",
                     "A slot that is not on the chosen date is rejected.",
                 ],
@@ -269,12 +272,17 @@ EPICS = [
                       "that I can call them in and send them through without a paper list.",
                 criteria=[
                     "A column per stage, with counts.",
+                    "\"To confirm\" is separate from \"Confirmed\", so the receptionist can "
+                    "see exactly who she still has to telephone.",
+                    "An unconfirmed card leads with the number to ring, as a tap-to-dial link, "
+                    "and names the guardian to ask for when the patient is a child.",
                     "Each card offers only the moves legal from that patient's current state.",
                     "Waiting time counts up and is highlighted past thirty minutes.",
                     "The board refreshes itself, because a stale board sends the wrong patient in.",
                     "Any day can be reviewed, not just today.",
                 ],
-                tests=["TestReceptionQueue (5 tests)"],
+                tests=["TestReceptionQueue (5 tests)",
+                       "TestConfirmationCallIsVisibleWork (3 tests)"],
             ),
         ],
     ),
@@ -371,15 +379,18 @@ EPICS = [
                 story="As a paediatric endocrinologist, I want a measurement placed on a centile, "
                       "so that short stature is visible rather than inferred.",
                 criteria=[
-                    "LMS method against published WHO (0–5y) and CDC (2–20y) tables.",
+                    "LMS method against published reference tables.",
                     "Verified against the SD columns published alongside those tables.",
                     "Returns nothing rather than guessing when no reference covers the patient.",
                     "Sex-specific; declines to chart when sex is recorded as neither.",
+                    "The standard in use is chosen by GROWTH_REFERENCE, and a standard whose "
+                    "tables are absent falls back to another — visibly, never silently.",
                 ],
                 tests=[
                     "TestAgainstPublishedValues (2 tests)",
                     "TestZScoreAndPercentile (5 tests)",
                     "TestAssess (6 tests)",
+                    "TestStandardSelection (7 tests)",
                 ],
             ),
             dict(
@@ -410,20 +421,43 @@ EPICS = [
                        "TestMeasurement.test_mid_parental_height_subtracts_thirteen_for_a_girl"],
             ),
             dict(
-                id="S-505", points=5, status=BLOCKED,
+                id="S-506", points=3, status=DONE,
+                title="Import supplied growth tables safely",
+                story="As the clinic owner, I want new reference tables installed without a "
+                      "developer hand-editing clinical data.",
+                criteria=[
+                    "A command converts a supplied CSV into the reference format.",
+                    "If the file carries published centile columns, the LMS values must "
+                    "reproduce them or the import is refused, naming the rows that disagree.",
+                    "A file with no centile columns imports but warns that it could not be checked.",
+                ],
+                tests=[],
+                gap="Exercised by hand against a known-good table and a deliberately corrupted "
+                    "one, which it correctly accepted and refused. Worth an automated test — "
+                    "this command is the gate on clinical reference data.",
+            ),
+            dict(
+                id="S-505", points=5, status=PARTIAL,
                 title="Chart against IAP 2015 Indian references",
                 story="As a paediatric endocrinologist, I want Indian children charted against "
                       "Indian references, so that centiles reflect the population I treat.",
                 criteria=[
-                    "IAP 2015 tables (5–18y) installed alongside WHO and CDC.",
-                    "Selected per clinic by the GROWTH_REFERENCE setting.",
-                    "Existing charts re-render against the chosen standard.",
+                    "WHO below five years, IAP 2015 for 5–18 — IAP's own recommendation, and "
+                    "the standard the clinic has chosen.",
+                    "Selected by GROWTH_REFERENCE, which is already set to IAP.",
+                    "An import command converts supplied tables and refuses any whose LMS "
+                    "values do not reproduce the centiles printed beside them.",
+                    "Until the tables are installed, ages above five fall back to CDC and every "
+                    "chart names the reference that actually produced it.",
                 ],
-                tests=[],
-                gap="BLOCKED on two things: Dr. Vrushali choosing the standard, and the IAP "
-                    "tables being obtained. The loading mechanism is built and takes a drop-in "
-                    "file — see growth/reference/SOURCES.md. Do not rely on the growth tab "
-                    "clinically until this is settled.",
+                tests=["TestStandardSelection.test_iap_standard_puts_iap_between_who_and_cdc",
+                       "TestStandardSelection.test_a_selected_standard_with_no_tables_falls_back_visibly"],
+                note="The clinic has chosen WHO 0–5y + IAP 5–18y.",
+                gap="The mechanism is finished and tested; the IAP 2015 LMS tables themselves "
+                    "are still needed from Dr. Vrushali. They were not invented — a wrong L, M "
+                    "or S value moves a child's centile, which is what a short-stature diagnosis "
+                    "turns on. Charts above five years remain CDC-based and say so until the "
+                    "tables arrive. See growth/reference/iap/README.md.",
             ),
         ],
     ),
@@ -552,47 +586,55 @@ EPICS = [
         ],
     ),
     dict(
-        id="E9", name="Patient portal",
-        goal="Patients can ask for an appointment without telephoning — but the clinic still "
-             "decides the diary.",
+        id="E9", name="The public page",
+        goal="One page that tells people what the clinic does and gets them to telephone or "
+             "send a WhatsApp message. Patients never sign in.",
         stories=[
             dict(
-                id="S-901", points=2, status=DONE,
-                title="See my own appointments",
-                story="As a patient, I want to see what is booked and what I have attended, so "
-                      "that I do not have to ring to check.",
-                criteria=["Upcoming and past visits, with status.",
-                          "Clinical notes and results are deliberately not shown here."],
-                tests=["TestPatientPortal.test_portal_lists_their_own_appointments"],
+                id="S-901", points=5, status=DONE,
+                title="A single public page for the clinic",
+                story="As somebody looking for an endocrinologist, I want to see what this clinic "
+                      "treats and who its doctors are, so that I know it is the right place to ring.",
+                criteria=[
+                    "Clinic name, address, consulting hours and both consultants with their "
+                    "qualifications.",
+                    "What the clinic treats, in adult and paediatric columns, matching the "
+                    "printed brochure.",
+                    "Readable on a phone, which is how most people will find it.",
+                    "The only page in the system that search engines may index; everything "
+                    "behind the login stays hidden from them.",
+                    "No patient information appears anywhere on it.",
+                ],
+                tests=["TestPublicPage (9 tests)",
+                       "TestPublicPageLeaksNothing (2 tests)",
+                       "TestEverythingElseStillNeedsALogin (2 tests)"],
             ),
             dict(
-                id="S-902", points=5, status=DONE,
-                title="Request an appointment",
-                story="As a patient, I want to ask for a slot online, so that I can do it outside "
-                      "clinic hours.",
-                criteria=["Only genuinely free future times are offered.",
-                          "The request arrives unconfirmed for reception to accept.",
-                          "Bookings are limited to a configurable horizon."],
-                tests=["TestPatientPortal.test_a_patient_request_lands_as_unconfirmed"],
+                id="S-902", points=3, status=DONE,
+                title="Call and WhatsApp buttons that actually book",
+                story="As somebody wanting an appointment, I want to reach the clinic in one tap, "
+                      "so that I do not have to fill in a form and wait.",
+                criteria=[
+                    "Tap-to-dial and WhatsApp buttons, at the top of the page and again at the end.",
+                    "The WhatsApp link carries the country code and a message already typed.",
+                    "The page says plainly that bookings are by telephone, not online.",
+                    "Which number receives them is configurable per clinic.",
+                ],
+                tests=["TestPublicPage.test_offers_a_telephone_link",
+                       "TestPublicPage.test_offers_a_whatsapp_link_in_international_format"],
             ),
             dict(
-                id="S-903", points=3, status=DONE,
-                title="Cancel my own appointment",
-                story="As a patient, I want to cancel online, so that the slot is freed for "
-                      "somebody else.",
-                criteria=["I can cancel only my own appointments.",
-                          "Cancelling releases the slot.",
-                          "Once the visit is under way, cancelling online is refused."],
-                tests=["TestPatientPortal.test_a_patient_can_cancel_their_own_appointment",
-                       "TestPatientPortal.test_a_patient_cannot_cancel_somebody_elses_appointment"],
-            ),
-            dict(
-                id="S-904", points=2, status=DONE,
-                title="Tell me if my login is not linked to my record",
-                story="As a patient whose account is not yet matched to my file, I want to be told "
-                      "what to do, rather than seeing an error.",
-                criteria=["A clear message with the clinic's telephone number."],
-                tests=["TestPatientPortal.test_an_unlinked_account_is_told_rather_than_erroring"],
+                id="S-903", points=0, status=WITHDRAWN,
+                title="Patient portal — logins, appointment list, online booking",
+                story="As a patient, I want to see my appointments and book online.",
+                criteria=[
+                    "Built and working, then removed at the clinic's request.",
+                    "Reception takes every booking; patients call or send a WhatsApp message.",
+                ],
+                tests=["TestNoPatientPortal (2 tests) — asserts the routes are gone"],
+                note="Withdrawn, not forgotten. Recorded here so the decision is visible: the "
+                     "clinic decided patients should not book online, so a working portal was "
+                     "deleted rather than left behind an unused login.",
             ),
         ],
     ),
@@ -666,10 +708,6 @@ EPICS = [
 ]
 
 BACKLOG_ITEMS = [
-    dict(id="S-1101", points=8, title="Public information website",
-         story="As a prospective patient, I want to read about the clinic and its services before "
-               "booking.",
-         note="The booking flow is built; these are the pages that sit in front of it."),
     dict(id="S-1102", points=8, title="Appointment reminders by SMS or WhatsApp",
          story="As a receptionist, I want patients reminded automatically, so that fewer fail to "
                "attend.",
@@ -689,9 +727,6 @@ BACKLOG_ITEMS = [
          story="As a doctor, I want to attach the lab's PDF to a result.",
          note="The file field exists on the model and works in admin, but is not on the chart's "
               "add-result form."),
-    dict(id="S-1107", points=3, title="Issue patient logins in bulk",
-         story="As a receptionist, I want to give many patients portal access at once.",
-         note="Accounts are created one at a time in the admin today."),
     dict(id="S-1108", points=2, title="Lock accounts after repeated failed sign-ins",
          story="As the clinic owner, I want brute-force attempts blocked.",
          note="Failed attempts are already logged. Recommended before go-live."),
@@ -702,11 +737,13 @@ BACKLOG_ITEMS = [
 ]
 
 TESTING_NOTES = [
-    ("Automated", "135 tests run in about 5 seconds against a real PostgreSQL database. "
-                  "`pytest` from the project root."),
-    ("Browser-driven", "The full booking-to-receipt path has been driven through a real browser. "
-                       "This found four bugs the unit tests had not — including one where a booked "
-                       "follow-up hid the doctor's Complete consultation action."),
+    ("Automated", "The suite runs in seconds against a real PostgreSQL database — `pytest` "
+                  "from the project root. The figure above is counted from the suite itself "
+                  "when this document is generated, not written down."),
+    ("Browser-driven", "The full booking-to-receipt path, and the public page, have been driven "
+                       "through a real browser. This found four bugs the unit tests had not — "
+                       "including one where a booked follow-up hid the doctor's Complete "
+                       "consultation action."),
     ("Not yet covered", "Django admin screens, the deployment configuration, the removable-module "
                         "guarantee, and the demo-data command. Each is noted against its story."),
     ("Clinical validation", "The growth-chart maths is checked against published reference tables, "

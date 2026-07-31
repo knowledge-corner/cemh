@@ -47,28 +47,67 @@ INDICATOR_UNITS = {
     HEAD_CIRCUMFERENCE_FOR_AGE: "cm",
 }
 
-#: Which file covers which age band, per source and indicator.
+#: Age bands published by each source, per indicator.
 #: Each entry is (directory, filename stem template, min month, max month).
-#: Bands are tried in order and the first one covering the age wins, so WHO
-#: data takes precedence for the under-fives where both exist.
-_TABLES = {
-    HEIGHT_FOR_AGE: [
-        ("who", "lhfa_{sex}_0_5", 0, 60),
-        ("cdc", "lhfa_{sex}_2_20", 24, 240),
-    ],
-    WEIGHT_FOR_AGE: [
-        ("who", "wfa_{sex}_0_5", 0, 60),
-        ("cdc", "wfa_{sex}_2_20", 24, 240),
-    ],
-    BMI_FOR_AGE: [
-        ("who", "bmifa_{sex}_0_2", 0, 24),
-        ("who", "bmifa_{sex}_2_5", 24, 60),
-        ("cdc", "bmifa_{sex}_2_20", 24, 240),
-    ],
-    HEAD_CIRCUMFERENCE_FOR_AGE: [
-        ("who", "hcfa_{sex}_0_5", 0, 60),
-    ],
+_BANDS = {
+    "who": {
+        HEIGHT_FOR_AGE: [("who", "lhfa_{sex}_0_5", 0, 60)],
+        WEIGHT_FOR_AGE: [("who", "wfa_{sex}_0_5", 0, 60)],
+        BMI_FOR_AGE: [("who", "bmifa_{sex}_0_2", 0, 24),
+                      ("who", "bmifa_{sex}_2_5", 24, 60)],
+        HEAD_CIRCUMFERENCE_FOR_AGE: [("who", "hcfa_{sex}_0_5", 0, 60)],
+    },
+    "iap": {
+        # Indian Academy of Paediatrics 2015 revised charts, 5–18 years.
+        # Not installed yet — see growth/reference/SOURCES.md.
+        HEIGHT_FOR_AGE: [("iap", "lhfa_{sex}_5_18", 60, 216)],
+        WEIGHT_FOR_AGE: [("iap", "wfa_{sex}_5_18", 60, 216)],
+        BMI_FOR_AGE: [("iap", "bmifa_{sex}_5_18", 60, 216)],
+        HEAD_CIRCUMFERENCE_FOR_AGE: [],
+    },
+    "cdc": {
+        HEIGHT_FOR_AGE: [("cdc", "lhfa_{sex}_2_20", 24, 240)],
+        WEIGHT_FOR_AGE: [("cdc", "wfa_{sex}_2_20", 24, 240)],
+        BMI_FOR_AGE: [("cdc", "bmifa_{sex}_2_20", 24, 240)],
+        HEAD_CIRCUMFERENCE_FOR_AGE: [],
+    },
 }
+
+#: Which sources to consult, in order, for each configurable standard.
+#:
+#: Bands are tried in order and the first one that both covers the age *and* is
+#: actually installed wins. WHO always leads because its 0–5 year standards are
+#: what every option below recommends for the under-fives; the standard chooses
+#: what happens above that.
+#:
+#: CDC trails every list as a last resort. That is deliberate: a chart drawn
+#: against a fallback and labelled as such is useful, whereas no chart at all
+#: is not. :func:`assess` reports which source actually produced each value, so
+#: the fallback is never silent.
+_STANDARDS = {
+    # IAP's own recommendation: WHO under five, IAP 2015 above it.
+    "IAP": ["who", "iap", "cdc"],
+    "WHO": ["who", "cdc"],
+    "CDC": ["cdc", "who"],
+}
+
+DEFAULT_STANDARD = "WHO"
+
+
+def active_standard():
+    """The reference standard this clinic is configured to chart against."""
+    from django.conf import settings
+
+    chosen = getattr(settings.CLINIC, "GROWTH_REFERENCE", DEFAULT_STANDARD)
+    return chosen if chosen in _STANDARDS else DEFAULT_STANDARD
+
+
+def _tables_for(indicator, standard):
+    """Ordered bands for one indicator under the given standard."""
+    bands = []
+    for source in _STANDARDS[standard]:
+        bands.extend(_BANDS[source].get(indicator, []))
+    return bands
 
 #: Percentile curves drawn behind the patient's own points. These are the lines
 #: a paediatrician expects to see on a growth chart.
@@ -122,7 +161,7 @@ def _load_table(directory, stem):
     return rows
 
 
-def _lms_for_age(indicator, sex, age_months):
+def _lms_for_age(indicator, sex, age_months, standard=None):
     """
     LMS parameters for one indicator at a given age, interpolating between the
     two nearest published rows.
@@ -130,10 +169,15 @@ def _lms_for_age(indicator, sex, age_months):
     Tables are published at whole months; a child measured at 42.7 months sits
     between rows, and interpolating is more faithful than snapping to the
     nearest month.
+
+    A band whose file is not installed is skipped rather than raising, so a
+    standard that has been selected but not yet supplied falls through to the
+    next source. The directory returned is the one that actually answered.
     """
     sex_key = _sex_key(sex)
+    standard = standard or active_standard()
 
-    for directory, template, low, high in _TABLES.get(indicator, []):
+    for directory, template, low, high in _tables_for(indicator, standard):
         if not (low <= age_months <= high):
             continue
         try:

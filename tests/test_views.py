@@ -72,10 +72,12 @@ class TestRoleRouting(TestCase):
         response = self.client.get(reverse("dashboard"))
         self.assertRedirects(response, reverse("reception_home"))
 
-    def test_patient_lands_on_the_patient_home(self):
+    def test_patient_account_lands_on_the_public_page(self):
+        # There is no patient portal, so a patient-role account has nothing to
+        # sign in for and is sent to the clinic's public page.
         self.client.force_login(make_user())
         response = self.client.get(reverse("dashboard"))
-        self.assertRedirects(response, reverse("patient_home"))
+        self.assertRedirects(response, reverse("website_home"))
 
     def test_anonymous_visitor_is_sent_to_login(self):
         response = self.client.get(reverse("dashboard"))
