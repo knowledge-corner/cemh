@@ -30,3 +30,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+tools/backlog/node_modules/
+tools/backlog/backlog.json
+tools/backlog/package*.json
