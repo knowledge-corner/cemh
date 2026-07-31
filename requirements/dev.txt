@@ -2,3 +2,6 @@
 pytest==8.3.4
 pytest-django==4.9.0
 reportlab==5.0.0
+# Reads the IAP 2015 paper's tables in `manage.py import_iap`. Only needed to
+# reinstall the growth references, not to run the application.
+pypdfium2==5.12.1

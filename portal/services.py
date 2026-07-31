@@ -174,16 +174,21 @@ def growth_context(patient):
             if value is None:
                 continue
             scored = ref.assess(indicator, patient.sex, measurement.age_months, float(value))
-            points.append(
-                {
-                    "month": round(measurement.age_months, 2),
-                    "value": float(value),
-                    "date": measurement.measured_on.isoformat(),
-                    "z": scored["z"] if scored else None,
-                    "percentile": scored["percentile"] if scored else None,
-                    "source": scored["source"] if scored else None,
-                }
-            )
+            point = {
+                "month": round(measurement.age_months, 2),
+                "value": float(value),
+                "date": measurement.measured_on.isoformat(),
+                # An LMS reference computes these; a published one leaves them
+                # empty and fills in the band instead. Both are carried so the
+                # template can show whichever the reference actually supports.
+                "z": None, "percentile": None,
+                "sds": None, "centile": None,
+                "band_label": None, "off_scale": None, "companion": None,
+                "kind": None, "source": None,
+            }
+            if scored:
+                point.update({key: scored[key] for key in point if key in scored})
+            points.append(point)
 
         if not points:
             continue
@@ -205,14 +210,39 @@ def growth_context(patient):
         # and the doctor must be able to see that it did.
         sources = sorted({p["source"] for p in points if p.get("source")})
 
+        # The IAP BMI chart carries two lines that are not centiles at all —
+        # the adult-equivalent overweight and obesity cut-offs. They are kept
+        # apart from the curves so the chart can label them for what they are.
+        cutoffs = ref.cutoff_curves(indicator, patient.sex, min_month, max_month, step=step)
+
+        # For BMI the IAP tables print centiles only up to the 50th, then the
+        # two cut-off lines. So above the median a centile band is not what the
+        # chart can say — the overweight/obesity status is, and it is what the
+        # paper intends the doctor to read. Attached per chart so the BMI panel
+        # can lead with it instead of reporting "off the printed scale" for a
+        # child who is merely above average.
+        chart_status = None
+        if indicator == ref.BMI_FOR_AGE:
+            from growth import bmi as bmi_module
+
+            latest_point = points[-1]
+            chart_status = bmi_module.assess(
+                patient.sex, latest_point["month"], latest_point["value"]
+            )
+
         charts.append(
             {
                 "indicator": indicator,
                 "label": ref.INDICATOR_LABELS[indicator],
                 "unit": ref.INDICATOR_UNITS[indicator],
+                "status": chart_status,
                 "points": points,
                 "curves": [
                     {"percentile": p, "points": curves[p]} for p in sorted(curves)
+                ],
+                "cutoffs": [
+                    {"key": key, "label": line["label"], "points": line["points"]}
+                    for key, line in sorted(cutoffs.items())
                 ],
                 "latest": points[-1],
                 "sources": sources,
@@ -220,11 +250,24 @@ def growth_context(patient):
         )
 
     latest = measurements.last()
+
+    # Overweight and obesity in a 5–18 year old are judged against the IAP
+    # adult-equivalent cut-offs, not against a centile and not against the adult
+    # BMI thresholds. Absent for any reference that does not publish them.
+    bmi_status = None
+    if latest is not None and latest.bmi is not None:
+        from growth import bmi as bmi_module
+
+        bmi_status = bmi_module.assess(
+            patient.sex, latest.age_months, float(latest.bmi)
+        )
+
     return {
         "patient": patient,
         "measurements": measurements.order_by("-measured_on"),
         "charts": charts,
         "latest_measurement": latest,
+        "bmi_status": bmi_status,
         "mid_parental_height": latest.mid_parental_height_cm if latest else None,
         "configured_standard": ref.active_standard(),
         # True when the configured standard could not supply every chart and

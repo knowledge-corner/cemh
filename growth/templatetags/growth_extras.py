@@ -23,5 +23,8 @@ def chart_json(chart):
         "unit": chart["unit"],
         "points": chart["points"],
         "curves": chart["curves"],
+        # Reference lines that are not centiles — the IAP BMI chart's
+        # adult-equivalent overweight and obesity cut-offs. Empty elsewhere.
+        "cutoffs": chart.get("cutoffs", []),
     }
     return mark_safe(escape(json.dumps(payload, separators=(",", ":"))))

@@ -366,18 +366,7 @@ flow.append(Spacer(1, 16))
 flow.append(Paragraph("Open decisions for the clinic", S["epic"]))
 flow.append(hr(TEAL, 1.2, 8))
 
-for n, (q, a) in enumerate([
-    ("Which growth reference standard?",
-     "WHO, CDC or IAP 2015. This blocks clinical use of the growth chart (S-505) and is a "
-     "decision for Dr. Vrushali, not a technical default."),
-    ("Where is it hosted, and when do we go live?",
-     "Recommended: DigitalOcean Bangalore with managed PostgreSQL, for India data residency "
-     "and automated backups (S-1005)."),
-    ("What else does the receptionist capture at check-in?",
-     "The mechanism for clinic-specific fields exists, but no fields have been agreed (S-1103)."),
-    ("Do patients get portal logins, and who issues them?",
-     "Today they are created one at a time in the admin (S-1107)."),
-], start=1):
+for n, (q, a) in enumerate(data["decisions"], start=1):
     # Keep the question with its answer — a decision split across a page break
     # is exactly the thing a reader skims past.
     flow.append(KeepTogether([

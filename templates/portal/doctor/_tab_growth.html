@@ -26,6 +26,19 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
         {% if latest_measurement.bmi %}
           <div><span class="faint small">BMI</span><br><strong>{{ latest_measurement.bmi }} kg/m&sup2;</strong></div>
         {% endif %}
+        {% comment %}
+        Overweight and obesity in a 5–18 year old are judged against the IAP
+        adult-equivalent BMI 23 and 27 lines, which are age- and sex-specific.
+        Absent entirely when the active reference does not publish them, rather
+        than falling back to the adult thresholds.
+        {% endcomment %}
+        {% if bmi_status %}
+          <div>
+            <span class="faint small">BMI status</span><br>
+            <strong>{{ bmi_status.status }}</strong>
+            <span class="faint small">&middot; {{ bmi_status.note }}</span>
+          </div>
+        {% endif %}
         {% if mid_parental_height %}
           <div><span class="faint small">Mid-parental target</span><br><strong>{{ mid_parental_height }} cm</strong></div>
         {% endif %}
@@ -45,9 +58,36 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
         <p class="chart-box__title">{{ chart.label }}</p>
         <p class="chart-box__latest">
           Latest: <strong>{{ chart.latest.value }} {{ chart.unit }}</strong>
-          {% if chart.latest.percentile is not None %}
+          {% comment %}
+          Two kinds of reference, and the doctor must be able to tell them
+          apart. WHO and CDC publish LMS parameters, so an exact centile and
+          z-score exist. IAP publishes the curves and nothing else, so the
+          honest answer is the band the child falls between, with an SDS
+          interpolated from those two printed curves — and no number at all
+          once the child is outside the outermost one.
+          {% endcomment %}
+          {% if chart.status %}
+            {% comment %}
+            The IAP BMI table prints centiles only to the 50th and then the two
+            adult-equivalent cut-off lines, so above the median the honest
+            reading is the status, not a centile band.
+            {% endcomment %}
+            &middot; <strong>{{ chart.status.status }}</strong>
+            <span class="faint">&middot; {{ chart.status.note }}</span>
+          {% elif chart.latest.percentile is not None %}
             &middot; {{ chart.latest.percentile }}th centile
             <span class="faint">(z = {{ chart.latest.z }})</span>
+          {% elif chart.latest.band_label %}
+            &middot; {{ chart.latest.band_label }}
+            {% if chart.latest.sds is not None %}
+              <span class="faint">(SDS {{ chart.latest.sds }})</span>
+            {% endif %}
+            {% if chart.latest.companion %}
+              <br><span class="faint small">
+                Off the printed scale, so {{ chart.latest.source }} gives no figure &mdash;
+                {{ chart.latest.companion.source }} puts this at z = {{ chart.latest.companion.z }}
+              </span>
+            {% endif %}
           {% else %}
             <span class="faint">&middot; outside the published reference range</span>
           {% endif %}

@@ -24,6 +24,8 @@ function renderGrowthCharts() {
   const dark = growthThemeColour('--brand-dark', '#414e54');
   const muted = growthThemeColour('--text-faint', '#93a3a8');
   const border = growthThemeColour('--border', '#d8e2e2');
+  const warning = growthThemeColour('--warning', '#c77700');
+  const danger = growthThemeColour('--danger', '#c0392b');
 
   container.querySelectorAll('canvas[data-chart]').forEach(function (canvas) {
     // Re-rendering the tab must not stack a second chart on the same canvas.
@@ -55,10 +57,32 @@ function renderGrowthCharts() {
       };
     });
 
+    // The IAP BMI chart's adult-equivalent cut-offs. These are not centiles —
+    // they mark overweight and obesity — so they are drawn in warning colours
+    // and are the only reference lines given a legend entry of their own.
+    (data.cutoffs || []).forEach(function (line) {
+      datasets.push({
+        label: line.label,
+        data: line.points.map(function (p) { return { x: p.month, y: p.value }; }),
+        borderColor: line.key === 'Eq27' ? danger : warning,
+        borderWidth: 1.5,
+        borderDash: [7, 3],
+        pointRadius: 0,
+        fill: false,
+        tension: 0.35,
+        order: 2
+      });
+    });
+
     datasets.push({
       label: 'This patient',
       data: data.points.map(function (p) {
-        return { x: p.month, y: p.value, percentile: p.percentile, date: p.date };
+        return {
+          x: p.month, y: p.value, date: p.date,
+          // Whichever of these the reference could supply; the tooltip shows
+          // the exact centile for WHO and CDC, the band for IAP.
+          percentile: p.percentile, band: p.band_label, sds: p.sds
+        };
       }),
       borderColor: teal,
       backgroundColor: teal,
@@ -102,9 +126,11 @@ function renderGrowthCharts() {
               color: dark,
               boxWidth: 18,
               font: { size: 10 },
-              // Only the patient's line needs a legend entry; seven percentile
-              // labels would swamp a small chart.
-              filter: function (item) { return item.text === 'This patient'; }
+              // The patient's line and the named cut-offs get a legend entry;
+              // seven anonymous percentile labels would swamp a small chart.
+              filter: function (item) {
+                return item.text === 'This patient' || /^(Overweight|Obesity)/.test(item.text);
+              }
             }
           },
           tooltip: {
@@ -117,8 +143,14 @@ function renderGrowthCharts() {
               label: function (item) {
                 const raw = item.raw;
                 let text = item.dataset.label + ': ' + item.parsed.y + ' ' + data.unit;
-                if (raw && raw.percentile !== null && raw.percentile !== undefined) {
+                if (!raw) return text;
+                // An exact centile where the reference supports one, otherwise
+                // the band it was read off the printed table as.
+                if (raw.percentile !== null && raw.percentile !== undefined) {
                   text += '  (' + raw.percentile + 'th centile)';
+                } else if (raw.band) {
+                  text += '  (' + raw.band;
+                  text += raw.sds !== null && raw.sds !== undefined ? ', SDS ' + raw.sds + ')' : ')';
                 }
                 return text;
               }

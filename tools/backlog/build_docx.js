@@ -421,19 +421,7 @@ body.push(new Paragraph({
   border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: TEAL } },
 }));
 
-const decisions = [
-  ["Which growth reference standard?",
-   "WHO, CDC or IAP 2015. This blocks clinical use of the growth chart (S-505) and is a " +
-   "decision for Dr. Vrushali, not a technical default."],
-  ["Where is it hosted, and when do we go live?",
-   "Recommended: DigitalOcean Bangalore with managed PostgreSQL, for India data residency and " +
-   "automated backups (S-1005)."],
-  ["What else does the receptionist capture at check-in?",
-   "The mechanism for clinic-specific fields exists, but no fields have been agreed (S-1103)."],
-  ["Do patients get portal logins, and who issues them?",
-   "Today they are created one at a time in the admin (S-1107)."],
-];
-decisions.forEach(([q, a], n) => {
+data.decisions.forEach(([q, a], n) => {
   body.push(new Paragraph({
     children: [
       new TextRun({ text: `${n + 1}.  `, font: FONT, size: 20, bold: true, color: TEAL_DARK }),

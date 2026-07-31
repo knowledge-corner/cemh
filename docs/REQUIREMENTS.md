@@ -15,13 +15,13 @@ here — they are where a defect would reach the clinic unnoticed.
 
 | | Stories | Points |
 |---|---:|---:|
-| Delivered | 42 | **169** |
-| Partially delivered | 2 | 10 |
+| Delivered | 46 | **185** |
+| Partially delivered | 1 | 5 |
 | Blocked on a decision | 0 | 0 |
 | Not started | 7 | 34 |
-| **Total scoped** | **52** | **213** |
+| **Total scoped** | **55** | **224** |
 
-**154 automated tests** currently pass. 9 stories carry no automated cover;
+**212 automated tests** currently pass. 7 stories carry no automated cover;
 each is flagged in place and listed again under *Testing* at the end.
 
 ## How to read this
@@ -446,7 +446,7 @@ each is flagged in place and listed again under *Testing* at the end.
 
 *Make a child's growth trajectory legible at a glance. Removable for clinics that do not need it.*
 
-**21 of 26 points delivered.**
+**37 of 37 points delivered.**
 
 ### S-501 · Record measurements at a visit
 
@@ -483,8 +483,8 @@ each is flagged in place and listed again under *Testing* at the end.
 
 - `TestAgainstPublishedValues (2 tests)`
 - `TestZScoreAndPercentile (5 tests)`
-- `TestAssess (6 tests)`
-- `TestStandardSelection (7 tests)`
+- `TestAssess (7 tests)`
+- `TestStandardSelection (8 tests)`
 
 ### S-503 · Plot the child against the centile curves
 
@@ -529,33 +529,99 @@ each is flagged in place and listed again under *Testing* at the end.
 
 **Acceptance criteria**
 
-- A command converts a supplied CSV into the reference format.
-- If the file carries published centile columns, the LMS values must reproduce them or the import is refused, naming the rows that disagree.
-- A file with no centile columns imports but warns that it could not be checked.
+- The command reads the IAP 2015 paper's own PDF, so no value is transcribed by hand; a single table may also come from a CSV.
+- It refuses anything it cannot vouch for, naming the offending rows: values must rise across each row and smoothly with age.
+- For BMI it also checks P50 < 23-Eq < 27-Eq throughout, and that the two cut-off lines have converged on the adult 23 and 27 by eighteen years.
+- The tables installed in the repository are re-validated by the test suite, so a hand edit to clinical data fails the build.
 
-> ⚠️ **Test gap.** Exercised by hand against a known-good table and a deliberately corrupted one, which it correctly accepted and refused. Worth an automated test — this command is the gate on clinical reference data.
+**Covered by**
+
+- `TestASoundTableIsAccepted, TestTransposedColumnsAreRefused (3 tests)`
+- `TestADroppedDigitIsRefused (2 tests)`
+- `TestTheShapeOfTheTableIsChecked (2 tests)`
+- `TestTheBmiCutoffCheck (3 tests)`
+- `TestTheInstalledTablesStillPassTheirOwnChecks`
 
 ### S-505 · Chart against IAP 2015 Indian references
 
-`5 points` · **Partial**
+`5 points` · **Done**
 
 > As a paediatric endocrinologist, I want Indian children charted against Indian references, so that centiles reflect the population I treat.
 
 **Acceptance criteria**
 
 - WHO below five years, IAP 2015 for 5–18 — IAP's own recommendation, and the standard the clinic has chosen.
-- Selected by GROWTH_REFERENCE, which is already set to IAP.
-- An import command converts supplied tables and refuses any whose LMS values do not reproduce the centiles printed beside them.
-- Until the tables are installed, ages above five fall back to CDC and every chart names the reference that actually produced it.
+- All six tables installed from the paper: height, weight and BMI, both sexes, 5.0–18.0 years at half-year steps.
+- A child of exactly 5.0 years is charted against IAP, where those charts begin; above 18 the chart falls back to CDC and says so.
+- Every chart names the reference that actually produced it.
 
-*The clinic has chosen WHO 0–5y + IAP 5–18y.*
+*IAP Growth Chart Committee, Indian Pediatrics 2015;52:47–55, Tables II–VII.*
 
 **Covered by**
 
-- `TestStandardSelection.test_iap_standard_puts_iap_between_who_and_cdc`
-- `TestStandardSelection.test_a_selected_standard_with_no_tables_falls_back_visibly`
+- `TestTablesAreInstalled (2 tests)`
+- `TestAgainstThePublishedCentiles (4 tests)`
+- `TestCurvesComeFromThePaper (4 tests)`
+- `TestStandardSelection.test_the_five_year_boundary_belongs_to_iap`
 
-> ⚠️ **Test gap.** The mechanism is finished and tested; the IAP 2015 LMS tables themselves are still needed from Dr. Vrushali. They were not invented — a wrong L, M or S value moves a child's centile, which is what a short-stature diagnosis turns on. Charts above five years remain CDC-based and say so until the tables arrive. See growth/reference/iap/README.md.
+### S-507 · Say which kind of number the reference can give
+
+`5 points` · **Done**
+
+> As a paediatric endocrinologist, I want to know whether a centile was computed or read off a printed curve, so that I know how much to trust the decimal places.
+
+**Acceptance criteria**
+
+- WHO and CDC publish LMS parameters, so an exact centile and z-score are shown, as before.
+- IAP publishes the curves only, so the child is placed in the band between two printed centiles, with an SDS interpolated between them.
+- No LMS is back-fitted from the seven printed points — that would report a z-score reading as exact while carrying invisible fitting error.
+- The paper's SD column is stored but never scored against: it is the sample SD, and using it would put a child on the printed 97th centile at +2.2 to +3.4 SDS instead of +1.88.
+- Asking a centile reference for an exact z-score raises rather than returning an approximation.
+
+**Covered by**
+
+- `TestNoExactZScoreIsInvented (4 tests)`
+- `TestGrowthTabShowsWhichReferenceAnswered (5 tests)`
+
+### S-508 · Refuse to guess below the 3rd centile
+
+`3 points` · **Done**
+
+> As a paediatric endocrinologist, I want no invented number for a child off the printed scale, but I still want an SDS I can act on.
+
+**Acceptance criteria**
+
+- Outside the outermost printed curve the band is still stated — 'below the 3rd centile' — but no centile or SDS is interpolated.
+- A z-score from an LMS reference is supplied alongside and labelled with the source it came from, so growth-hormone decisions still have a figure.
+- A child on the scale gets no companion figure, so the fallback appears only where it is needed.
+
+*WHO's 2007 5–19y reference would be a better companion than CDC for Indian children; it publishes LMS and is a drop-in when sourced.*
+
+**Covered by**
+
+- `TestOffTheScale (5 tests)`
+- `TestGrowthTabShowsWhichReferenceAnswered.test_a_child_below_the_third_centile_gets_a_labelled_companion`
+
+### S-509 · Overweight and obesity from the adult-equivalent cut-offs
+
+`3 points` · **Done**
+
+> As a paediatric endocrinologist, I want overweight and obesity judged by the Asian cut-offs, because Indian children carry more risk at a lower BMI.
+
+**Acceptance criteria**
+
+- Four bands: thinness below the 3rd centile, then normal, overweight at the 23-equivalent line and obesity at the 27-equivalent line.
+- The cut-offs are age- and sex-specific — 15.7 kg/m² at five years, 23.2 at eighteen — never the adult 25 and 30.
+- The 23-Eq and 27-Eq columns are excluded from centile placement, because they are cut-offs and not percentiles of anything.
+- Both lines are drawn on the BMI chart, labelled, in warning colours.
+- A clinic charting against WHO or CDC gets no verdict at all rather than one derived from the wrong lines.
+
+**Covered by**
+
+- `TestTheFourBands (7 tests)`
+- `TestTheCutoffsAreNotTheAdultOnes (4 tests)`
+- `TestNoVerdictWhenTheCutoffsAreUnavailable (6 tests)`
+- `TestTheBmiEqColumnsAreNotCentiles (3 tests)`
 
 ---
 
@@ -962,8 +1028,6 @@ These are the places a regression would not be caught:
 |---|---|
 | S-104 · Staff accounts managed from the admin | No automated test — the admin screens are exercised by hand. Worth a smoke test before go-live. |
 | S-106 · Sessions expire and cookies are secure | Configuration rather than behaviour. Verified by `manage.py check --deploy`, which passes clean. |
-| S-506 · Import supplied growth tables safely | Exercised by hand against a known-good table and a deliberately corrupted one, which it correctly accepted and refused. Worth an automated test — this command is the gate on clinical reference data. |
-| S-505 · Chart against IAP 2015 Indian references | The mechanism is finished and tested; the IAP 2015 LMS tables themselves are still needed from Dr. Vrushali. They were not invented — a wrong L, M or S value moves a child's centile, which is what a short-stature diagnosis turns on. Charts above five years remain CDC-based and say so until the tables arrive. See growth/reference/iap/README.md. |
 | S-1001 · 12-factor project on PostgreSQL, in Docker | No automated test. Verified by rebuilding the database from empty and running `check --deploy`, which passes. |
 | S-1002 · Realistic demo data on demand | No automated test — exercised manually on every rebuild. |
 | S-1003 · Re-skin for another clinic without forking | No automated test. Verified by editing theme.css and confirming the whole interface re-skins. |
@@ -973,7 +1037,7 @@ These are the places a regression would not be caught:
 ### Running the tests
 
 ```bash
-pytest                      # all 154
+pytest                      # all 212
 pytest tests/test_workflow.py   # the clinic day, booking to receipt
 pytest tests/test_growth_reference.py  # percentile maths vs published tables
 ```
@@ -982,11 +1046,8 @@ pytest tests/test_growth_reference.py  # percentile maths vs published tables
 
 ## Open decisions for the clinic
 
-1. **Which growth reference standard?** (S-505) WHO, CDC or IAP 2015. This blocks clinical
-   use of the growth chart and is a decision for Dr. Vrushali, not a technical default.
-2. **Where is it hosted, and when do we go live?** (S-1005) Recommended: DigitalOcean
-   Bangalore with managed PostgreSQL, for India data residency and automated backups.
-3. **What else does the receptionist capture at check-in?** The form-definition mechanism
-   exists (S-1103) but no fields have been agreed yet.
-4. **Do patients get portal logins at all**, and if so who issues them? (S-1107)
+1. **Where is it hosted, and when do we go live?** Recommended: DigitalOcean Bangalore with managed PostgreSQL, for India data residency and automated backups (S-1005).
+2. **What else does the receptionist capture at check-in?** The mechanism for clinic-specific fields exists, but no fields have been agreed (S-1103).
+3. **Do patients get portal logins, and who issues them?** Today they are created one at a time in the admin (S-1107).
+4. **Should WHO's 2007 5–19 year reference be added alongside IAP?** It publishes LMS, so it would give a continuous SDS for a child below the 3rd centile, where the IAP tables stop. CDC fills that role today and is labelled as doing so (S-508). A decision for Dr. Vrushali.
 

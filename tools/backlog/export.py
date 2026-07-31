@@ -10,7 +10,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 
-from data import BACKLOG_ITEMS, BLOCKED, DONE, EPICS, PARTIAL, POINT_SCALE, TESTING_NOTES  # noqa: E402
+from data import (  # noqa: E402
+    BACKLOG_ITEMS, BLOCKED, DONE, EPICS, OPEN_DECISIONS, PARTIAL, POINT_SCALE, TESTING_NOTES,
+)
 
 
 def test_count():
@@ -50,6 +52,7 @@ def backlog_dict():
         "backlog": BACKLOG_ITEMS,
         "scale": POINT_SCALE,
         "testing": TESTING_NOTES,
+        "decisions": OPEN_DECISIONS,
         "testCount": test_count(),
         "totals": {
             "deliveredPts": pts(DONE), "deliveredN": count(DONE),

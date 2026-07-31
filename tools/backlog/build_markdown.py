@@ -8,8 +8,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from data import (  # noqa: E402
-    BACKLOG_ITEMS, BLOCKED, DONE, EPICS, PARTIAL, POINT_SCALE, STATUS_LABEL,
-    TESTING_NOTES, WITHDRAWN,
+    BACKLOG_ITEMS, BLOCKED, DONE, EPICS, OPEN_DECISIONS, PARTIAL, POINT_SCALE,
+    STATUS_LABEL, TESTING_NOTES, WITHDRAWN,
 )
 from export import test_count  # noqa: E402
 
@@ -185,13 +185,8 @@ w("")
 
 w("## Open decisions for the clinic")
 w("")
-w("1. **Which growth reference standard?** (S-505) WHO, CDC or IAP 2015. This blocks clinical")
-w("   use of the growth chart and is a decision for Dr. Vrushali, not a technical default.")
-w("2. **Where is it hosted, and when do we go live?** (S-1005) Recommended: DigitalOcean")
-w("   Bangalore with managed PostgreSQL, for India data residency and automated backups.")
-w("3. **What else does the receptionist capture at check-in?** The form-definition mechanism")
-w("   exists (S-1103) but no fields have been agreed yet.")
-w("4. **Do patients get portal logins at all**, and if so who issues them? (S-1107)")
+for n, (question, answer) in enumerate(OPEN_DECISIONS, start=1):
+    w(f"{n}. **{question}** {answer}")
 w("")
 
 OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -19,6 +19,7 @@ from .factories import (
     make_adult_patient, make_doctor, make_history, make_measurement, make_patient,
     make_receptionist, make_user, make_visit,
 )
+from .test_growth_reference import _clinic_with
 
 PASSWORD = "testpass12345"
 
@@ -253,3 +254,66 @@ class TestDashboardTabs(TestCase):
     def test_tab_requires_the_doctor_role(self):
         self.client.force_login(make_receptionist())
         self.assertEqual(self._tab("summary").status_code, 403)
+
+
+class TestGrowthTabShowsWhichReferenceAnswered(TestCase):
+    """
+    The chart must say what kind of number it is showing. A band read off the
+    IAP tables and an exact centile computed from WHO's LMS parameters look
+    alike on screen unless the page distinguishes them.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.client.force_login(self.doctor)
+        # Nine years old, so charted against IAP.
+        self.patient = make_patient()
+
+    def _growth(self, patient=None):
+        return self.client.get(
+            reverse("doctor_patient_tab",
+                    args=[(patient or self.patient).patient_id, "growth"])
+        )
+
+    def test_a_school_age_child_is_shown_a_band_and_an_sds(self):
+        make_measurement(self.patient, height_cm=Decimal("128.4"),
+                         weight_kg=Decimal("26.0"))
+        response = self._growth()
+        self.assertContains(response, "centile")
+        self.assertContains(response, "SDS")
+        self.assertContains(response, "IAP")
+
+    def test_the_bmi_status_is_shown_with_its_cutoff(self):
+        # 1.28 m and 45 kg is a BMI of 27.5, well past the 27-equivalent line
+        # for a nine-year-old boy.
+        make_measurement(self.patient, height_cm=Decimal("128.0"),
+                         weight_kg=Decimal("45.0"))
+        response = self._growth()
+        self.assertContains(response, "BMI status")
+        self.assertContains(response, "Obesity")
+
+    def test_a_child_below_the_third_centile_gets_a_labelled_companion(self):
+        make_measurement(self.patient, height_cm=Decimal("105.0"),
+                         weight_kg=Decimal("18.0"))
+        response = self._growth()
+        self.assertContains(response, "below the 3rd centile")
+        # No IAP number exists off the printed scale, so another reference is
+        # named rather than the gap being left silent.
+        self.assertContains(response, "Off the printed scale")
+
+    def test_an_under_five_still_shows_an_exact_centile_and_z_score(self):
+        toddler = make_patient(
+            first_name="Ira", phone="9820055555",
+            date_of_birth=timezone.localdate() - timedelta(days=int(3 * 365.25)),
+        )
+        make_measurement(toddler, height_cm=Decimal("95.0"), weight_kg=Decimal("14.0"))
+        response = self._growth(toddler)
+        self.assertContains(response, "z = ")
+        self.assertContains(response, "WHO")
+
+    def test_no_bmi_verdict_for_a_clinic_charting_against_who(self):
+        make_measurement(self.patient, height_cm=Decimal("128.0"),
+                         weight_kg=Decimal("45.0"))
+        with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="WHO")):
+            response = self._growth()
+        self.assertNotContains(response, "BMI status")

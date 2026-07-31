@@ -7,6 +7,7 @@ reproduces the official values rather than merely being self-consistent.
 """
 
 import json
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -79,9 +80,18 @@ class TestAssess(SimpleTestCase):
         self.assertAlmostEqual(result["z"], 0.0, delta=0.05)
         self.assertAlmostEqual(result["percentile"], 50.0, delta=2)
 
-    def test_school_age_child_falls_to_the_cdc_table(self):
+    def test_school_age_child_is_charted_against_iap(self):
+        # The clinic is configured for IAP, whose tables cover 5–18 years.
         result = ref.assess(ref.HEIGHT_FOR_AGE, "F", 144, 150.0)
+        self.assertEqual(result["source"], "IAP")
+        self.assertEqual(result["kind"], ref.CENTILES)
+
+    def test_child_beyond_iaps_range_falls_to_cdc_and_says_so(self):
+        # IAP stops at 18 years. A 19-year-old must still be charted, against
+        # CDC, and the result must name CDC rather than implying IAP.
+        result = ref.assess(ref.HEIGHT_FOR_AGE, "F", 228, 160.0)
         self.assertEqual(result["source"], "CDC")
+        self.assertEqual(result["kind"], ref.LMS)
 
     def test_age_beyond_published_data_returns_nothing(self):
         # Silence is correct here — a wrong percentile is worse than no chart.
@@ -96,8 +106,9 @@ class TestAssess(SimpleTestCase):
         self.assertIsNone(ref.assess(ref.HEIGHT_FOR_AGE, "O", 24, 87.0))
 
     def test_short_child_scores_below_third_centile(self):
-        tall = ref.assess(ref.HEIGHT_FOR_AGE, "M", 60, 120.0)
-        short = ref.assess(ref.HEIGHT_FOR_AGE, "M", 60, 98.0)
+        # Under five, so this is WHO and the percentile is computed exactly.
+        tall = ref.assess(ref.HEIGHT_FOR_AGE, "M", 48, 115.0)
+        short = ref.assess(ref.HEIGHT_FOR_AGE, "M", 48, 91.0)
         self.assertLess(short["percentile"], 3)
         self.assertGreater(tall["percentile"], short["percentile"])
 
@@ -134,9 +145,18 @@ class TestStandardSelection(SimpleTestCase):
         sources = [band[0] for band in ref._tables_for(ref.HEIGHT_FOR_AGE, "WHO")]
         self.assertEqual(sources, ["who", "cdc"])
 
-    def test_iap_standard_puts_iap_between_who_and_cdc(self):
+    def test_iap_standard_leads_with_iap_then_who_then_cdc(self):
+        # IAP leads so that a child of exactly 5.0 years — an age both the WHO
+        # and the IAP band contain — is charted against IAP, which is where the
+        # IAP charts are meant to begin.
         sources = [band[0] for band in ref._tables_for(ref.HEIGHT_FOR_AGE, "IAP")]
-        self.assertEqual(sources, ["who", "iap", "cdc"])
+        self.assertEqual(sources, ["iap", "who", "cdc"])
+
+    def test_the_five_year_boundary_belongs_to_iap(self):
+        just_under = ref.assess(ref.HEIGHT_FOR_AGE, "M", 59, 108.0)
+        exactly_five = ref.assess(ref.HEIGHT_FOR_AGE, "M", 60, 108.0)
+        self.assertEqual(just_under["source"], "WHO")
+        self.assertEqual(exactly_five["source"], "IAP")
 
     def test_cdc_standard_leads_with_cdc(self):
         sources = [band[0] for band in ref._tables_for(ref.HEIGHT_FOR_AGE, "CDC")]
@@ -161,11 +181,13 @@ class TestStandardSelection(SimpleTestCase):
         with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="NONSENSE")):
             self.assertEqual(ref.active_standard(), ref.DEFAULT_STANDARD)
 
-    def test_a_selected_standard_with_no_tables_falls_back_visibly(self):
-        # IAP is selected but its tables are not installed. A school-age child
-        # must still be charted — against CDC — and must say so, rather than
-        # silently pretending to be IAP or refusing to chart at all.
-        with self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="IAP")):
+    def test_a_standard_whose_tables_are_missing_falls_back_visibly(self):
+        # Were the IAP files absent, a school-age child must still be charted —
+        # against CDC — and must say CDC, rather than silently pretending to be
+        # IAP or refusing to chart at all.
+        absent = {ref.HEIGHT_FOR_AGE: [("iap", "lhfa_{sex}_not_installed", 60, 216)]}
+        with mock.patch.dict(ref._BANDS, {"iap": absent}), \
+                self.settings(CLINIC=_clinic_with(GROWTH_REFERENCE="IAP")):
             result = ref.assess(ref.HEIGHT_FOR_AGE, "F", 144, 150.0)
         self.assertIsNotNone(result)
         self.assertEqual(result["source"], "CDC")
