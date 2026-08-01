@@ -40,7 +40,7 @@ p { margin: 0 0 .75rem; }
 
 .topbar {
   height: var(--topbar-height);
-  background: var(--brand-dark);
+  background: var(--grad-brand);
   color: var(--text-on-dark);
   display: flex;
   align-items: center;
@@ -49,6 +49,7 @@ p { margin: 0 0 .75rem; }
   position: sticky;
   top: 0;
   z-index: 50;
+  box-shadow: var(--shadow);
 }
 
 .topbar__brand {
@@ -100,8 +101,10 @@ p { margin: 0 0 .75rem; }
 }
 .topbar__logout:hover { background: rgba(255,255,255,.1); text-decoration: none; }
 
-/* The teal rule under the header — lifted straight from the clinic's file. */
-.brand-rule { height: 4px; background: var(--brand-teal); }
+/* The teal rule under the header — lifted straight from the clinic's file,
+   now running teal into amber so the band reads as a highlight rather than a
+   border. It is the one place both accents meet. */
+.brand-rule { height: 4px; background: var(--grad-rule); }
 
 /* ── Page shell ────────────────────────────────────────────────────────── */
 
@@ -125,7 +128,8 @@ p { margin: 0 0 .75rem; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
+  transition: box-shadow var(--lift), transform var(--lift);
 }
 .card + .card { margin-top: 1rem; }
 .card__header {
@@ -142,7 +146,7 @@ p { margin: 0 0 .75rem; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .06em;
-  color: var(--brand-dark);
+  color: var(--brand-teal-dark);
 }
 .card__body { padding: 1rem; }
 .card__body--flush { padding: 0; }
@@ -173,7 +177,7 @@ p { margin: 0 0 .75rem; }
 }
 
 .storyboard__identity {
-  background: var(--brand-dark);
+  background: var(--grad-brand);
   color: var(--text-on-dark);
   padding: 1rem;
   text-align: center;
@@ -182,7 +186,8 @@ p { margin: 0 0 .75rem; }
   width: 62px;
   height: 62px;
   border-radius: 50%;
-  background: var(--brand-teal);
+  background: var(--grad-teal);
+  box-shadow: var(--glow-teal);
   color: #fff;
   display: flex;
   align-items: center;
@@ -268,10 +273,20 @@ p { margin: 0 0 .75rem; }
   white-space: nowrap;
   transition: color .12s, border-color .12s;
 }
-.tab:hover { color: var(--brand-teal-dark); text-decoration: none; }
+.tab:hover {
+  color: var(--brand-teal-dark);
+  background: var(--brand-teal-soft);
+  text-decoration: none;
+}
+/* The selected tab gets the accent gradient as its underline, so which tab is
+   open is legible at a glance rather than by a subtle colour shift. */
 .tab[aria-selected="true"] {
   color: var(--brand-teal-dark);
-  border-bottom-color: var(--brand-teal);
+  border-bottom-color: transparent;
+  background-image: var(--grad-teal);
+  background-repeat: no-repeat;
+  background-position: bottom;
+  background-size: 100% 3px;
 }
 
 .tab-panel {
@@ -380,13 +395,35 @@ p { margin: 0 0 .75rem; }
   cursor: pointer;
   white-space: nowrap;
 }
+.btn {
+  transition: transform var(--lift), box-shadow var(--lift), background-color var(--lift);
+}
 .btn:hover { text-decoration: none; }
-.btn--primary { background: var(--brand-teal); color: #fff; }
-.btn--primary:hover { background: var(--brand-teal-dark); }
+/* A button that lifts and glows on hover reads as pressable. The transform is
+   tiny on purpose — enough to feel alive, not enough to shift the layout. */
+.btn--primary {
+  background: var(--grad-teal);
+  color: #fff;
+  box-shadow: var(--glow-teal);
+}
+.btn--primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg), var(--glow-teal); }
+.btn--primary:active { transform: translateY(0); }
+
+.btn--accent {
+  background: var(--grad-accent);
+  color: #fff;
+  box-shadow: var(--glow-accent);
+}
+.btn--accent:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg), var(--glow-accent); }
+
 .btn--secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
-.btn--secondary:hover { background: var(--surface-muted); }
-.btn--dark { background: var(--brand-dark); color: #fff; }
-.btn--dark:hover { background: var(--brand-dark-soft); }
+.btn--secondary:hover {
+  background: var(--brand-teal-soft);
+  border-color: var(--brand-teal);
+  color: var(--brand-teal-dark);
+}
+.btn--dark { background: var(--grad-brand); color: #fff; box-shadow: var(--shadow); }
+.btn--dark:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
 .btn--block { width: 100%; }
 
 /* ── Search bar on the doctor's home page ──────────────────────────────── */

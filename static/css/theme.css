@@ -5,54 +5,90 @@
  * different clinic, change the values below and nothing else. No template and
  * no other stylesheet hard-codes a colour.
  *
- * Current palette is taken from the Centre for Endocrine & Metabolic Health
- * printed patient file: charcoal header band, teal accent, pale grey-green page.
+ * The palette started from the clinic's printed patient file — charcoal band,
+ * teal accent, grey-green page — and has been brightened. The charcoal was the
+ * dullest thing on screen, so the dark is now a deep *teal* rather than a grey:
+ * same weight, far more life, and it sits in the same family as the accent
+ * instead of fighting it. Gradients and glows are tokens here too, so a
+ * re-skin still means editing one file.
+ *
+ * Clinical status colours are deliberately NOT part of the brightening scheme.
+ * A red must read as a warning, not as decoration.
  */
 
 :root {
   /* ── Brand ──────────────────────────────────────────────────────────── */
-  --brand-dark:        #414e54;   /* header band, footer, sidebar heading   */
-  --brand-dark-soft:   #4d5c63;   /* hover state on dark surfaces           */
-  --brand-teal:        #17a398;   /* primary accent — the clinic's colour   */
-  --brand-teal-dark:   #128b81;   /* hover / active accent                  */
-  --brand-teal-soft:   #e3f4f2;   /* tinted background for accent areas     */
+  --brand-dark:        #0c4a54;   /* header band, sidebar, footer           */
+  --brand-dark-soft:   #10606d;   /* hover state on dark surfaces           */
+  --brand-teal:        #00c2a8;   /* primary accent — the clinic's colour   */
+  --brand-teal-dark:   #00a08b;   /* hover / active accent, and accent text */
+  --brand-teal-light:  #2be0bf;   /* the bright end of the accent gradient  */
+  --brand-teal-soft:   #dbf7f1;   /* tinted background for accent areas     */
+
+  /* A warm second accent. Endocrinology here is adult *and* paediatric, and a
+     single cool colour made every screen feel like a spreadsheet. Used
+     sparingly: highlights, the growth tab, the public page's warmth. */
+  --brand-accent:      #ff6b4a;
+  --brand-accent-dark: #ef522f;
+  --brand-accent-soft: #ffede7;
+  --brand-sun:         #ffb020;
 
   /* ── Surfaces ───────────────────────────────────────────────────────── */
-  --page-bg:           #eaf0f0;   /* pale grey-green page background        */
+  --page-bg:           #eff9f7;   /* bright mint-tinted page                */
   --surface:           #ffffff;   /* cards, panels                          */
-  --surface-muted:     #f4f8f8;   /* table stripes, inset panels            */
-  --border:            #d8e2e2;
-  --border-strong:     #c2d0d0;
+  --surface-muted:     #f3fcfa;   /* table stripes, inset panels            */
+  --border:            #d3ede7;
+  --border-strong:     #a9ded4;
 
   /* ── Text ───────────────────────────────────────────────────────────── */
-  --text:              #2e3a40;
-  --text-muted:        #6b7b82;
-  --text-faint:        #93a3a8;
+  --text:              #0d2e34;
+  --text-muted:        #4f757d;
+  --text-faint:        #86a6ad;
   --text-on-dark:      #ffffff;
 
   /* ── Clinical status colours ────────────────────────────────────────── */
   /* Used for allergy banners, abnormal results and queue states. These are
-     deliberately not brand colours — a red must read as a warning. */
-  --danger:            #c0392b;
-  --danger-bg:         #fdeceb;
-  --warning:           #b9770e;
-  --warning-bg:        #fdf4e3;
-  --success:           #1e8449;
-  --success-bg:        #e8f6ee;
-  --info:              #1f6f8b;
-  --info-bg:           #e8f2f6;
+     deliberately not brand colours — a red must read as a warning. Contrast
+     against their own tinted backgrounds is what matters here, not vibrancy. */
+  --danger:            #d2352a;
+  --danger-bg:         #ffece9;
+  --warning:           #b5730a;
+  --warning-bg:        #fff6e3;
+  --success:           #0e8f4f;
+  --success-bg:        #e3faee;
+  --info:             #10769f;
+  --info-bg:           #e4f5fc;
+
+  /* ── Gradients ──────────────────────────────────────────────────────── */
+  --grad-brand:  linear-gradient(115deg, #0c4a54 0%, #0e7a72 58%, #00a08b 100%);
+  --grad-teal:   linear-gradient(135deg, #00c2a8 0%, #2be0bf 100%);
+  --grad-accent: linear-gradient(135deg, #ff6b4a 0%, #ffb020 100%);
+  --grad-rule:   linear-gradient(90deg, #00c2a8 0%, #2be0bf 40%, #ffb020 100%);
+  /* A top-edge highlight, so raised surfaces catch the light. */
+  --grad-sheen:  linear-gradient(180deg, rgba(255,255,255,.24), rgba(255,255,255,0));
 
   /* ── Typography ─────────────────────────────────────────────────────── */
   --font-sans: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", "Cascadia Mono", Consolas, monospace;
 
   /* ── Shape ──────────────────────────────────────────────────────────── */
-  --radius:            8px;
-  --radius-lg:         12px;
-  --shadow-sm:         0 1px 2px rgba(46, 58, 64, .06);
-  --shadow:            0 2px 8px rgba(46, 58, 64, .08);
+  --radius:            9px;
+  --radius-lg:         14px;
+  --shadow-sm:         0 1px 3px rgba(10, 58, 64, .07);
+  --shadow:            0 6px 18px rgba(10, 58, 64, .10);
+  --shadow-lg:         0 16px 40px rgba(10, 58, 64, .16);
+  --glow-teal:         0 6px 18px rgba(0, 194, 168, .40);
+  --glow-accent:       0 6px 18px rgba(255, 107, 74, .34);
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --lift: 160ms cubic-bezier(.2, .7, .3, 1);
 
   /* ── Layout ─────────────────────────────────────────────────────────── */
   --sidebar-width:     290px;
   --topbar-height:     52px;
+}
+
+/* Anyone who has asked their system to calm down gets no lifts or glows. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --lift: 1ms; }
 }
