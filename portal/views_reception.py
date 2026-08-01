@@ -11,6 +11,7 @@ Three jobs, in the order they happen through a clinic day:
      receipt and print the prescription.
 """
 
+import csv
 from datetime import timedelta
 from decimal import Decimal
 
@@ -26,7 +27,10 @@ from django.utils import timezone
 from accounts.models import Role, User
 from accounts.permissions import role_required
 from appointments import scheduling
-from appointments.models import InvalidTransition, Visit, VisitStatus
+from appointments.models import (
+    ClinicHoliday, DoctorLeave, DoctorSchedule, InvalidTransition,
+    ScheduleOverride, Visit, VisitStatus,
+)
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from billing.models import Charge, Payment, Receipt
@@ -52,6 +56,14 @@ QUEUE_COLUMNS = [
 
 
 def _queue_context(request, day=None):
+    """
+    Today's board.
+
+    The date picker was removed deliberately: this screen is the live state of
+    the clinic right now, and a receptionist who had paged back to Tuesday and
+    left it there would be sending patients in from the wrong day. Past days are
+    read on the Bookings screen, which is built for looking things up.
+    """
     day = day or timezone.localdate()
 
     visits = (
@@ -76,37 +88,90 @@ def _queue_context(request, day=None):
         for v in by_status.get(status, [])
     ]
 
+    # Anything still open from a previous day. A patient left showing as in the
+    # cabin overnight is not a record of anything — it is a queue nobody closed,
+    # and it makes today's board lie about who the doctor is seeing.
+    stale = list(Visit.objects.unfinished_before(day))
+
     return {
         "day": day,
-        "is_today": day == timezone.localdate(),
         "columns": columns,
         "cancelled": cancelled,
         "total": len(visits),
-        "prev_day": day - timedelta(days=1),
-        "next_day": day + timedelta(days=1),
+        "stale": stale,
+        "stale_count": len(stale),
+        # What still has to happen before the receptionist can go home.
+        "open_today": sum(
+            column["count"] for column in columns if column["key"] != "done"
+        ),
     }
 
 
 @role_required(Role.RECEPTIONIST)
 def reception_home(request):
-    """The day's queue. Refreshes itself so the board stays true without F5."""
-    day = timezone.localdate()
-    requested = request.GET.get("day")
-    if requested:
-        parsed = timezone.datetime.strptime(requested, "%Y-%m-%d").date()
-        day = parsed
-
-    return render(request, "portal/reception/queue.html", _queue_context(request, day))
+    """Today's queue. Refreshes itself so the board stays true without F5."""
+    return render(request, "portal/reception/queue.html", _queue_context(request))
 
 
 @role_required(Role.RECEPTIONIST)
 def queue_board(request):
     """Just the board, for the polling refresh."""
-    day = timezone.localdate()
-    requested = request.GET.get("day")
-    if requested:
-        day = timezone.datetime.strptime(requested, "%Y-%m-%d").date()
-    return render(request, "portal/reception/_board.html", _queue_context(request, day))
+    return render(request, "portal/reception/_board.html", _queue_context(request))
+
+
+@role_required(Role.RECEPTIONIST)
+def close_day(request):
+    """
+    Clear anything left open from a previous day.
+
+    Every stale visit is closed through the same state machine as a live one, so
+    the trail says what happened: a patient who never arrived becomes a no-show,
+    and one who was seen but never billed is left alone, because money still has
+    to be collected and that is a real task rather than an untidy row.
+    """
+    if request.method != "POST":
+        return redirect("reception_home")
+
+    closed, skipped = 0, 0
+    for visit in Visit.objects.unfinished_before():
+        # A booking nobody ever confirmed lapsed; one the patient confirmed and
+        # then missed is a no-show, and the difference matters when the clinic
+        # later asks how often people fail to turn up. The state machine draws
+        # the same distinction, so no-show is only reachable from confirmed.
+        target = {
+            VisitStatus.BOOKED: VisitStatus.CANCELLED,
+            VisitStatus.CONFIRMED: VisitStatus.NO_SHOW,
+            VisitStatus.ARRIVED: VisitStatus.CANCELLED,
+            VisitStatus.IN_CABIN: VisitStatus.CONSULTED,
+        }.get(visit.status)
+        if target is None:
+            skipped += 1
+            continue
+        try:
+            visit.transition_to(
+                target, by_user=request.user, note="Closed by the end-of-day sweep",
+            )
+        except InvalidTransition:
+            skipped += 1
+        else:
+            closed += 1
+            record(
+                request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+                description=f"End-of-day sweep closed visit as {visit.get_status_display()}",
+            )
+
+    if closed:
+        messages.success(request, f"Closed {closed} visit{'' if closed == 1 else 's'} "
+                                  f"left open from previous days.")
+    if skipped:
+        messages.warning(
+            request,
+            f"{skipped} still need attention — a consultation that has not been "
+            f"billed cannot simply be swept away.",
+        )
+    if not closed and not skipped:
+        messages.info(request, "Nothing was left open. The board is clear.")
+    return redirect("reception_home")
 
 
 @role_required(Role.RECEPTIONIST)
@@ -116,45 +181,189 @@ def move_visit(request, pk, to_status):
 
     Goes through ``Visit.transition_to`` so an out-of-order click is refused
     rather than corrupting the day, and so the change is attributed.
-    """
-    visit = get_object_or_404(Visit, pk=pk)
 
+    Two callers, two answers. The queue board posts over HTMX and wants the
+    board fragment swapped back in. The bookings page posts an ordinary form and
+    wants a redirect — it previously got the board fragment too, which rendered
+    a bare partial with no page around it.
+    """
+    visit = get_object_or_404(Visit.objects.select_related("patient", "doctor"), pk=pk)
+
+    moved = False
     if request.method == "POST":
         try:
             visit.transition_to(to_status, by_user=request.user)
         except InvalidTransition as exc:
-            messages.error(request, str(exc.message if hasattr(exc, "message") else exc))
+            messages.error(request, str(getattr(exc, "message", exc)))
         else:
+            moved = True
             record(
                 request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
                 description=f"Visit moved to {visit.get_status_display()}",
             )
 
-    day = timezone.localtime(visit.scheduled_start).date()
-    return render(request, "portal/reception/_board.html", _queue_context(request, day))
+    if request.headers.get("HX-Request"):
+        return render(
+            request, "portal/reception/_board.html",
+            _queue_context(request, timezone.localtime(visit.scheduled_start).date()),
+        )
+
+    if moved:
+        messages.success(
+            request,
+            f"{visit.patient.full_name} — {visit.get_status_display().lower()}.",
+        )
+    return redirect(request.POST.get("next") or "reception_bookings")
 
 
 # ── Bookings ──────────────────────────────────────────────────────────────────
 
+#: The three things a receptionist does on the bookings screen, in the order
+#: they matter: today's calls, then the diary, then looking something up.
+BOOKING_TABS = [
+    ("calls", "Confirmation calls to make"),
+    ("upcoming", "Confirmed & upcoming"),
+    ("past", "Past bookings"),
+]
+
+
+def _past_filters(request):
+    """Read the filter form, returning the queryset and what was chosen."""
+    visits = (
+        Visit.objects.filter(status__in=(VisitStatus.BILLED, VisitStatus.COMPLETED))
+        .with_related()
+        .select_related("charge")
+        .order_by("-scheduled_start")
+    )
+
+    chosen = {
+        "from": request.GET.get("from", "").strip(),
+        "to": request.GET.get("to", "").strip(),
+        "doctor": request.GET.get("doctor", "").strip(),
+        "patient_id": request.GET.get("patient_id", "").strip(),
+        "condition": request.GET.get("condition", "").strip(),
+    }
+
+    def as_date(value):
+        try:
+            return timezone.datetime.strptime(value, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    start, end = as_date(chosen["from"]), as_date(chosen["to"])
+    if start:
+        visits = visits.filter(scheduled_start__date__gte=start)
+    if end:
+        visits = visits.filter(scheduled_start__date__lte=end)
+    if chosen["doctor"]:
+        visits = visits.filter(doctor_id=chosen["doctor"])
+    if chosen["patient_id"]:
+        visits = visits.filter(
+            Q(patient__patient_id__icontains=chosen["patient_id"])
+            | Q(patient__phone__icontains=chosen["patient_id"])
+            | Q(patient__first_name__icontains=chosen["patient_id"])
+            | Q(patient__last_name__icontains=chosen["patient_id"])
+        )
+    if chosen["condition"]:
+        # Matched against the diagnoses recorded for the patient rather than
+        # free text on the visit, so "thyroid" finds the visits of patients
+        # actually carrying that diagnosis.
+        visits = visits.filter(
+            Q(patient__diagnoses__description__icontains=chosen["condition"])
+            | Q(reason__icontains=chosen["condition"])
+        ).distinct()
+
+    return visits, chosen
+
+
 @role_required(Role.RECEPTIONIST)
 def bookings(request):
-    """Requests waiting to be confirmed, plus everything coming up."""
+    """Confirmation calls, the diary ahead, and a searchable history."""
     today = timezone.localdate()
+    tab = request.GET.get("tab", "calls")
+    if tab not in dict(BOOKING_TABS):
+        tab = "calls"
 
-    pending = (
+    calls = (
         Visit.objects.filter(status=VisitStatus.BOOKED, scheduled_start__date__gte=today)
         .with_related().order_by("scheduled_start")
     )
     upcoming = (
         Visit.objects.filter(
-            status=VisitStatus.CONFIRMED, scheduled_start__date__gt=today
-        ).with_related().order_by("scheduled_start")[:40]
+            status=VisitStatus.CONFIRMED, scheduled_start__date__gte=today
+        ).with_related().order_by("scheduled_start")
+    )
+
+    past, chosen = _past_filters(request)
+    total_collected = sum(
+        (v.charge.paid for v in past[:500] if getattr(v, "charge", None)), Decimal("0.00")
     )
 
     return render(request, "portal/reception/bookings.html", {
-        "pending": pending,
+        "tabs": BOOKING_TABS,
+        "active_tab": tab,
+        "calls": calls,
         "upcoming": upcoming,
+        "past": past[:300],
+        "past_count": past.count(),
+        "total_collected": total_collected,
+        "filters": chosen,
+        "doctors": User.objects.filter(role=Role.DOCTOR, is_active=True),
     })
+
+
+@role_required(Role.RECEPTIONIST)
+def export_bookings(request):
+    """
+    The filtered history as a CSV, one row per visit.
+
+    Written straight to the response rather than built in memory: the clinic
+    owner asking for a year of payments should not be limited by how much of it
+    fits in RAM.
+    """
+    visits, chosen = _past_filters(request)
+
+    response = HttpResponse(content_type="text/csv")
+    stamp = timezone.localdate().strftime("%Y-%m-%d")
+    response["Content-Disposition"] = f'attachment; filename="bookings-{stamp}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "Date", "Time", "Doctor", settings.CLINIC.PATIENT_ID_LABEL, "Patient",
+        "Age", "Sex", "Reason", "Diagnoses", "Consultation fee", "Procedure fee",
+        "Discount", "Total", "Paid", "Balance", "Status",
+    ])
+
+    for visit in visits.iterator(chunk_size=200):
+        charge = getattr(visit, "charge", None)
+        diagnoses = ", ".join(
+            d.description for d in visit.patient.diagnoses.all()[:5]
+        )
+        local = timezone.localtime(visit.scheduled_start)
+        writer.writerow([
+            local.strftime("%Y-%m-%d"),
+            local.strftime("%H:%M"),
+            visit.doctor.display_name,
+            visit.patient.patient_id,
+            visit.patient.full_name,
+            visit.patient.age_years,
+            visit.patient.get_sex_display(),
+            visit.reason,
+            diagnoses,
+            charge.consultation_fee if charge else "",
+            charge.procedure_fee if charge else "",
+            charge.discount if charge else "",
+            charge.total if charge else "",
+            charge.paid if charge else "",
+            charge.balance if charge else "",
+            visit.get_status_display(),
+        ])
+
+    record(
+        request, AuditAction.PRINT,
+        description=f"Exported {visits.count()} bookings to CSV",
+    )
+    return response
 
 
 @role_required(Role.RECEPTIONIST)
@@ -394,3 +603,191 @@ def print_receipt(request, pk):
         "patient": charge.patient,
         "visit": charge.visit,
     })
+
+
+# ── Amending a booking ────────────────────────────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def edit_booking(request, pk):
+    """
+    Move a booking to a different slot, or close it off.
+
+    Rescheduling is deliberately not "cancel and rebook": that loses the thread
+    between the two, and the patient rang about one appointment, not two. The
+    visit keeps its identity and the move is recorded against it.
+    """
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor"), pk=pk
+    )
+
+    if visit.status in (VisitStatus.CANCELLED, VisitStatus.NO_SHOW,
+                        VisitStatus.COMPLETED, VisitStatus.BILLED):
+        messages.error(
+            request,
+            f"This booking is already {visit.get_status_display().lower()} and "
+            f"cannot be changed.",
+        )
+        return redirect("reception_bookings")
+
+    if request.method == "POST":
+        action = request.POST.get("action", "reschedule")
+
+        if action in ("cancel", "no_show"):
+            target = VisitStatus.CANCELLED if action == "cancel" else VisitStatus.NO_SHOW
+            reason = request.POST.get("reason", "").strip()
+            try:
+                visit.transition_to(target, by_user=request.user, note=reason)
+            except InvalidTransition as exc:
+                messages.error(request, str(getattr(exc, "message", exc)))
+            else:
+                record(
+                    request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+                    description=f"Booking marked {visit.get_status_display().lower()}"
+                                + (f" — {reason}" if reason else ""),
+                )
+                messages.success(
+                    request,
+                    f"{visit.patient.full_name}'s appointment is now "
+                    f"{visit.get_status_display().lower()}.",
+                )
+            return redirect("reception_bookings")
+
+        form = clinic_forms.RescheduleForm(request.POST, visit=visit)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    form.save(by_user=request.user)
+            except IntegrityError:
+                form.add_error("slot", "That slot has just been taken. Choose another.")
+            else:
+                record(
+                    request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+                    description="Booking rescheduled",
+                )
+                messages.success(
+                    request,
+                    f"Moved {visit.patient.full_name} to "
+                    f"{timezone.localtime(visit.scheduled_start):%d %b at %H:%M}.",
+                )
+                return redirect("reception_bookings")
+    else:
+        form = clinic_forms.RescheduleForm(visit=visit)
+
+    return render(request, "portal/reception/edit_booking.html", {
+        "visit": visit,
+        "patient": visit.patient,
+        "form": form,
+    })
+
+
+# ── Doctor availability ───────────────────────────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def availability(request):
+    """
+    Working days, hours, holidays and leave — all on one screen.
+
+    Kept together on purpose. "Is Dr Kulkarni in on Thursday" is one question,
+    and answering it from three separate screens is how a patient gets booked
+    against a day the doctor is away.
+    """
+    doctors = User.objects.filter(role=Role.DOCTOR, is_active=True)
+    today = timezone.localdate()
+
+    return render(request, "portal/reception/availability.html", {
+        "doctors": doctors,
+        "schedules": DoctorSchedule.objects.select_related("doctor").order_by(
+            "doctor__first_name", "weekday", "start_time"
+        ),
+        "holidays": ClinicHoliday.objects.filter(date__gte=today).order_by("date"),
+        "leave": DoctorLeave.objects.select_related("doctor").filter(
+            date__gte=today
+        ).order_by("date"),
+        "overrides": ScheduleOverride.objects.select_related("doctor").filter(
+            date__gte=today
+        ).order_by("date"),
+        "schedule_form": clinic_forms.DoctorScheduleForm(),
+        "leave_form": clinic_forms.DoctorLeaveForm(),
+        "holiday_form": clinic_forms.ClinicHolidayForm(),
+        "override_form": clinic_forms.ScheduleOverrideForm(),
+        "default_hours": (
+            f"{settings.CLINIC.CONSULTING_START}–{settings.CLINIC.CONSULTING_END}"
+        ),
+        "default_slot": settings.CLINIC.SLOT_MINUTES,
+    })
+
+
+#: Which form handles which button on the availability screen.
+AVAILABILITY_FORMS = {
+    "schedule": (clinic_forms.DoctorScheduleForm, "Working hours saved."),
+    "override": (clinic_forms.ScheduleOverrideForm, "One-off hours saved."),
+    "holiday": (clinic_forms.ClinicHolidayForm, "Holiday added."),
+    "leave": (clinic_forms.DoctorLeaveForm, None),
+}
+
+
+@role_required(Role.RECEPTIONIST)
+def add_availability(request, kind):
+    """Add one schedule row, override, holiday or period of leave."""
+    if request.method != "POST" or kind not in AVAILABILITY_FORMS:
+        return redirect("reception_availability")
+
+    form_class, success_message = AVAILABILITY_FORMS[kind]
+    form = form_class(request.POST)
+
+    if not form.is_valid():
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, f"{field}: {error}")
+        return redirect("reception_availability")
+
+    obj = form.save(commit=False)
+    for attribute in ("created_by",):
+        if hasattr(obj, attribute):
+            setattr(obj, attribute, request.user)
+    obj.save()
+
+    record(request, AuditAction.CREATE, obj=obj, description=f"Availability: {obj}")
+
+    if kind == "leave":
+        # The whole point of recording leave late is this list. Patients already
+        # confirmed for the day have to be rung and moved, and nobody will do it
+        # if the screen does not say so.
+        stranded = obj.affected_visits()
+        if stranded:
+            names = ", ".join(
+                f"{v.patient.full_name} ({timezone.localtime(v.scheduled_start):%H:%M})"
+                for v in stranded
+            )
+            messages.warning(
+                request,
+                f"{len(stranded)} patient{'' if len(stranded) == 1 else 's'} already "
+                f"booked with {obj.doctor.display_name} on "
+                f"{obj.date:%d %b} must be rung and moved: {names}",
+            )
+        else:
+            messages.success(request, f"Leave recorded. Nobody was booked in.")
+    elif success_message:
+        messages.success(request, success_message)
+
+    return redirect("reception_availability")
+
+
+@role_required(Role.RECEPTIONIST)
+def remove_availability(request, kind, pk):
+    """Delete one schedule row, override, holiday or period of leave."""
+    models_by_kind = {
+        "schedule": DoctorSchedule,
+        "override": ScheduleOverride,
+        "holiday": ClinicHoliday,
+        "leave": DoctorLeave,
+    }
+    if request.method != "POST" or kind not in models_by_kind:
+        return redirect("reception_availability")
+
+    obj = get_object_or_404(models_by_kind[kind], pk=pk)
+    description = str(obj)
+    obj.delete()
+    record(request, AuditAction.DELETE, description=f"Availability removed: {description}")
+    messages.success(request, "Removed.")
+    return redirect("reception_availability")

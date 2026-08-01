@@ -4,30 +4,64 @@
 
 {% block content %}
 
+{% comment %}
+Today only. The date picker was removed deliberately — this screen is the live
+state of the clinic, and a receptionist who paged back to Tuesday and left it
+there would be sending in patients from the wrong day. Other days are looked up
+on the Bookings screen.
+{% endcomment %}
 <div class="page-header">
   <div>
-    <h1 class="page-header__title">{% if is_today %}Today's clinic{% else %}Clinic — {{ day|date:"j F Y" }}{% endif %}</h1>
+    <h1 class="page-header__title">Today's clinic</h1>
     <p class="page-header__sub">
-      {{ request.user.display_name }} &middot; {{ day|date:"l, j F Y" }} &middot; {{ total }} appointment{{ total|pluralize }}
+      {{ request.user.display_name }} &middot; {{ day|date:"l, j F Y" }} &middot;
+      {{ total }} appointment{{ total|pluralize }}
+      {% if open_today %}&middot; {{ open_today }} still open{% endif %}
     </p>
   </div>
   <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-    <a class="btn btn--secondary" href="?day={{ prev_day|date:'Y-m-d' }}">&larr; {{ prev_day|date:"j M" }}</a>
-    {% if not is_today %}<a class="btn btn--secondary" href="{% url 'reception_home' %}">Today</a>{% endif %}
-    <a class="btn btn--secondary" href="?day={{ next_day|date:'Y-m-d' }}">{{ next_day|date:"j M" }} &rarr;</a>
+    <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Availability</a>
     <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
     <a class="btn btn--dark" href="{% url 'reception_bookings' %}">All bookings</a>
   </div>
 </div>
 
 {% comment %}
+Anything left open from an earlier day. A patient still showing as in the cabin
+overnight makes today's board lie about who the doctor is with, so this sits at
+the top of the screen until it is dealt with rather than in a report nobody
+opens.
+{% endcomment %}
+{% if stale %}
+  <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">
+        {{ stale_count }} visit{{ stale_count|pluralize }} from an earlier day
+        {{ stale_count|pluralize:"is,are" }} still open
+      </span><br>
+      {% for visit in stale|slice:":5" %}
+        {{ visit.patient.full_name }} ({{ visit.scheduled_start|date:"j M" }},
+        {{ visit.get_status_display|lower }}){% if not forloop.last %} · {% endif %}
+      {% endfor %}
+      {% if stale_count > 5 %} and {{ stale_count|add:"-5" }} more{% endif %}
+      <div style="margin-top:.625rem">
+        <form method="post" action="{% url 'reception_close_day' %}">
+          {% csrf_token %}
+          <button class="btn btn--secondary" type="submit">Close them off</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% comment %}
 The board reloads itself every 30 seconds. A receptionist leaves this open all
 day, and a stale board is worse than useless — it sends the wrong patient in.
 {% endcomment %}
 <div id="queue-board"
-     {% if is_today %}hx-get="{% url 'reception_board' %}"
+     hx-get="{% url 'reception_board' %}"
      hx-trigger="every 30s"
-     hx-swap="innerHTML"{% endif %}>
+     hx-swap="innerHTML">
   {% include "portal/reception/_board.html" %}
 </div>
 

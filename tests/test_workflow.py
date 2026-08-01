@@ -150,8 +150,10 @@ class TestReceptionQueue(TestCase):
         self.visit = make_visit(self.patient, self.doctor, start=timezone.now() + timedelta(hours=1))
 
     def move(self, to_status):
+        """Move the visit the way the queue board does — over HTMX."""
         return self.client.post(
-            reverse("reception_move_visit", args=[self.visit.pk, to_status])
+            reverse("reception_move_visit", args=[self.visit.pk, to_status]),
+            headers={"HX-Request": "true"},
         )
 
     def test_queue_lists_todays_patient(self):

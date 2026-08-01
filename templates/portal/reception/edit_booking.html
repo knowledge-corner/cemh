@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Change booking — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+<div class="page page--narrow">
+
+  <div class="page-header">
+    <div>
+      <h1 class="page-header__title">Change this booking</h1>
+      <p class="page-header__sub">
+        {{ patient.full_name }} &middot; <span class="mono">{{ patient.patient_id }}</span>
+        &middot; with {{ visit.doctor.display_name }},
+        currently {{ visit.scheduled_start|date:"j M Y" }} at {{ visit.scheduled_start|time:"H:i" }}
+      </p>
+    </div>
+    <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Back to bookings</a>
+  </div>
+
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">Move to another time</h2></div>
+    <div class="card__body">
+      <form method="post" id="reschedule-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reschedule">
+
+        {% if form.non_field_errors %}
+          <div class="alert-strip alert-strip--danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="field">
+          <label class="field__label" for="{{ form.day.id_for_label }}">{{ form.day.label }}</label>
+          {{ form.day }}
+          {% if form.day.errors %}<div class="field__error">{{ form.day.errors|first }}</div>{% endif %}
+        </div>
+
+        {% comment %}
+        Slots reload as the date changes, from the same endpoint the new-booking
+        form uses, so a doctor's leave and working hours are respected here too.
+        {% endcomment %}
+        <div class="field">
+          <span class="field__label">Available times</span>
+          <div id="slot-options"
+               hx-get="{% url 'reception_slots' %}?doctor={{ visit.doctor.pk }}"
+               hx-trigger="load, change from:#{{ form.day.id_for_label }}"
+               hx-include="#{{ form.day.id_for_label }}"
+               hx-vals='{"doctor": "{{ visit.doctor.pk }}"}'
+               hx-target="this">
+            <p class="faint small">Choose a date to see free times.</p>
+          </div>
+          {% if form.slot.errors %}<div class="field__error">{{ form.slot.errors|first }}</div>{% endif %}
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="{{ form.note.id_for_label }}">{{ form.note.label }}</label>
+          {{ form.note }}
+        </div>
+
+        <button class="btn btn--primary" type="submit">Move appointment</button>
+      </form>
+    </div>
+  </div>
+
+  {% comment %}
+  Cancelling and marking a no-show sit below the reschedule form, not beside it.
+  Both are irreversible, and a receptionist reaching for "change the time"
+  should not find them under the same button.
+  {% endcomment %}
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">Close this booking</h2></div>
+    <div class="card__body">
+      <p class="faint small" style="margin-top:0">
+        Neither can be undone. The appointment stays in the patient's history
+        either way.
+      </p>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin:0;flex:1;min-width:14rem">
+          <label class="field__label" for="close-reason">Reason (optional)</label>
+          <input class="input" type="text" id="close-reason" name="reason" form="cancel-form"
+                 placeholder="e.g. Patient rang to cancel">
+        </div>
+        <form method="post" id="cancel-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="cancel">
+          <button class="btn btn--secondary" type="submit">Cancel appointment</button>
+        </form>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="no_show">
+          <button class="btn btn--secondary" type="submit">Mark as no-show</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

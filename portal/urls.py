@@ -9,11 +9,25 @@ urlpatterns = [
     path("reception/visit/<int:pk>/move/<str:to_status>/",
          views_reception.move_visit, name="reception_move_visit"),
 
+    path("reception/close-day/", views_reception.close_day, name="reception_close_day"),
+
     path("reception/bookings/", views_reception.bookings, name="reception_bookings"),
+    path("reception/bookings/export/", views_reception.export_bookings,
+         name="reception_export_bookings"),
     path("reception/bookings/new/", views_reception.new_booking, name="reception_new_booking"),
+    path("reception/bookings/<int:pk>/edit/", views_reception.edit_booking,
+         name="reception_edit_booking"),
     path("reception/bookings/slots/", views_reception.slot_options, name="reception_slots"),
     path("reception/bookings/search/", views_reception.patient_lookup, name="reception_patient_lookup"),
     path("reception/bookings/register/", views_reception.register_patient, name="reception_register_patient"),
+
+    # ── Doctor availability ──────────────────────────────────────────────
+    path("reception/availability/", views_reception.availability,
+         name="reception_availability"),
+    path("reception/availability/add/<str:kind>/", views_reception.add_availability,
+         name="reception_add_availability"),
+    path("reception/availability/<str:kind>/<int:pk>/remove/",
+         views_reception.remove_availability, name="reception_remove_availability"),
 
     path("reception/billing/<int:pk>/", views_reception.billing, name="reception_billing"),
     path("reception/billing/<int:pk>/complete/",

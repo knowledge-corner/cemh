@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Doctor availability — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Doctor availability</h1>
+    <p class="page-header__sub">
+      Working days, holidays and leave. Anything not set here falls back to the
+      clinic default of {{ default_hours }}, {{ default_slot }}-minute slots.
+    </p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Back to bookings</a>
+</div>
+
+{% comment %}
+Four things on one screen on purpose. "Is Dr Kulkarni in on Thursday" is a
+single question, and answering it from four separate pages is how a patient
+ends up booked against a day the doctor is away.
+{% endcomment %}
+
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Ordinary working week</h2>
+  </div>
+  <div class="card__body">
+    <form method="post" action="{% url 'reception_add_availability' 'schedule' %}"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      {% csrf_token %}
+      {% for field in schedule_form %}
+        <div class="field" style="margin:0">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="btn btn--primary" type="submit">Add sitting</button>
+    </form>
+
+    {% if schedules %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Doctor</th><th>Day</th><th>Hours</th><th>Slot</th><th></th></tr></thead>
+          <tbody>
+            {% for row in schedules %}
+              <tr>
+                <td class="strong">{{ row.doctor.display_name }}</td>
+                <td>{{ row.get_weekday_display }}</td>
+                <td class="mono">{{ row.start_time|time:"H:i" }}–{{ row.end_time|time:"H:i" }}</td>
+                <td class="mono faint">{{ row.slot_minutes|default:default_slot }} min</td>
+                <td class="row-actions">
+                  <form method="post" action="{% url 'reception_remove_availability' 'schedule' row.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary" type="submit">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="faint small" style="margin:0">
+        No doctor has their own hours set, so everyone uses the clinic default.
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Doctor leave</h2>
+    <span class="badge {% if leave %}badge--warning{% else %}badge--grey{% endif %}">{{ leave|length }}</span>
+  </div>
+  <div class="card__body">
+    <p class="faint small" style="margin-top:0">
+      Leave both times empty for a whole day. If patients are already booked in,
+      you will be told who to ring.
+    </p>
+    <form method="post" action="{% url 'reception_add_availability' 'leave' %}"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      {% csrf_token %}
+      {% for field in leave_form %}
+        <div class="field" style="margin:0">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="btn btn--primary" type="submit">Record leave</button>
+    </form>
+
+    {% if leave %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Doctor</th><th>Date</th><th>When</th><th>Reason</th><th></th></tr></thead>
+          <tbody>
+            {% for row in leave %}
+              <tr>
+                <td class="strong">{{ row.doctor.display_name }}</td>
+                <td class="mono">{{ row.date|date:"j M Y" }}</td>
+                <td>{% if row.whole_day %}All day{% else %}<span class="mono">{{ row.start_time|time:"H:i" }}–{{ row.end_time|time:"H:i" }}</span>{% endif %}</td>
+                <td class="faint">{{ row.reason|default:"—" }}</td>
+                <td class="row-actions">
+                  <form method="post" action="{% url 'reception_remove_availability' 'leave' row.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary" type="submit">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="faint small" style="margin:0">No leave recorded.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__header"><h2 class="card__title">One-off hours</h2></div>
+  <div class="card__body">
+    <p class="faint small" style="margin-top:0">
+      Different hours for a single date — an extra evening clinic, or a late
+      start. To mark absence use leave above.
+    </p>
+    <form method="post" action="{% url 'reception_add_availability' 'override' %}"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      {% csrf_token %}
+      {% for field in override_form %}
+        <div class="field" style="margin:0">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="btn btn--primary" type="submit">Add</button>
+    </form>
+
+    {% if overrides %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Doctor</th><th>Date</th><th>Hours</th><th>Note</th><th></th></tr></thead>
+          <tbody>
+            {% for row in overrides %}
+              <tr>
+                <td class="strong">{{ row.doctor.display_name }}</td>
+                <td class="mono">{{ row.date|date:"j M Y" }}</td>
+                <td class="mono">{{ row.start_time|time:"H:i" }}–{{ row.end_time|time:"H:i" }}</td>
+                <td class="faint">{{ row.note|default:"—" }}</td>
+                <td class="row-actions">
+                  <form method="post" action="{% url 'reception_remove_availability' 'override' row.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary" type="submit">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="faint small" style="margin:0">None set.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__header"><h2 class="card__title">Clinic holidays</h2></div>
+  <div class="card__body">
+    <p class="faint small" style="margin-top:0">The clinic is shut to everyone on these days.</p>
+    <form method="post" action="{% url 'reception_add_availability' 'holiday' %}"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      {% csrf_token %}
+      {% for field in holiday_form %}
+        <div class="field" style="margin:0">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="btn btn--primary" type="submit">Add holiday</button>
+    </form>
+
+    {% if holidays %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Occasion</th><th></th></tr></thead>
+          <tbody>
+            {% for row in holidays %}
+              <tr>
+                <td class="mono">{{ row.date|date:"j M Y" }}</td>
+                <td class="strong">{{ row.name }}</td>
+                <td class="row-actions">
+                  <form method="post" action="{% url 'reception_remove_availability' 'holiday' row.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn--secondary" type="submit">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="faint small" style="margin:0">No holidays set.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

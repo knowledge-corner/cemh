@@ -207,14 +207,35 @@ class BookingForm(forms.Form):
             self.add_error("slot", "That time is not on the selected date.")
             return cleaned
 
-        if not scheduling.is_working_day(day):
-            self.add_error("day", "The clinic is closed on that day.")
+        # A date that has already gone is a mis-key, never an intention. This
+        # was previously only discouraged by which slots were offered, which a
+        # typed-in or back-dated date walked straight past.
+        today = timezone.localdate()
+        if day < today:
+            self.add_error(
+                "day",
+                "That date has passed. Appointments can only be booked for "
+                "today or a later date.",
+            )
+            return cleaned
+
+        _, horizon = scheduling.booking_window()
+        if day > horizon:
+            self.add_error("day", f"Bookings are only taken up to {horizon:%d %b %Y}.")
+            return cleaned
+
+        if not scheduling.is_working_day(day, doctor):
+            self.add_error("day", f"{doctor.display_name} is not consulting on that day.")
+            return cleaned
+
+        if slot <= timezone.now():
+            self.add_error("slot", "That time has already passed. Choose a later one.")
             return cleaned
 
         # Re-check availability at submission time. The database constraint is
         # the real guarantee; this exists to give a readable error instead of
         # an IntegrityError when somebody simply took the slot first.
-        free = {start for start, _ in scheduling.available_slots(doctor, day, include_past=True)}
+        free = {start for start, _ in scheduling.available_slots(doctor, day)}
         if slot not in free:
             self.add_error("slot", "That slot is no longer free. Please choose another time.")
 
@@ -262,3 +283,197 @@ def measurement_form_class():
             }
 
     return MeasurementForm
+
+
+# ── Amending a booking ────────────────────────────────────────────────────────
+
+class RescheduleForm(forms.Form):
+    """
+    Move an existing booking to another slot.
+
+    The visit keeps its identity rather than being cancelled and re-created:
+    the patient rang about one appointment, and the history should say it moved
+    rather than that one vanished and another appeared.
+    """
+
+    day = forms.DateField(
+        label="New date",
+        widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+    )
+    slot = forms.DateTimeField(
+        widget=forms.HiddenInput,
+        error_messages={"required": "Choose a new time."},
+    )
+    note = forms.CharField(
+        max_length=200, required=False, label="Reason for the change",
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Doctor on leave"}),
+    )
+
+    def __init__(self, *args, visit=None, **kwargs):
+        self.visit = visit
+        super().__init__(*args, **kwargs)
+        if visit is not None and not self.is_bound:
+            self.fields["day"].initial = timezone.localtime(visit.scheduled_start).date()
+
+    def clean(self):
+        cleaned = super().clean()
+        day, slot = cleaned.get("day"), cleaned.get("slot")
+        if not (day and slot and self.visit):
+            return cleaned
+
+        if timezone.localtime(slot).date() != day:
+            self.add_error("slot", "That time is not on the selected date.")
+            return cleaned
+        if day < timezone.localdate():
+            self.add_error("day", "Appointments cannot be moved into the past.")
+            return cleaned
+        if slot <= timezone.now():
+            self.add_error("slot", "That time has already passed.")
+            return cleaned
+
+        doctor = self.visit.doctor
+        if not scheduling.is_working_day(day, doctor):
+            self.add_error("day", f"{doctor.display_name} is not consulting on that day.")
+            return cleaned
+
+        # The slot this visit already holds is legitimately "taken" by itself,
+        # so availability is checked with this visit set aside.
+        free = {start for start, _ in scheduling.available_slots(doctor, day)}
+        if slot not in free and slot != self.visit.scheduled_start:
+            self.add_error("slot", "That slot is not free. Choose another time.")
+
+        return cleaned
+
+    def save(self, by_user=None):
+        from appointments.models import VisitStatusEvent
+
+        visit = self.visit
+        was = timezone.localtime(visit.scheduled_start)
+        slot = self.cleaned_data["slot"]
+
+        visit.scheduled_start = slot
+        visit.scheduled_end = slot + scheduling.slot_length()
+        visit.save(update_fields=["scheduled_start", "scheduled_end", "updated_at"])
+
+        # Rescheduling is not a status change, but it is exactly the kind of
+        # thing somebody later asks "who moved this, and when" about.
+        VisitStatusEvent.objects.create(
+            visit=visit,
+            from_status=visit.status,
+            to_status=visit.status,
+            changed_by=by_user,
+            note=(f"Rescheduled from {was:%d %b %H:%M} to "
+                  f"{timezone.localtime(slot):%d %b %H:%M}"
+                  + (f" — {self.cleaned_data['note']}" if self.cleaned_data.get("note") else "")),
+        )
+        return visit
+
+
+# ── Doctor availability ───────────────────────────────────────────────────────
+
+class DoctorScheduleForm(forms.ModelForm):
+    """One sitting in a doctor's ordinary week."""
+
+    class Meta:
+        from appointments.models import DoctorSchedule as _DoctorSchedule
+
+        model = _DoctorSchedule
+        fields = ["doctor", "weekday", "start_time", "end_time", "slot_minutes"]
+        widgets = {
+            "doctor": forms.Select(attrs=INPUT),
+            "weekday": forms.Select(attrs=INPUT),
+            "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+            "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+            "slot_minutes": forms.NumberInput(attrs={**INPUT, "placeholder": "Clinic default"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from accounts.models import Role, User
+
+        self.fields["doctor"].queryset = User.objects.filter(
+            role=Role.DOCTOR, is_active=True
+        )
+
+
+class ScheduleOverrideForm(forms.ModelForm):
+    """Different hours for one doctor on one date."""
+
+    class Meta:
+        from appointments.models import ScheduleOverride as _ScheduleOverride
+
+        model = _ScheduleOverride
+        fields = ["doctor", "date", "start_time", "end_time", "slot_minutes", "note"]
+        widgets = {
+            "doctor": forms.Select(attrs=INPUT),
+            "date": forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+            "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+            "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+            "slot_minutes": forms.NumberInput(attrs={**INPUT, "placeholder": "Clinic default"}),
+            "note": forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Extra evening clinic"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from accounts.models import Role, User
+
+        self.fields["doctor"].queryset = User.objects.filter(
+            role=Role.DOCTOR, is_active=True
+        )
+
+    def clean_date(self):
+        day = self.cleaned_data["date"]
+        if day < timezone.localdate():
+            raise forms.ValidationError("That date has passed.")
+        return day
+
+
+class ClinicHolidayForm(forms.ModelForm):
+    """A day the clinic is shut to everyone."""
+
+    class Meta:
+        from appointments.models import ClinicHoliday as _ClinicHoliday
+
+        model = _ClinicHoliday
+        fields = ["date", "name", "note"]
+        widgets = {
+            "date": forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+            "name": forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Diwali"}),
+            "note": forms.TextInput(attrs=INPUT),
+        }
+
+
+class DoctorLeaveForm(forms.ModelForm):
+    """
+    A doctor away for a day, or part of one.
+
+    Leave taken after patients are already booked is the case that matters, so
+    nothing here refuses a clash — the view surfaces who has to be rung instead.
+    Refusing would only push the receptionist into recording it somewhere else.
+    """
+
+    class Meta:
+        from appointments.models import DoctorLeave as _DoctorLeave
+
+        model = _DoctorLeave
+        fields = ["doctor", "date", "start_time", "end_time", "reason"]
+        widgets = {
+            "doctor": forms.Select(attrs=INPUT),
+            "date": forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+            "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+            "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+            "reason": forms.TextInput(attrs={**INPUT, "placeholder": "Optional"}),
+        }
+        help_texts = {
+            "start_time": "Leave both times empty for a whole day.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from accounts.models import Role, User
+
+        self.fields["doctor"].queryset = User.objects.filter(
+            role=Role.DOCTOR, is_active=True
+        )
+        self.fields["start_time"].required = False
+        self.fields["end_time"].required = False
