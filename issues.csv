@@ -1,0 +1,127 @@
+﻿Ref,Screen,Element,Type,Description,Rules and behaviour,Applies to
+REC-01.01,Dashboard,Date selector,Filter,Which day's clinic is shown.,Defaults to today.,Both
+REC-01.02,Dashboard,Queue columns,Board,"Six columns in workflow order: To confirm, Confirmed, In the waiting room, With the doctor, Ready to bill, Settled.",A visit appears in one column only.,Both
+REC-01.03,Dashboard,Patient card,Card,"UHID, name, age and sex, appointment time, doctor and the number to ring.","For a child the guardian's number is shown, because that is who answers.",Both
+REC-01.04,Dashboard,Column counts,Indicator,How many patients sit in each column.,,Both
+REC-01.05,Dashboard,Call button,Action,Rings the patient for the confirmation call.,"A tel: link, shown on cards awaiting confirmation.",Both
+REC-01.06,Dashboard,Confirm,Action,Records that the patient confirmed by telephone.,Moves the visit from Booked to Confirmed.,Both
+REC-01.07,Dashboard,Mark arrived,Action,Records that the patient has reached the clinic.,Stamps the arrival time.,Both
+REC-01.08,Dashboard,Send to cabin,Action,Sends the patient in to the doctor.,Only from the waiting room.,Both
+REC-01.09,Dashboard,Bill,Action,Opens billing for a finished consultation.,Enabled only after the doctor completes the consultation and sets the fee.,Both
+REC-01.10,Dashboard,New booking,Action,Starts a new appointment.,,Both
+REC-01.11,Dashboard,Patient search,Field,"Finds a patient by UHID, mobile number or name.",,Both
+REC-02.01,Patient Registration,First name,Field,Given name.,Required.,Both
+REC-02.02,Patient Registration,Last name,Field,Family name.,,Both
+REC-02.03,Patient Registration,Date of birth,Field,Drives age everywhere else in the system.,Required. Determines whether the patient is treated as paediatric.,Both
+REC-02.04,Patient Registration,Sex,Field,"Male, female or other.",Required. Growth references are published separately for boys and girls; a child recorded as other cannot be charted.,Both
+REC-02.05,Patient Registration,Mobile number,Field,Primary contact number.,Required. Indian 10-digit format.,Both
+REC-02.06,Patient Registration,Alternate phone,Field,Second contact number.,,Both
+REC-02.07,Patient Registration,Email,Field,Optional. Not used for appointments.,,Both
+REC-02.08,Patient Registration,"Address, city, pincode",Field,Postal address.,,Both
+REC-02.09,Patient Registration,Blood group,Field,"Recorded once, shown on the chart.",,Both
+REC-02.10,Patient Registration,Guardian name,Field,Parent or guardian accompanying the child.,Captured for patients under 18.,Paediatric
+REC-02.11,Patient Registration,Guardian phone,Field,The guardian's number.,Becomes the number the clinic actually rings for a child.,Paediatric
+REC-02.12,Patient Registration,Guardian relation,Field,"Mother, father or other.",,Paediatric
+REC-02.13,Patient Registration,Referred by,Field,Referring doctor or source.,,Both
+REC-02.14,Patient Registration,Allergies,Field,Captured at registration.,"Stored on the standing history, so it shows on every future visit.",Both
+REC-02.15,Patient Registration,UHID,Read-only,"Clinic-unique identifier, e.g. CEMH-26-00001.","Generated on save from a database sequence, so two receptionists registering at once cannot be given the same number.",Both
+REC-02.16,Patient Registration,Save and book,Action,Registers the patient and goes straight to booking.,,Both
+REC-03.01,Patient Search,Search field,Field,"Accepts UHID, mobile number or name.",UHID matching ignores case.,Both
+REC-03.02,Patient Search,Results table,Table,"UHID, name, age, sex and mobile number.",,Both
+REC-03.03,Patient Search,Open patient,Action,Opens the patient's record.,,Both
+REC-03.04,Patient Search,Book appointment,Action,Books for this patient without searching again.,,Both
+REC-03.05,Patient Search,Register new,Action,Offered when the search finds nobody.,,Both
+REC-03.06,Patient Search,Empty state,Message,States plainly that no patient matched.,Never a blank screen.,Both
+REC-04.01,Appointment Booking,Patient,Field,"Chosen by search, or registered on the spot.",Required.,Both
+REC-04.02,Appointment Booking,Doctor,Field,Which doctor the appointment is with.,Required.,Both
+REC-04.03,Appointment Booking,Date,Field,Appointment date.,"Working days only, and within the booking horizon set for the clinic.",Both
+REC-04.04,Appointment Booking,Slot,Field,The free times for that doctor on that day.,Only free slots are offered. Slot length comes from clinic settings.,Both
+REC-04.05,Appointment Booking,Reason,Field,Chief complaint or purpose of the visit.,,Both
+REC-04.06,Appointment Booking,Follow-up,Field,Marks this as a follow-up rather than a new problem.,,Both
+REC-04.07,Appointment Booking,Conflict message,Validation,Explains in plain words when a slot was taken while the form was open.,"The database refuses overlapping bookings outright, so this can happen.",Both
+REC-04.08,Appointment Booking,Booking confirmation,Message,"Shows UHID, doctor, date and time.",,Both
+REC-05.01,Billing,Visit summary,Panel,"Patient, UHID, doctor, date and time.",,Both
+REC-05.02,Billing,Consultation fee,Field,Set by the doctor when finishing the consultation.,Reception cannot change the fee the doctor set.,Both
+REC-05.03,Billing,Procedure fee,Field,Any procedure carried out during the visit.,,Both
+REC-05.04,Billing,Discount,Field,Concession given to the patient.,,Both
+REC-05.05,Billing,Total payable,Calculated,"Consultation plus procedure, less discount.","Calculated, never typed.",Both
+REC-05.06,Billing,Print prescription,Action,Prints the doctor's prescription.,Records that it was printed.,Both
+REC-05.07,Billing,Proceed to payment,Action,Moves on to taking the money.,,Both
+REC-06.01,Payments,Amount received,Field,What the patient is paying now.,May be less than the total; part payment is supported.,Both
+REC-06.02,Payments,Payment method,Field,"Cash, UPI or card.",Required.,Both
+REC-06.03,Payments,Reference,Field,UPI reference or card approval code.,,Both
+REC-06.04,Payments,Balance,Calculated,What remains owed after this payment.,The visit stays unsettled while any balance remains.,Both
+REC-06.05,Payments,Receipt number,Read-only,Unique number carried on the receipt.,"Allocated from a database sequence, so two receipts cannot collide.",Both
+REC-06.06,Payments,Print receipt,Action,Prints the receipt for the patient.,Records that it was printed.,Both
+REC-06.07,Payments,Payment history,Table,Every payment already taken against this visit.,,Both
+REC-06.08,Payments,Complete visit,Action,Closes the visit once it is fully settled.,,Both
+DOC-01.01,Dashboard,Today's counts,Indicator,"Waiting, in cabin and completed today.",,Both
+DOC-01.02,Dashboard,Current patient,Card,"Whoever is in the cabin now, with a link to the chart.",Prefers the in-cabin visit over any later booking for the same patient.,Both
+DOC-01.03,Dashboard,Patient search,Field,Opens any record by UHID or mobile number.,Not limited to today's list.,Both
+DOC-01.04,Dashboard,Unknown UHID message,Validation,Reports that no patient was found rather than failing.,,Both
+DOC-02.01,Today's Patients,Queue list,Table,"Time, UHID, name, age, reason and status.","In cabin first, then the waiting room in arrival order, then the rest of the day.",Both
+DOC-02.02,Today's Patients,Own patients only,Rule,Another doctor's patients never appear in this list.,"Enforced in the view, not by hiding rows in the page.",Both
+DOC-02.03,Today's Patients,Status badge,Indicator,"Waiting, in cabin, consulted or billed.",,Both
+DOC-02.04,Today's Patients,Open chart,Action,Opens the patient's full record.,,Both
+DOC-03.01,Consultation,Patient header,Panel,"Name, UHID, age and sex.",Always visible.,Both
+DOC-03.02,Consultation,Guardian,Panel,Guardian's name and number on the sidebar.,Shown for patients under 18.,Paediatric
+DOC-03.03,Consultation,Allergy banner,Alert,Allergies shown prominently on the sidebar.,Never hidden inside a tab; an allergy that must be hunted for gets missed.,Both
+DOC-03.04,Consultation,Active problems,Panel,"Ongoing diagnoses, with the date each began.",,Both
+DOC-03.05,Consultation,Summary tab,Tab,"Recent visits, latest measurements and attendance.",,Both
+DOC-03.06,Consultation,Complaints,Field,What the patient reports today.,,Both
+DOC-03.07,Consultation,Examination,Field,Findings on examination.,,Both
+DOC-03.08,Consultation,Assessment,Field,Clinical impression.,,Both
+DOC-03.09,Consultation,Plan,Field,Management plan and advice.,,Both
+DOC-03.10,Consultation,Vitals,Field,"Blood pressure, pulse and temperature.",,Both
+DOC-03.11,Consultation,Height,Field,Height in centimetres.,,Both
+DOC-03.12,Consultation,Weight,Field,Weight in kilograms.,,Both
+DOC-03.13,Consultation,BMI,Calculated,Computed from height and weight.,"Calculated, never typed, so it cannot contradict the measurements beside it.",Both
+DOC-03.14,Consultation,Head circumference,Field,Recorded and charted for children under three.,The WHO reference for head circumference stops at five years.,Paediatric
+DOC-03.15,Consultation,Waist,Field,Waist circumference.,,Paediatric
+DOC-03.16,Consultation,Tanner stage,Field,"Puberty staging, I to V.",,Paediatric
+DOC-03.17,Consultation,Parental heights,Field,Mother's and father's heights.,Used for the mid-parental target height.,Paediatric
+DOC-03.18,Consultation,Mid-parental height,Calculated,The child's target height from their parents.,Shown only when both parental heights are known.,Paediatric
+DOC-03.19,Consultation,Growth Chart tab,Tab,"Height, weight and BMI for age, plotted over published centile curves.",Offered only for patients under 18. See the Age Rules sheet.,Paediatric
+DOC-03.20,Consultation,Investigations tab,Table,"Test name, value, unit, reference range and abnormal flag.",Numeric values are stored separately so results can be trended.,Both
+DOC-03.21,Consultation,Diagnosis,Field,"Add a diagnosis, or mark an existing one resolved.",,Both
+DOC-03.22,Consultation,Prescriptions tab,Tab,Every prescription issued to this patient.,,Both
+DOC-03.23,Consultation,Complete consultation,Action,"Ends the consultation, issues the prescription and captures the fee.",Available only while the patient is in the cabin.,Both
+DOC-03.24,Consultation,Consultation fee,Field,Entered by the doctor and passed to reception.,Reception cannot alter it.,Both
+DOC-03.25,Consultation,Audit entry,Rule,Opening any chart is written to the audit trail.,"Records who, which patient, from what address and when.",Both
+DOC-04.01,Prescription,Medication line,Repeating,"Drug, strength, dose, frequency, duration and instructions.","Lines keep their order, so the printout reads exactly as arranged.",Both
+DOC-04.02,Prescription,Advice,Field,"Diet, activity and general advice.",,Both
+DOC-04.03,Prescription,Investigations advised,Field,Tests to be done before the next visit.,,Both
+DOC-04.04,Prescription,Follow-up date,Field,When the patient should return.,,Both
+DOC-04.05,Prescription,Generate,Action,Marks the prescription ready for reception to print.,"Generating and printing are recorded separately, so the clinic knows whether a copy actually left the building.",Both
+DOC-04.06,Prescription,Print layout,View,The printed prescription.,"Carries the clinic identity, and the doctor's qualification, registration number and signature.",Both
+ADM-01.01,Users and Roles,User list,Table,"Username, name, email, contact number, role, active and last login.",,Both
+ADM-01.02,Users and Roles,Add user,Action,"Creates an account with username, password, email, contact number and role.",Email must be unique.,Both
+ADM-01.03,Users and Roles,Role,Field,"Doctor, receptionist or patient.",Decides which dashboard the user reaches after signing in.,Both
+ADM-01.04,Users and Roles,Password rules,Validation,Minimum ten characters.,"Common passwords, all-numeric passwords and passwords resembling the username are refused.",Both
+ADM-01.05,Users and Roles,Reset password,Action,Sets a new password for a user who is locked out.,,Both
+ADM-01.06,Users and Roles,Deactivate,Action,Disables an account without deleting it.,Never delete: the audit trail must keep pointing at a real person.,Both
+ADM-01.07,Users and Roles,Filter by role,Filter,"Show only doctors, receptionists or patients.",,Both
+ADM-01.08,Users and Roles,Access enforcement,Rule,A role check runs in every view that reaches a patient record.,"Typing a URL for another role's screen returns 403, not the page.",Both
+ADM-02.01,Doctors,Registration number,Field,Medical council registration.,Printed on the prescription.,Both
+ADM-02.02,Doctors,Qualification,Field,"Degrees, as they should appear on the prescription.",,Both
+ADM-02.03,Doctors,Speciality,Field,Area of practice.,,Both
+ADM-02.04,Doctors,Signature,Field,Uploaded signature image.,Appears on printed prescriptions.,Both
+ADM-03.01,Audit Logs,Log table,Table,"Timestamp, user, role, action, patient UHID, IP address and page.",,Both
+ADM-03.02,Audit Logs,Actions recorded,Rule,"Viewed, created, updated, printed, login, logout and failed login.","A failed login records the username tried, never the password submitted.",Both
+ADM-03.03,Audit Logs,Filter by user,Filter,Everything one member of staff did.,,Both
+ADM-03.04,Audit Logs,Filter by patient,Filter,Everyone who opened one patient's record.,The question the clinic may one day have to answer to a patient.,Both
+ADM-03.05,Audit Logs,Date range,Filter,Period covered.,,Both
+ADM-03.06,Audit Logs,Append only,Rule,Entries can never be edited or deleted.,"Refused at the database layer and in the admin, even for a superuser.",Both
+AGE-01,Age Rules,Guardian details,Rule,"Guardian name, relation and phone number are captured at registration.",Not asked for an adult patient.,Under 18
+AGE-02,Age Rules,Number the clinic rings,Rule,The guardian's number becomes the contact number for confirmation calls.,"For an adult, their own mobile is used.",Under 18
+AGE-03,Age Rules,Growth Chart tab,Rule,"Height, weight and BMI plotted against published centile curves.","The tab is not offered for an adult, and the URL is refused, not merely hidden.",Under 18
+AGE-04,Age Rules,Growth reference used,Rule,WHO Child Growth Standards 2006.,"Exact centile and z-score, computed from published LMS parameters.",0 to 5 years
+AGE-05,Age Rules,Growth reference used,Rule,IAP 2015 revised charts for Indian children.,"IAP publishes the curves only, so the child is placed in the band between two printed centiles, with an SDS interpolated between them.",5 to 18 years
+AGE-06,Age Rules,Growth reference used,Rule,No growth chart.,"CDC covers 18 to 20 years and is used, labelled, only where a patient is still under the paediatric limit.",Over 18
+AGE-07,Age Rules,Below the 3rd centile,Rule,No centile or SDS is invented past the outermost printed curve.,"The band is stated, and a z-score from a reference that can still compute one is shown alongside, labelled with its source.",5 to 18 years
+AGE-08,Age Rules,BMI interpretation,Rule,"Thinness, normal, overweight or obesity from the IAP adult-equivalent lines.","The 23 and 27 adult-equivalent cut-offs, which are age and sex specific: 15.7 at five years, 23.2 at eighteen.",5 to 18 years
+AGE-09,Age Rules,BMI interpretation,Rule,"BMI is calculated and shown, with no childhood banding.","The paediatric cut-offs must never be applied to an adult, nor the adult 25 and 30 to a child.",Adult
+AGE-10,Age Rules,Head circumference,Rule,Recorded and charted.,"The WHO reference stops at five years, so the curve stops there too.",Under 3
+AGE-11,Age Rules,Tanner staging,Rule,Puberty stage I to V recorded at the visit.,Not asked for an adult.,Under 18
+AGE-12,Age Rules,Parental heights,Rule,"Mother's and father's heights, giving the mid-parental target height.",Shown only when both are known.,Under 18
+AGE-13,Age Rules,Paediatric age limit,Rule,"The boundary is a clinic setting, currently 18 years.",Changing it changes which patients are offered the growth chart.,Configurable
