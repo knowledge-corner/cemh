@@ -20,7 +20,7 @@ from patients.models import Patient
 from pharmacy.models import Prescription, PrescriptionItem
 
 from .factories import (
-    make_adult_patient, make_doctor, make_patient, make_receptionist, make_user, make_visit,
+    later_today, make_adult_patient, make_doctor, make_patient, make_receptionist, make_user, make_visit,
 )
 
 PASSWORD = "testpass12345"
@@ -147,7 +147,7 @@ class TestReceptionQueue(TestCase):
         self.doctor = make_doctor()
         self.patient = make_patient()
         self.client.force_login(self.receptionist)
-        self.visit = make_visit(self.patient, self.doctor, start=timezone.now() + timedelta(hours=1))
+        self.visit = make_visit(self.patient, self.doctor, start=later_today())
 
     def move(self, to_status):
         """Move the visit the way the queue board does — over HTMX."""
@@ -404,7 +404,7 @@ class TestConfirmationCallIsVisibleWork(TestCase):
         self.to_ring = make_patient(phone="9820011111")
         self.reached = make_patient(phone="9820022222")
 
-        make_visit(self.to_ring, self.doctor, start=timezone.now() + timedelta(hours=1))
+        make_visit(self.to_ring, self.doctor, start=later_today())
         confirmed = make_visit(
             self.reached, self.doctor, start=timezone.now() + timedelta(hours=2)
         )

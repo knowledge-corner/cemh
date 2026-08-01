@@ -109,3 +109,18 @@ def make_measurement(patient, **kwargs):
     )
     defaults.update(kwargs)
     return Measurement.objects.create(**defaults)
+
+
+def later_today(hours=1):
+    """
+    A time that is still today, however late the suite happens to run.
+
+    ``timezone.now() + timedelta(hours=1)`` looks harmless and is, right up
+    until the tests run after 23:00 — then it lands on tomorrow, and every
+    assertion about "today's board" fails for reasons that have nothing to do
+    with the code. Clamped so the date cannot roll over.
+    """
+    now = timezone.localtime()
+    target = now + timedelta(hours=hours)
+    end_of_day = now.replace(hour=23, minute=59, second=0, microsecond=0)
+    return min(target, end_of_day)
