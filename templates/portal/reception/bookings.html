@@ -179,7 +179,7 @@ buried the one thing that is actually urgent.
                 <td>{{ visit.doctor.display_name }}</td>
                 <td>{{ visit.reason|default:"—" }}</td>
                 <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.total }}{% else %}—{% endif %}</td>
-                <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.paid }}{% else %}—{% endif %}</td>
+                <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.amount_paid }}{% else %}—{% endif %}</td>
                 <td><span class="badge badge--grey">{{ visit.get_status_display }}</span></td>
               </tr>
             {% endfor %}

@@ -296,7 +296,7 @@ def bookings(request):
 
     past, chosen = _past_filters(request)
     total_collected = sum(
-        (v.charge.paid for v in past[:500] if getattr(v, "charge", None)), Decimal("0.00")
+        (v.charge.amount_paid for v in past[:500] if getattr(v, "charge", None)), Decimal("0.00")
     )
 
     return render(request, "portal/reception/bookings.html", {
@@ -354,7 +354,7 @@ def export_bookings(request):
             charge.procedure_fee if charge else "",
             charge.discount if charge else "",
             charge.total if charge else "",
-            charge.paid if charge else "",
+            charge.amount_paid if charge else "",
             charge.balance if charge else "",
             visit.get_status_display(),
         ])

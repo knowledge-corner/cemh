@@ -7,7 +7,8 @@ a bare fragment, a booking taken for last Tuesday, two patients shown in one
 cabin, and yesterday's queue still sitting on today's board.
 """
 
-from datetime import date, time, timedelta
+from datetime import time, timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
@@ -443,6 +444,63 @@ class TestBookingTabsAndExport(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["filters"]["doctor"], str(self.doctor.pk))
+
+
+class TestTheHistoryWithRealMoneyOnIt(TestCase):
+    """
+    Every earlier test in this file used visits with no charge attached, so the
+    money columns were never evaluated at all — which is exactly how a wrong
+    attribute name reached the running clinic. These build a settled visit.
+    """
+
+    def setUp(self):
+        from billing.models import Charge, Payment
+
+        self.receptionist = make_receptionist()
+        self.client.force_login(self.receptionist)
+        self.doctor = make_doctor()
+        self.patient = make_patient()
+
+        self.visit = make_visit(self.patient, self.doctor,
+                                start=timezone.now() - timedelta(days=1))
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            self.visit.transition_to(status, by_user=self.receptionist)
+
+        self.charge = Charge.objects.create(
+            visit=self.visit, patient=self.patient,
+            consultation_fee=Decimal("800.00"), procedure_fee=Decimal("200.00"),
+            discount=Decimal("100.00"), set_by=self.doctor,
+        )
+        Payment.objects.create(
+            charge=self.charge, amount=Decimal("400.00"),
+            received_by=self.receptionist,
+        )
+        self.visit.transition_to(VisitStatus.BILLED, by_user=self.receptionist)
+
+    def test_the_past_tab_renders_the_money_columns(self):
+        response = self.client.get(reverse("reception_bookings"), {"tab": "past"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "900")   # 800 + 200 - 100
+        self.assertContains(response, "400")   # part payment taken
+
+    def test_the_total_collected_adds_up_what_was_actually_paid(self):
+        response = self.client.get(reverse("reception_bookings"), {"tab": "past"})
+        self.assertEqual(response.context["total_collected"], Decimal("400.00"))
+
+    def test_the_csv_carries_the_figures_not_just_the_headings(self):
+        response = self.client.get(reverse("reception_export_bookings"))
+        rows = response.content.decode().splitlines()
+        self.assertEqual(len(rows), 2, msg="expected a header and one visit")
+        self.assertIn("900", rows[1])
+        self.assertIn("400", rows[1])
+        self.assertIn("500", rows[1])   # balance still owed
+
+    def test_the_csv_names_the_doctor_and_the_patient(self):
+        response = self.client.get(reverse("reception_export_bookings"))
+        body = response.content.decode()
+        self.assertIn(self.doctor.display_name, body)
+        self.assertIn(self.patient.patient_id, body)
 
 
 class TestAvailabilityScreenAccess(TestCase):
