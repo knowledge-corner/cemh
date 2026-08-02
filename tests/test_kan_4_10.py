@@ -428,6 +428,53 @@ class TestSettledIsReadOnly(TestCase):
         self.visit.refresh_from_db()
         self.assertTrue(self.visit.is_locked)
 
+    def test_the_booking_cannot_be_edited_through_the_endpoint(self):
+        # AC-5 / T-3 — refused server-side, not merely hidden.
+        response = self.client.get(
+            reverse("reception_edit_booking", args=[self.visit.pk]), follow=True
+        )
+        self.assertContains(response, "cannot be changed")
+
+    def test_the_slot_is_unchanged_after_an_attempted_edit(self):
+        before = self.visit.scheduled_start
+        self.client.post(
+            reverse("reception_edit_booking", args=[self.visit.pk]),
+            {"action": "cancel", "reason": "changed my mind"},
+        )
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, VisitStatus.BILLED)
+        self.assertEqual(self.visit.scheduled_start, before)
+
+    def test_reprinting_five_times_leaves_the_record_alone(self):
+        # T-5 / FR-6 — "does not alter the record … or change any timestamp".
+        url = reverse("print_receipt", args=[self.receipt.pk]) + "?mark=1"
+        self.client.get(url)
+        self.receipt.refresh_from_db()
+        first_printed = self.receipt.printed_at
+        self.assertIsNotNone(first_printed)
+
+        for _ in range(4):
+            self.client.get(url)
+
+        self.receipt.refresh_from_db()
+        self.assertEqual(self.receipt.printed_at, first_printed)
+
+    def test_every_print_is_still_recorded_in_the_audit_log(self):
+        # The history of prints belongs in the append-only log, not in a
+        # timestamp on the document that reprinting would overwrite.
+        from audit.models import AccessLog
+
+        url = reverse("print_receipt", args=[self.receipt.pk]) + "?mark=1"
+        for _ in range(3):
+            self.client.get(url)
+
+        self.assertEqual(
+            AccessLog.objects.filter(
+                description__contains=self.receipt.receipt_number
+            ).count(),
+            3,
+        )
+
 
 class TestBackwardMovement(TestCase):
     """KAN-9 — FR-3, FR-4, FR-6, FR-7 and AC-3 to AC-7."""

@@ -641,7 +641,15 @@ def print_prescription(request, pk):
     if prescription is None:
         return HttpResponse("No prescription has been issued for this visit.", status=404)
 
-    if request.method == "POST" or request.GET.get("mark"):
+    # KAN-8 FR-6: a reprint changes nothing. ``printed_at`` records that the
+    # document reached paper at all, so it is stamped once and then left alone —
+    # otherwise every reprint would edit a settled record, and "when was this
+    # first given to the patient" would quietly become "when was it last
+    # printed". Each print is still recorded in the audit log, which is where a
+    # history of prints belongs.
+    if prescription.printed_at is None and (
+        request.method == "POST" or request.GET.get("mark")
+    ):
         prescription.printed_at = timezone.now()
         prescription.save(update_fields=["printed_at", "updated_at"])
 
@@ -668,7 +676,10 @@ def print_receipt(request, pk):
     )
     charge = receipt.payment.charge
 
-    if request.method == "POST" or request.GET.get("mark"):
+    # Stamped once, then never again — see the note on print_prescription.
+    if receipt.printed_at is None and (
+        request.method == "POST" or request.GET.get("mark")
+    ):
         receipt.printed_at = timezone.now()
         receipt.save(update_fields=["printed_at"])
 
