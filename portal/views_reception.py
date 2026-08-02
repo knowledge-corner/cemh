@@ -511,12 +511,43 @@ def patient_lookup(request):
     })
 
 
+def _possible_duplicates(form):
+    """
+    Patients who look like the one being registered.
+
+    Name *and* number together, not either alone: families share a mobile
+    constantly — a mother's number sits on three of her children's records —
+    so matching on the number by itself would stop the ordinary case rather
+    than the mistaken one.
+    """
+    first = (form.cleaned_data.get("first_name") or "").strip()
+    last = (form.cleaned_data.get("last_name") or "").strip()
+    phone = (form.cleaned_data.get("phone") or "").strip()
+
+    if not (first and phone):
+        return Patient.objects.none()
+
+    return Patient.objects.filter(
+        is_active=True, phone=phone, first_name__iexact=first, last_name__iexact=last
+    )[:5]
+
+
 @role_required(Role.RECEPTIONIST)
 def register_patient(request):
     """Register a patient who has never attended before."""
+    duplicates = None
+
     if request.method == "POST":
         form = clinic_forms.PatientForm(request.POST)
         if form.is_valid():
+            # A second record for somebody already here does not just make a
+            # mess: it splits their history in two and the doctor reads half of
+            # it. So the existing record is offered before a new one is made —
+            # once, and then reception decides.
+            if not request.POST.get("confirm"):
+                duplicates = _possible_duplicates(form)
+
+        if form.is_valid() and not duplicates:
             patient = form.save()
             record(
                 request, AuditAction.CREATE, obj=patient, patient=patient,
@@ -537,8 +568,12 @@ def register_patient(request):
 
     return render(request, "portal/reception/register_patient.html", {
         "form": form,
+        "duplicates": duplicates,
         "cancel_url": _safe_next(request),
-        "next": request.GET.get("next", ""),
+        # Carried on the form as well as the query string: the warning above
+        # re-posts the page, and losing the filter on the way back would defeat
+        # the point of keeping it (AC-4).
+        "next": request.GET.get("next") or request.POST.get("next", ""),
     })
 
 

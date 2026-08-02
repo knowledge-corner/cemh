@@ -661,3 +661,72 @@ class TestTheActionsBar(TestCase):
              "next": "https://evil.example.com/"},
         )
         self.assertNotIn("evil.example.com", response["Location"])
+
+    # ── The duplicate-patient edge case ──────────────────────────────────────
+
+    FIELDS = {
+        "first_name": "Meera", "last_name": "Kulkarni", "date_of_birth": "1988-03-11",
+        "sex": "F", "blood_group": "", "phone": "9820099999",
+        "alternate_phone": "", "email": "", "guardian_name": "",
+        "guardian_relation": "", "guardian_phone": "", "address": "",
+        "city": "Mumbai", "pincode": "", "referred_by": "",
+    }
+
+    def _register(self, **overrides):
+        return self.client.post(
+            reverse("reception_register_patient"), {**self.FIELDS, **overrides}
+        )
+
+    def test_the_same_person_twice_is_queried_before_a_second_record_is_made(self):
+        from patients.models import Patient
+
+        self._register()
+        existing = Patient.objects.get(first_name="Meera")
+
+        response = self._register()
+        self.assertEqual(Patient.objects.filter(first_name="Meera").count(), 1)
+        self.assertContains(response, "already registered")
+        self.assertContains(response, existing.patient_id)
+
+    def test_the_existing_record_can_be_booked_straight_from_the_warning(self):
+        from patients.models import Patient
+
+        self._register()
+        existing = Patient.objects.get(first_name="Meera")
+        self.assertContains(self._register(), f"patient_id={existing.patient_id}")
+
+    def test_reception_can_say_it_is_a_different_person(self):
+        # Not a hard block — two people really can share a name and a number.
+        from patients.models import Patient
+
+        self._register()
+        self._register(confirm="1")
+        self.assertEqual(Patient.objects.filter(first_name="Meera").count(), 2)
+
+    def test_a_sibling_on_the_same_number_is_not_treated_as_a_duplicate(self):
+        # Families share a mobile constantly; this is the ordinary case, not
+        # the mistaken one.
+        from patients.models import Patient
+
+        self._register()
+        self._register(first_name="Rohan", date_of_birth="2015-07-02", sex="M")
+        self.assertEqual(Patient.objects.filter(phone="9820099999").count(), 2)
+
+    def test_the_return_path_survives_the_duplicate_warning(self):
+        # AC-4 — the warning re-posts the page, and losing the filter there
+        # would defeat the point of carrying it.
+        target = f"{reverse('reception_home')}?doctor={self.doctor.pk}"
+        self._register(next=target)
+        response = self._register(next=target)
+        self.assertContains(response, "already registered")
+        self.assertContains(response, f'value="{target}"')
+
+    def test_the_cancel_link_goes_back_where_the_user_came_from(self):
+        # AC-3 / T-5. There were three Cancel links on this form and two went
+        # somewhere else entirely.
+        target = f"{reverse('reception_home')}?doctor={self.doctor.pk}"
+        body = self.client.get(
+            f"{reverse('reception_register_patient')}?next={target}"
+        ).content.decode()
+        self.assertEqual(body.count(">Cancel<"), 1)
+        self.assertIn(f'href="{target}"', body)

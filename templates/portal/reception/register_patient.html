@@ -9,7 +9,10 @@
     <h1 class="page-header__title">Register a new patient</h1>
     <p class="page-header__sub">A {{ patient_id_label }} is issued automatically on saving</p>
   </div>
-  <a class="btn btn--secondary" href="{% url 'reception_new_booking' %}">Cancel</a>
+  {% comment %}
+  Cancel lives with the submit button at the foot of the form, and only there.
+  This page had three of them, two pointing somewhere else entirely.
+  {% endcomment %}
 </div>
 
 <div class="card page--narrow">
@@ -19,6 +22,37 @@
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       {% if form.non_field_errors %}
         <ul class="messages">{% for e in form.non_field_errors %}<li class="error">{{ e }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      {% comment %}
+      KAN-10's duplicate edge case. A second record for a patient who is already
+      here does not merely make a mess — it splits their history in two, and the
+      doctor then reads half of it. So the existing record is offered first.
+
+      Not a hard block: families share a mobile number constantly, and a mother
+      registering a second child under the same number is the ordinary case, not
+      the mistake. The clinic decides, and the button says which they are doing.
+      {% endcomment %}
+      {% if duplicates %}
+        <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+          <div>
+            <span class="alert-strip__title">
+              Somebody with this name and number is already registered
+            </span><br>
+            Booking the existing record keeps their history in one place.
+            <ul style="margin:.5rem 0 0;padding-left:1.125rem">
+              {% for existing in duplicates %}
+                <li style="margin-bottom:.25rem">
+                  <strong>{{ existing.full_name }}</strong>
+                  <span class="mono">{{ existing.patient_id }}</span> ·
+                  {{ existing.age_display }} ·
+                  <span class="mono">{{ existing.phone }}</span>
+                  &nbsp;<a href="{% url 'reception_new_booking' %}?patient_id={{ existing.patient_id }}">Book this patient</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
       {% endif %}
 
       <div class="form-grid">
@@ -33,9 +67,16 @@
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
-        <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
-        <button type="submit" class="btn btn--primary">Register &amp; book</button>
         <a class="btn btn--secondary" href="{{ cancel_url }}">Cancel</a>
+        {% if duplicates %}
+          <button type="submit" name="confirm" value="1" class="btn btn--primary">
+            This is a different person — register anyway
+          </button>
+        {% else %}
+          <button type="submit" class="btn btn--primary">
+            {% if next %}Register{% else %}Register &amp; book{% endif %}
+          </button>
+        {% endif %}
       </div>
     </form>
   </div>
