@@ -316,6 +316,13 @@ p { margin: 0 0 .75rem; }
 .table tbody tr:hover { background: var(--surface-muted); }
 .table__num { text-align: right; font-family: var(--font-mono); }
 
+/* Rows whose height is set by a button rather than by their text. Top-aligning
+   those leaves the words sitting above the control they belong to, so the row
+   reads as two rows. A modifier rather than a change to .table td: tables of
+   wrapping prose — a diagnosis, an instruction — do want their first line level
+   across the row. */
+.table--middle td { vertical-align: middle; }
+
 /* Wide tables scroll inside their own box rather than the page. */
 .table-scroll { overflow-x: auto; }
 

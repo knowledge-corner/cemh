@@ -19,7 +19,7 @@ from appointments.models import ALLOWED_TRANSITIONS, VisitStatus
 from billing.models import Charge, Payment, Receipt
 
 from .factories import (
-    later_today, make_doctor, make_patient, make_receptionist, make_visit,
+    make_doctor, make_patient, make_receptionist, make_visit, today_at as at,
 )
 
 #: The four stages, in the order the ticket fixes them.
@@ -29,14 +29,6 @@ STAGES = [
     "Stage 3 · Cabin",
     "Stage 4 · Ready to bill / Settled",
 ]
-
-
-def at(hour, minute=0, days=0):
-    """A time today (or `days` from today) that will not collide with another."""
-    when = timezone.localtime().replace(
-        hour=hour, minute=minute, second=0, microsecond=0
-    )
-    return when + timezone.timedelta(days=days) if days else when
 
 
 class TestTheFourStages(TestCase):
@@ -489,6 +481,14 @@ class TestCompletedAppointments(TestCase):
         # It is money somebody still has to collect, not a finished appointment.
         self._pay("300.00")
         self.assertNotContains(self._completed(), self.patient.patient_id)
+
+    def test_a_visit_with_no_charge_at_all_still_appears(self):
+        # Nothing owing is not the same as fully paid. Every visit recorded
+        # before the clinic billed through this system has no charge on it, and
+        # hiding those empties the screen built to look them up.
+        self.charge.delete()
+        self.visit.transition_to(VisitStatus.BILLED, by_user=self.receptionist)
+        self.assertContains(self._completed(), self.patient.patient_id)
 
     def test_it_can_be_filtered_by_date_and_doctor(self):
         self._pay("800.00")

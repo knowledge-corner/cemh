@@ -20,7 +20,7 @@ from billing.models import Charge, Payment, Receipt
 from portal.forms import PaymentForm
 
 from .factories import (
-    later_today, make_doctor, make_patient, make_receptionist, make_visit,
+    make_doctor, make_patient, make_receptionist, make_visit, today_at,
 )
 
 
@@ -31,8 +31,13 @@ def _arrived(patient, doctor, by, hours=1):
     ``hours`` must differ per patient for the same doctor: the double-booking
     exclusion constraint refuses two overlapping visits, which is exactly what
     it is for.
+
+    A fixed hour of the morning rather than an offset from the clock. Offsets
+    run past midnight when the suite runs late, and then the two visits land on
+    different days — which silently switches off the one-patient-per-cabin rule
+    these tests exist to check, because that rule is scoped to a single day.
     """
-    visit = make_visit(patient, doctor, start=later_today(hours))
+    visit = make_visit(patient, doctor, start=today_at(8 + hours))
     visit.transition_to(VisitStatus.CONFIRMED, by_user=by)
     visit.transition_to(VisitStatus.ARRIVED, by_user=by)
     return visit
@@ -509,7 +514,7 @@ class TestBackwardMovement(TestCase):
     def test_the_first_stage_offers_no_way_back(self):
         # FR-4 / AC-4.
         booking = make_visit(make_patient(phone="9820044444"), self.doctor,
-                             start=later_today(2))
+                             start=today_at(16))
         self.assertIsNone(booking.previous_status)
         with self.assertRaises(InvalidTransition):
             booking.move_back(by_user=self.receptionist)

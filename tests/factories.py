@@ -119,8 +119,29 @@ def later_today(hours=1):
     until the tests run after 23:00 — then it lands on tomorrow, and every
     assertion about "today's board" fails for reasons that have nothing to do
     with the code. Clamped so the date cannot roll over.
+
+    Note the clamp collapses distinct offsets onto the same minute late in the
+    evening, which then trips the double-booking constraint. Use
+    :func:`today_at` when a test needs two visits for one doctor on one day.
     """
     now = timezone.localtime()
     target = now + timedelta(hours=hours)
     end_of_day = now.replace(hour=23, minute=59, second=0, microsecond=0)
     return min(target, end_of_day)
+
+
+def today_at(hour, minute=0, days=0):
+    """
+    A fixed time of day, today — or ``days`` from today.
+
+    Prefer this to ``now() + timedelta`` wherever a test cares which day the
+    visit lands on, or needs two visits that do not collide. An offset from the
+    current clock gives a different answer at 09:00 than at 23:00, and both
+    failures read as product bugs rather than as the test's own arithmetic: the
+    visit quietly moves to tomorrow, so it drops off today's board and out of
+    the one-patient-per-cabin rule, which is scoped to the visit's own day.
+    """
+    base = timezone.localtime().replace(
+        hour=hour, minute=minute, second=0, microsecond=0
+    )
+    return base + timedelta(days=days) if days else base

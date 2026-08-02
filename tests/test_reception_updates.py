@@ -20,7 +20,9 @@ from appointments.models import (
     ScheduleOverride, Visit, VisitStatus,
 )
 
-from .factories import make_doctor, make_patient, make_receptionist, make_visit
+from .factories import (
+    make_doctor, make_patient, make_receptionist, make_visit, today_at,
+)
 
 
 def _next_working_day():
@@ -57,7 +59,7 @@ class TestConfirmDeclineReturnTheRightThing(TestCase):
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
         self.visit = make_visit(
-            make_patient(), make_doctor(), start=timezone.now() + timedelta(hours=2)
+            make_patient(), make_doctor(), start=today_at(10)
         )
 
     def _move(self, status, **kwargs):
@@ -92,10 +94,13 @@ class TestOnlyOneInCabin(TestCase):
     def setUp(self):
         self.doctor = make_doctor()
         self.receptionist = make_receptionist()
-        self.first = make_visit(make_patient(), self.doctor,
-                                start=timezone.now() + timedelta(hours=1))
+        # Fixed times, not offsets from the clock: two visits an hour apart
+        # land on different days when the suite runs late in the evening, and
+        # the one-per-cabin rule is scoped to the visit's own day — so the test
+        # would stop testing anything without failing.
+        self.first = make_visit(make_patient(), self.doctor, start=today_at(10))
         self.second = make_visit(make_patient(phone="9820011111"), self.doctor,
-                                 start=timezone.now() + timedelta(hours=2))
+                                 start=today_at(11))
         for visit in (self.first, self.second):
             visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
             visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
@@ -132,7 +137,7 @@ class TestOnlyOneInCabin(TestCase):
     def test_another_doctor_is_unaffected(self):
         other = make_doctor(username="dr2", email="dr2@example.in")
         theirs = make_visit(make_patient(phone="9820022222"), other,
-                            start=timezone.now() + timedelta(hours=1))
+                            start=today_at(12))
         theirs.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
         theirs.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
 

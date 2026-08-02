@@ -17,7 +17,7 @@ from audit.models import AccessLog, AuditAction
 
 from .factories import (
     make_adult_patient, make_doctor, make_history, make_measurement, make_patient,
-    make_receptionist, make_user, make_visit,
+    make_receptionist, make_user, make_visit, today_at,
 )
 from .test_growth_reference import _clinic_with
 
@@ -133,7 +133,9 @@ class TestDoctorHome(TestCase):
 
     def test_queue_shows_a_patient_arrived_today(self):
         patient = make_patient()
-        visit = make_visit(patient, self.doctor, start=timezone.now() + timedelta(minutes=30))
+        # A fixed hour, not an offset: half an hour from 23:51 is tomorrow,
+        # and the doctor's queue is today's.
+        visit = make_visit(patient, self.doctor, start=today_at(10))
         visit.transition_to(VisitStatus.CONFIRMED, by_user=self.doctor)
         visit.transition_to(VisitStatus.ARRIVED, by_user=self.doctor)
 
@@ -143,7 +145,7 @@ class TestDoctorHome(TestCase):
     def test_another_doctors_patient_is_not_in_my_queue(self):
         other = make_doctor(username="dr2", email="dr2@example.in")
         patient = make_patient()
-        make_visit(patient, other, start=timezone.now() + timedelta(minutes=30))
+        make_visit(patient, other, start=today_at(10))
 
         response = self.client.get(reverse("doctor_home"))
         self.assertNotContains(response, patient.patient_id)

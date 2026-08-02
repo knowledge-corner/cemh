@@ -377,13 +377,22 @@ def _upcoming_filters(request):
 
 def _past_filters(request):
     """
-    Completed appointments: seen, billed, and the money actually in.
+    Completed appointments: seen, billed, and nothing left owing.
 
-    Filtered on the payment rather than on the stage. A visit sitting at BILLED
+    Filtered on the money rather than on the stage. A visit sitting at BILLED
     with a part payment against it is not finished — somebody still has to
     collect the rest — and listing it as completed is how that balance stops
     being chased.
+
+    "Nothing owing" rather than "fully paid", because they are not the same
+    thing. A visit with no charge on it at all owes nothing: that is every
+    historical visit recorded before the clinic billed through this system, and
+    excluding them does not protect anybody from anything — it just deletes the
+    clinic's own history from the one screen built to look it up.
     """
+    total_due = (
+        F("charge__consultation_fee") + F("charge__procedure_fee") - F("charge__discount")
+    )
     visits = (
         Visit.objects.filter(status__in=(VisitStatus.BILLED, VisitStatus.COMPLETED))
         .with_related()
@@ -394,11 +403,7 @@ def _past_filters(request):
                 output_field=DecimalField(max_digits=10, decimal_places=2),
             ),
         )
-        .filter(
-            _paid__gte=F("charge__consultation_fee")
-            + F("charge__procedure_fee")
-            - F("charge__discount")
-        )
+        .filter(Q(charge__isnull=True) | Q(_paid__gte=total_due))
         .order_by("-scheduled_start")
     )
 

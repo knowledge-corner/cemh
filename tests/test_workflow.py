@@ -20,7 +20,8 @@ from patients.models import Patient
 from pharmacy.models import Prescription, PrescriptionItem
 
 from .factories import (
-    later_today, make_adult_patient, make_doctor, make_patient, make_receptionist, make_user, make_visit,
+    later_today, make_adult_patient, make_doctor, make_patient, make_receptionist,
+    make_user, make_visit, today_at,
 )
 
 PASSWORD = "testpass12345"
@@ -433,10 +434,8 @@ class TestAppointmentsAreOneStage(TestCase):
         self.to_ring = make_patient(phone="9820011111")
         self.reached = make_patient(phone="9820022222")
 
-        make_visit(self.to_ring, self.doctor, start=later_today())
-        confirmed = make_visit(
-            self.reached, self.doctor, start=timezone.now() + timedelta(hours=2)
-        )
+        make_visit(self.to_ring, self.doctor, start=today_at(10))
+        confirmed = make_visit(self.reached, self.doctor, start=today_at(11))
         confirmed.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
 
     def test_the_board_has_no_to_confirm_column(self):
