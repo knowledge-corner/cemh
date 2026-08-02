@@ -34,6 +34,9 @@ urlpatterns = [
          views_reception.remove_availability, name="reception_remove_availability"),
 
     path("reception/billing/<int:pk>/", views_reception.billing, name="reception_billing"),
+    # Taking the fee in a pop-up on the board, rather than on the billing page.
+    path("reception/billing/<int:pk>/receipt/", views_reception.generate_receipt,
+         name="reception_generate_receipt"),
     path("reception/billing/<int:pk>/complete/",
          views_reception.complete_visit, name="reception_complete_visit"),
 

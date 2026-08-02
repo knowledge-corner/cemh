@@ -47,10 +47,22 @@ class VisitStatus(models.TextChoices):
 #:                ↓          ↓
 #:            CANCELLED   NO_SHOW
 #:
+#: BOOKED reaches ARRIVED directly as well as through CONFIRMED. The board no
+#: longer keeps a separate "to confirm" stage — a booking and a confirmed
+#: booking sit together in one Appointments column — so the receptionist marks
+#: the patient arrived from whichever state the booking is in, without a
+#: telephone step nobody performs any more.
+#:
+#: CONFIRMED is kept rather than removed: visits already carry it, backward
+#: movement out of the waiting room lands on it, and a clinic that decides to
+#: start ringing patients again should not need a migration to do it.
+#:
 #: Enforced in :meth:`Visit.transition_to`. Assigning ``visit.status``
 #: directly bypasses this and must not be done outside migrations.
 ALLOWED_TRANSITIONS = {
-    VisitStatus.BOOKED: {VisitStatus.CONFIRMED, VisitStatus.CANCELLED},
+    VisitStatus.BOOKED: {
+        VisitStatus.CONFIRMED, VisitStatus.ARRIVED, VisitStatus.CANCELLED,
+    },
     VisitStatus.CONFIRMED: {VisitStatus.ARRIVED, VisitStatus.CANCELLED, VisitStatus.NO_SHOW},
     VisitStatus.ARRIVED: {VisitStatus.IN_CABIN, VisitStatus.CANCELLED},
     VisitStatus.IN_CABIN: {VisitStatus.CONSULTED},

@@ -1,0 +1,9 @@
+{% comment %}
+The payment went through.
+
+This response is swapped into #modal-host, which empties the dialog, and the
+board is carried alongside it as an out-of-band swap so the card moves into
+Settled at the same moment rather than on the next thirty-second poll. Same
+pattern as the doctor's save.
+{% endcomment %}
+<div hx-swap-oob="innerHTML:#queue-board">{{ board_html|safe }}</div>

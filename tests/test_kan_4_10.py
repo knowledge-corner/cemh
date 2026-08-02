@@ -463,7 +463,7 @@ class TestSettledIsReadOnly(TestCase):
         # KAN-8's last edge case — the same read-only view, reached from the
         # Past bookings tab. A patient ringing next month for a copy of their
         # receipt is what that screen's date filter is for.
-        page = self.client.get(reverse("reception_bookings") + "?tab=past")
+        page = self.client.get(reverse("reception_bookings") + "?tab=completed")
         self.assertContains(
             page, reverse("reception_settled_visit", args=[self.visit.pk])
         )
@@ -577,15 +577,39 @@ class TestBackwardMovement(TestCase):
         self.client.force_login(self.doctor)
         self.assertEqual(self._back().status_code, 403)
 
-    def test_a_locked_card_says_it_is_locked(self):
-        # AC-2 and the accessibility note. A button that has simply vanished
-        # reads as a page that has not finished loading, so the reason is said
-        # in words rather than left to the absence of a control.
+    def test_a_finished_card_says_it_is_locked(self):
+        # AC-2 and the accessibility note. A card with no actions left reads as
+        # a page that has not finished loading, so the reason is said in words
+        # rather than left to the absence of a control.
+        #
+        # Narrowed since Stage 4 gained the Generate receipt button: a consulted
+        # visit is not editable, but its card now carries a live action, and
+        # "closed to changes" printed beside a button the user is meant to press
+        # contradicts it. The badge is for cards with nothing left on them.
+        from billing.models import Charge, Payment
+
         self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
         self.visit.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+
+        charge = Charge.objects.create(
+            visit=self.visit, patient=self.visit.patient,
+            consultation_fee=Decimal("800.00"), set_by=self.doctor,
+        )
+        Payment.objects.create(
+            charge=charge, amount=Decimal("800.00"), received_by=self.receptionist,
+        )
+        self.visit.transition_to(VisitStatus.BILLED, by_user=self.receptionist)
+
         response = self.client.get(reverse("reception_home"))
         self.assertContains(response, "Locked")
         self.assertContains(response, "closed to changes")
+
+    def test_a_visit_waiting_to_be_paid_is_still_not_editable(self):
+        # The badge moved; the lock itself did not.
+        self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.visit.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.assertTrue(self.visit.is_locked)
+        self.assertIsNone(self.visit.previous_status)
 
     def test_an_open_card_is_not_marked_locked(self):
         self.assertNotContains(self.client.get(reverse("reception_home")), "Locked")
@@ -600,17 +624,28 @@ class TestTheActionsBar(TestCase):
         self.client.force_login(self.receptionist)
 
     def test_all_four_actions_are_offered(self):
-        # AC-1.
+        # AC-1. The fourth is the doctor filter: setting a doctor's working days
+        # is diary work and moved to the Bookings screen, so what sits on the
+        # board is the filter plus the three things reception reaches for while
+        # the clinic is running.
         response = self.client.get(reverse("reception_home"))
-        for label in ("Add patient", "New booking", "All bookings", "Doctor availability"):
+        for label in ("All doctors", "Add patient", "New booking", "All bookings"):
             self.assertContains(response, label)
 
     def test_each_action_points_at_its_screen(self):
         # AC-5.
         response = self.client.get(reverse("reception_home"))
         for name in ("reception_register_patient", "reception_new_booking",
-                     "reception_bookings", "reception_availability"):
+                     "reception_bookings"):
             self.assertContains(response, reverse(name))
+
+    def test_the_doctor_schedule_is_reached_from_bookings_not_the_board(self):
+        board = self.client.get(reverse("reception_home"))
+        self.assertNotContains(board, reverse("reception_availability"))
+
+        diary = self.client.get(reverse("reception_bookings"))
+        self.assertContains(diary, reverse("reception_availability"))
+        self.assertContains(diary, "Doctor schedule")
 
     def test_a_doctor_is_shown_none_of_them(self):
         # AC-6 — a doctor reads the board but does not work it.

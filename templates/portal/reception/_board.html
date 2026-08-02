@@ -1,7 +1,11 @@
 {% comment %}
-The queue board. Each column is a stage of the visit, and each card carries only
-the actions legal from its current state — so an out-of-order click is not
-possible from the interface, as well as being refused by the model.
+The queue board. Four stages, each card carrying only the actions legal from its
+current state — so an out-of-order click is not possible from the interface, as
+well as being refused by the model.
+
+Cancelled visits and no-shows are not shown. Nothing on them can be acted on,
+and a list that only grows through the day is noise on the one screen that has
+to be readable at a glance. They stay on the Bookings screen and in the record.
 {% endcomment %}
 
 <div class="board">
@@ -14,7 +18,7 @@ possible from the interface, as well as being refused by the model.
 
       <div class="board__cards">
         {% for visit in column.visits %}
-          <article class="pcard">
+          <article class="pcard {% if visit.status == 'IN_CABIN' %}pcard--in-cabin{% endif %}">
             <div class="pcard__top">
               <span class="pcard__time">{{ visit.scheduled_start|time:"H:i" }}</span>
               {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
@@ -29,40 +33,32 @@ possible from the interface, as well as being refused by the model.
             {% if visit.reason %}<p class="pcard__reason">{{ visit.reason }}</p>{% endif %}
 
             {% if visit.status == "CONSULTED" and visit.charge %}
-              {% comment %}KAN-6 AC-1 — reception should not have to open the
-              visit to find out what to ask for.{% endcomment %}
+              {% comment %}
+              What to ask the patient for, on the card. Reception should not have
+              to open the visit to find out.
+              {% endcomment %}
               <p class="pcard__amount strong">
-                {{ clinic_currency }}{{ visit.charge.total }} to collect
+                {{ clinic_currency }}{{ visit.charge.balance }} to collect
               </p>
             {% endif %}
 
+            {% comment %}
+            Stage 4 holds both halves of billing now, so the card has to say
+            which half it is in. A settled visit keeps its documents reachable
+            and nothing else — no "complete" step, because taking the payment is
+            what finishes a visit.
+            {% endcomment %}
             {% if visit.status == "BILLED" or visit.status == "COMPLETED" %}
               <p class="pcard__meta">
                 <a href="{% url 'reception_settled_visit' visit.pk %}">View &amp; reprint</a>
               </p>
             {% endif %}
 
-            {% if visit.status == "ARRIVED" and visit.waiting_minutes is not None %}
-              <p class="pcard__waiting {% if visit.waiting_minutes > 30 %}pcard__waiting--long{% endif %}">
-                Waiting {{ visit.waiting_minutes }} min
-              </p>
-            {% endif %}
-
-            {% if visit.status == "BOOKED" %}
-              {% comment %}
-              This card exists to be acted on by telephone, so the number leads.
-              A patient with no number can still be confirmed — they may have
-              walked in to book — so this says so rather than blocking it.
-
-              Note the tag: Django strips a hash-comment only when it is on one
-              line, so a multi-line one renders straight onto the card.
-              {% endcomment %}
+            {% if visit.status == "BOOKED" or visit.status == "CONFIRMED" %}
               {% if visit.patient.contact_phone %}
-                <a href="tel:{{ visit.patient.contact_phone }}" class="pcard__call">
-                  📞 {{ visit.patient.contact_phone }}
-                </a>
-              {% else %}
-                <p class="pcard__meta faint">No contact number</p>
+                <p class="pcard__meta">
+                  <a href="tel:{{ visit.patient.contact_phone }}" class="mono">{{ visit.patient.contact_phone }}</a>
+                </p>
               {% endif %}
               {% if visit.patient.is_paediatric and visit.patient.guardian_name %}
                 <p class="pcard__meta">Ask for {{ visit.patient.guardian_name }}</p>
@@ -73,62 +69,52 @@ possible from the interface, as well as being refused by the model.
               </p>
             {% endif %}
 
-            {% comment %}
-            Who made the confirming call, and when. Recorded already in the
-            status trail; shown here so reception can see the call was made
-            without opening anything.
-            {% endcomment %}
-            {% if visit.confirmation %}
-              <p class="pcard__meta faint small">
-                Confirmed {{ visit.confirmation.created_at|date:"H:i" }}
-                {% if visit.confirmation.changed_by %} by {{ visit.confirmation.changed_by.display_name }}{% endif %}
-              </p>
-            {% endif %}
-
             <div class="pcard__actions">
-              {% if not can_work_queue %}{% elif visit.status == "BOOKED" %}
-                {% include "portal/reception/_move_button.html" with visit=visit to="CONFIRMED" label="Confirmed by phone" primary=1 %}
-                {% include "portal/reception/_move_button.html" with visit=visit to="CANCELLED" label="Cancel" %}
-              {% elif visit.status == "CONFIRMED" %}
+              {% if not can_work_queue %}
+              {% elif visit.status == "BOOKED" or visit.status == "CONFIRMED" %}
+                {% comment %}
+                Stage 1 carries two actions and no more. The confirming telephone
+                call is gone, so a booking and a confirmed booking are the same
+                thing to the person at the desk: the patient is either here or
+                they are not.
+                {% endcomment %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="ARRIVED" label="Mark arrived" primary=1 %}
-                {% include "portal/reception/_move_button.html" with visit=visit to="NO_SHOW" label="No show" %}
+                {% include "portal/reception/_move_button.html" with visit=visit to="CANCELLED" label="Cancel" %}
               {% elif visit.status == "ARRIVED" %}
                 {% comment %}
-                KAN-4 FR-3: the doctor calls the next patient in, not reception.
-                Reception knows who has arrived; only the doctor knows they have
-                finished with the last one. Reception's button is therefore gone
-                from this column — the doctor has "Send in" on their own queue.
+                The doctor calls the next patient in, not reception. Reception
+                knows who has arrived; only the doctor knows they have finished
+                with the last one. The button lives on the doctor's own queue.
                 {% endcomment %}
               {% elif visit.status == "CONSULTED" %}
-                <a class="btn btn--primary" href="{% url 'reception_billing' visit.pk %}">Collect fee</a>
+                <button type="button" class="btn btn--primary"
+                        hx-get="{% url 'reception_generate_receipt' visit.pk %}"
+                        hx-target="#modal-host" hx-swap="innerHTML">Generate receipt</button>
               {% endif %}
 
               {% comment %}
-              KAN-8 FR-2: the Settled stage carries no action buttons, and no
-              check-out button exists anywhere in it. Taking the payment is what
-              settles a visit; a second "check out" click added a step that
-              meant nothing and left visits sitting unfinished when it was
-              forgotten. The card opens a read-only view instead.
-
-              KAN-9: one step back, to undo a mis-click. Offered only while the
-              visit is still open — once the doctor has finished, the record
-              locks and a correction is a clinical amendment, not a queue fix.
+              One stage back, to undo a mis-click. Offered only where it would
+              actually move the card: Booked and Confirmed share this stage, so
+              a confirmed booking has a previous status but no previous stage,
+              and the button there does nothing the user can see — which reads
+              as a broken screen rather than as a correction they did not need.
               {% endcomment %}
-              {% if visit.previous_status %}
+              {% if visit.can_step_back %}
                 <button type="button" class="btn btn--secondary"
                         title="Put this patient back a stage"
                         hx-post="{% url 'reception_move_visit_back' visit.pk %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}"
                         hx-target="#queue-board"
                         hx-swap="innerHTML">&larr; Back</button>
-              {% elif visit.is_locked %}
+              {% elif visit.status == "BILLED" or visit.status == "COMPLETED" %}
                 {% comment %}
-                KAN-9 AC-2. A missing button says nothing — it reads as a screen
-                that has not finished loading. This says why it is missing, in
-                words rather than by the absence of one, so nobody stands at the
-                desk clicking for a control that is never coming back.
+                A card with no actions at all has to say why, or it reads as a
+                screen that has not finished loading. Only once the visit is
+                genuinely finished, though: beside "Generate receipt" on a
+                consulted card, this said "closed to changes" next to a live
+                button.
                 {% endcomment %}
                 <span class="badge badge--grey"
-                      title="The doctor has completed this consultation, so the record is closed to changes.">
+                      title="This visit is paid for and closed to changes.">
                   &#128274; Locked
                 </span>
               {% endif %}
@@ -141,27 +127,3 @@ possible from the interface, as well as being refused by the model.
     </section>
   {% endfor %}
 </div>
-
-{% if cancelled %}
-  <div class="card" style="margin-top:1rem">
-    <div class="card__header">
-      <h2 class="card__title">Cancelled &amp; no-shows</h2>
-      <span class="badge badge--grey">{{ cancelled|length }}</span>
-    </div>
-    <div class="card__body card__body--flush table-scroll">
-      <table class="table">
-        <tbody>
-          {% for visit in cancelled %}
-            <tr>
-              <td class="mono nowrap">{{ visit.scheduled_start|time:"H:i" }}</td>
-              <td>{{ visit.patient.full_name }}</td>
-              <td class="mono faint">{{ visit.patient.patient_id }}</td>
-              <td>{{ visit.doctor.display_name }}</td>
-              <td>{% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-{% endif %}

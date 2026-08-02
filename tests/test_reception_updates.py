@@ -424,18 +424,20 @@ class TestBookingTabsAndExport(TestCase):
         self.patient = make_patient()
         self.visit = make_visit(self.patient, self.doctor, start=_tomorrow_at(11))
 
-    def test_all_three_tabs_render(self):
-        for tab in ("calls", "upcoming", "past"):
+    def test_both_tabs_render(self):
+        for tab in ("upcoming", "completed"):
             response = self.client.get(reverse("reception_bookings"), {"tab": tab})
             self.assertEqual(response.status_code, 200, msg=tab)
             self.assertEqual(response.context["active_tab"], tab)
 
-    def test_an_unknown_tab_falls_back_to_the_call_list(self):
+    def test_an_unknown_tab_falls_back_to_upcoming(self):
         response = self.client.get(reverse("reception_bookings"), {"tab": "nonsense"})
-        self.assertEqual(response.context["active_tab"], "calls")
+        self.assertEqual(response.context["active_tab"], "upcoming")
 
-    def test_an_unconfirmed_booking_is_in_the_call_list(self):
-        response = self.client.get(reverse("reception_bookings"), {"tab": "calls"})
+    def test_an_unconfirmed_booking_is_an_upcoming_appointment(self):
+        # It used to sit in a call list of its own. Nobody rings it now, so it
+        # is simply a booking that has not happened yet.
+        response = self.client.get(reverse("reception_bookings"), {"tab": "upcoming"})
         self.assertContains(response, self.patient.patient_id)
 
     def test_the_export_is_a_csv_download(self):
@@ -485,28 +487,38 @@ class TestTheHistoryWithRealMoneyOnIt(TestCase):
             discount=Decimal("100.00"), set_by=self.doctor,
         )
         Payment.objects.create(
-            charge=self.charge, amount=Decimal("400.00"),
+            charge=self.charge, amount=Decimal("900.00"),
             received_by=self.receptionist,
         )
         self.visit.transition_to(VisitStatus.BILLED, by_user=self.receptionist)
 
-    def test_the_past_tab_renders_the_money_columns(self):
-        response = self.client.get(reverse("reception_bookings"), {"tab": "past"})
+    def test_the_completed_tab_renders_the_money_columns(self):
+        response = self.client.get(reverse("reception_bookings"), {"tab": "completed"})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "900")   # 800 + 200 - 100
-        self.assertContains(response, "400")   # part payment taken
+        self.assertContains(response, "900")   # 800 + 200 - 100, and paid
 
     def test_the_total_collected_adds_up_what_was_actually_paid(self):
-        response = self.client.get(reverse("reception_bookings"), {"tab": "past"})
-        self.assertEqual(response.context["total_collected"], Decimal("400.00"))
+        response = self.client.get(reverse("reception_bookings"), {"tab": "completed"})
+        self.assertEqual(response.context["total_collected"], Decimal("900.00"))
+
+    def test_a_part_paid_visit_is_not_a_completed_appointment(self):
+        # Completed means the money is in. A visit with a balance still on it is
+        # work somebody has to finish, and listing it as completed is how that
+        # balance stops being chased.
+        from billing.models import Payment
+
+        self.charge.payments.all().delete()
+        Payment.objects.create(
+            charge=self.charge, amount=Decimal("400.00"), received_by=self.receptionist,
+        )
+        response = self.client.get(reverse("reception_bookings"), {"tab": "completed"})
+        self.assertNotContains(response, self.patient.patient_id)
 
     def test_the_csv_carries_the_figures_not_just_the_headings(self):
         response = self.client.get(reverse("reception_export_bookings"))
         rows = response.content.decode().splitlines()
         self.assertEqual(len(rows), 2, msg="expected a header and one visit")
         self.assertIn("900", rows[1])
-        self.assertIn("400", rows[1])
-        self.assertIn("500", rows[1])   # balance still owed
 
     def test_the_csv_names_the_doctor_and_the_patient(self):
         response = self.client.get(reverse("reception_export_bookings"))

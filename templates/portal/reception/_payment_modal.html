@@ -1,0 +1,109 @@
+{% comment %}
+Taking the fee, without leaving the board.
+
+Same shape as the doctor's end-of-consultation dialog so the two screens behave
+alike: escape and the backdrop both close it, and the form posts back into this
+same slot so validation errors land where the user is looking.
+{% endcomment %}
+
+<div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
+  <div class="modal modal--narrow" role="dialog" aria-modal="true" aria-labelledby="pay-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="pay-title">Generate receipt</h2>
+      <button type="button" class="modal__close" aria-label="Close"
+              onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
+    </div>
+
+    {% if not charge %}
+      <div class="modal__body">
+        <div class="alert-strip alert-strip--warning">
+          <div>
+            <span class="alert-strip__title">No fee has been set</span><br>
+            {{ visit.doctor.display_name }} has not completed this consultation yet,
+            so there is nothing to charge for. The amount is set when the doctor
+            finishes.
+          </div>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn--primary" autofocus
+                onclick="document.getElementById('modal-host').innerHTML = '';">Close</button>
+      </div>
+
+    {% else %}
+      <form method="post" action="{% url 'reception_generate_receipt' visit.pk %}"
+            hx-post="{% url 'reception_generate_receipt' visit.pk %}"
+            hx-target="#modal-host" hx-swap="innerHTML">
+        {% csrf_token %}
+
+        <div class="modal__body">
+          <p class="muted" style="margin-bottom:1rem">
+            {{ visit.patient.full_name }}
+            &middot; <span class="mono">{{ visit.patient.patient_id }}</span>
+            &middot; {{ visit.doctor.display_name }}
+          </p>
+
+          <table class="table" style="margin-bottom:1rem">
+            <tbody>
+              <tr>
+                <td>Consultation</td>
+                <td class="table__num">{{ clinic_currency }}{{ charge.consultation_fee }}</td>
+              </tr>
+              {% if charge.procedure_fee %}
+                <tr>
+                  <td>Procedure / other charges</td>
+                  <td class="table__num">{{ clinic_currency }}{{ charge.procedure_fee }}</td>
+                </tr>
+              {% endif %}
+              {% if charge.discount %}
+                <tr>
+                  <td>Discount</td>
+                  <td class="table__num">&minus; {{ clinic_currency }}{{ charge.discount }}</td>
+                </tr>
+              {% endif %}
+              <tr class="total-row">
+                <td class="strong">To collect</td>
+                <td class="table__num strong">{{ clinic_currency }}{{ charge.balance }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {% if form.non_field_errors %}
+            <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+              <div>{% for error in form.non_field_errors %}{{ error }}{% endfor %}</div>
+            </div>
+          {% endif %}
+
+          <div class="form-grid">
+            {% for field in form %}
+              <div class="field">
+                <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+                {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+
+          {% comment %}
+          A part payment is allowed and leaves the visit on the billing list, so
+          the way out of it is said here rather than being discovered later.
+          {% endcomment %}
+          <p class="faint small" style="margin:.75rem 0 0">
+            Taking less than the full amount leaves this visit waiting to be
+            billed, with the balance still showing on the card.
+          </p>
+        </div>
+
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary"
+                  onclick="document.getElementById('modal-host').innerHTML = '';">Cancel</button>
+          <a class="btn btn--secondary" href="{% url 'reception_billing' visit.pk %}">Open full bill</a>
+          <button type="submit" class="btn btn--primary">Confirm payment</button>
+        </div>
+      </form>
+    {% endif %}
+
+  </div>
+</div>

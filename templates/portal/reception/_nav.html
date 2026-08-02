@@ -1,0 +1,57 @@
+{% comment %}
+The reception nav bar, shared by Today's Clinic and Bookings.
+
+One template rather than two so the two screens cannot drift apart: they carry
+different links, but the bar itself — spacing, button sizes, where the doctor
+filter sits — is defined once. `nav_active` names the screen we are on, so its
+own entry is marked rather than offered as somewhere to go.
+
+`show_doctor_filter` puts the All-doctors select at the head of the bar. The
+filter has no visible label: "All doctors" already says what it is, and a label
+beside it only crowded the row. Screen readers get it from aria-label.
+{% endcomment %}
+
+<nav class="toolbar" aria-label="Reception">
+  {% if show_doctor_filter %}
+    <form method="get" class="toolbar__filter">
+      <select class="input" name="doctor" aria-label="Filter the board by doctor"
+              onchange="this.form.submit()"
+              {% if not doctors %}disabled title="No active doctors to filter by"{% endif %}>
+        <option value="">All doctors</option>
+        {% for d in doctors %}
+          <option value="{{ d.pk }}"
+                  {% if chosen_doctor and chosen_doctor.pk == d.pk %}selected{% endif %}>
+            {{ d.display_name }}
+          </option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn--secondary" type="submit">Filter</button></noscript>
+    </form>
+  {% endif %}
+
+  <div class="toolbar__actions">
+    {% if nav_active != "queue" %}
+      <a class="btn btn--secondary" href="{% url 'reception_home' %}">Today's queue</a>
+    {% endif %}
+
+    <a class="btn btn--secondary"
+       href="{% url 'reception_register_patient' %}?next={{ request.get_full_path|urlencode }}">Add patient</a>
+
+    <a class="btn btn--primary"
+       href="{% url 'reception_new_booking' %}?next={{ request.get_full_path|urlencode }}">New booking</a>
+
+    {% if nav_active != "bookings" %}
+      <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">All bookings</a>
+    {% endif %}
+
+    {% comment %}
+    "Doctor calendar" was the working name; this screen sets working days, time
+    slots, holidays and leave, so what reception is actually going to look up is
+    a doctor's schedule. Reached from Bookings only — it is not part of running
+    today's clinic, and it was crowding the board's bar.
+    {% endcomment %}
+    {% if nav_active == "bookings" %}
+      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor schedule</a>
+    {% endif %}
+  </div>
+</nav>

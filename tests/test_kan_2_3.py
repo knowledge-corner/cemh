@@ -1,12 +1,17 @@
 """
-KAN-2 — Today's Clinic stage board with six stages and doctor filter
-KAN-3 — To Confirm to Confirmed via receptionist call confirmation
+KAN-2 — Today's Clinic stage board and doctor filter
+KAN-3 — the confirmation step
 
-Written against the acceptance criteria in the two tickets. Much of both stories
-already existed: the six columns, the day scoping, the count badges and the
-Confirm action were built earlier. These cover what the tickets asked for that
-was not there — the doctor filter, doctor-role visibility, the confirmation
-stamp on the card, and the two edge cases the tickets call out by name.
+Both tickets have since been overtaken in part. The board is four stages rather
+than six: "To confirm" and "Confirmed" are one Appointments column now, and
+"Ready to bill" and "Settled" are one billing column. The confirming telephone
+call is no longer part of the workflow, so the tests that pinned it as visible
+work have moved to asserting the transition still exists underneath — visits
+already carry CONFIRMED, and backward movement out of the waiting room lands on
+it.
+
+What these still cover, unchanged: the doctor filter, doctor-role visibility,
+day scoping, and the count badges.
 """
 
 from datetime import timedelta
@@ -21,10 +26,10 @@ from .factories import (
     later_today, make_doctor, make_patient, make_receptionist, make_visit,
 )
 
-#: The six stages, in the order KAN-2 FR-1 fixes them.
+#: The four stages, in the order the board fixes them.
 STAGES = [
-    "To confirm", "Confirmed", "In the waiting room",
-    "With the doctor", "Ready to bill", "Settled",
+    "Stage 1 · Appointments", "Stage 2 · In waiting room",
+    "Stage 3 · Cabin", "Stage 4 · Ready to bill / Settled",
 ]
 
 
@@ -36,7 +41,7 @@ class TestTheBoardShape(TestCase):
         self.client.force_login(self.receptionist)
         self.doctor = make_doctor()
 
-    def test_six_stages_appear_in_the_defined_order(self):
+    def test_four_stages_appear_in_the_defined_order(self):
         body = self.client.get(reverse("reception_home")).content.decode()
         positions = [body.index(stage) for stage in STAGES]
         self.assertEqual(positions, sorted(positions), "stages are out of order")
@@ -62,7 +67,7 @@ class TestTheBoardShape(TestCase):
         make_visit(make_patient(), self.doctor, start=later_today())
         columns = {c["key"]: c["count"] for c in
                    self.client.get(reverse("reception_home")).context["columns"]}
-        self.assertEqual(columns["to_confirm"], 1)
+        self.assertEqual(columns["appointments"], 1)
         self.assertEqual(columns["waiting"], 0)
 
     def test_a_card_names_the_patient_the_time_and_the_doctor(self):
@@ -105,7 +110,7 @@ class TestTheDoctorFilter(TestCase):
 
     def test_the_counts_follow_the_filter(self):
         columns = {c["key"]: c["count"] for c in self._board(self.mine).context["columns"]}
-        self.assertEqual(columns["to_confirm"], 1)
+        self.assertEqual(columns["appointments"], 1)
 
     def test_resetting_to_all_shows_everybody_again(self):
         response = self._board()
@@ -156,7 +161,7 @@ class TestDoctorsCanReadTheBoard(TestCase):
         self.client.force_login(self.doctor)
         response = self.client.get(reverse("reception_home"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "In the waiting room")
+        self.assertContains(response, "Stage 2 · In waiting room")
         self.assertContains(response, self.patient.patient_id)
 
     def test_a_doctor_is_offered_no_stage_buttons(self):
@@ -203,12 +208,15 @@ class TestConfirmingByTelephone(TestCase):
         self.visit.refresh_from_db()
         self.assertEqual(self.visit.status, VisitStatus.CONFIRMED)
 
-    def test_the_counts_move_with_it(self):
+    def test_a_confirmed_booking_stays_in_the_appointments_stage(self):
+        # The two columns are one now, so confirming no longer moves the card.
+        # It is still a distinct state underneath — backward movement out of the
+        # waiting room lands on it — but the desk sees one Appointments list.
         self._confirm()
         columns = {c["key"]: c["count"] for c in
                    self.client.get(reverse("reception_home")).context["columns"]}
-        self.assertEqual(columns["to_confirm"], 0)
-        self.assertEqual(columns["confirmed"], 1)
+        self.assertEqual(columns["appointments"], 1)
+        self.assertEqual(columns["waiting"], 0)
 
     def test_the_number_to_ring_is_on_the_card_before_confirming(self):
         # AC-4 — visible without opening the booking.
@@ -222,18 +230,22 @@ class TestConfirmingByTelephone(TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event.changed_by, self.receptionist)
 
-    def test_who_confirmed_and_when_is_shown_on_the_card(self):
-        # AC-2 — recorded is not the same as visible.
+    def test_who_confirmed_is_not_printed_on_the_card_any_more(self):
+        # The stamp said "Confirmed 15:58 by Sunita Rane" on every card of a
+        # one-receptionist clinic, where the only possible answer was her. The
+        # record of it stays — see the test above — but the card is for reading
+        # at a glance and this was a line of noise on every row.
         self._confirm()
-        response = self.client.get(reverse("reception_home"))
-        self.assertContains(response, "Confirmed")
-        self.assertContains(response, self.receptionist.display_name)
+        body = self.client.get(reverse("reception_home")).content.decode()
+        self.assertNotIn(f"Confirmed 15:58 by {self.receptionist.display_name}", body)
+        self.assertNotIn("by " + self.receptionist.display_name, body)
 
-    def test_a_confirmed_booking_offers_no_second_confirm(self):
-        # AC-3.
-        self._confirm()
+    def test_no_card_offers_a_confirm_action_any_more(self):
+        # The telephone confirmation is not part of the workflow. Stage 1 offers
+        # Mark arrived and Cancel, and nothing else.
         response = self.client.get(reverse("reception_home"))
         self.assertNotContains(response, "Confirmed by phone")
+        self.assertContains(response, "Mark arrived")
 
     def test_confirming_twice_reports_it_plainly_rather_than_failing(self):
         # Two receptionists both did the right thing; one was simply second.
@@ -255,14 +267,16 @@ class TestConfirmingByTelephone(TestCase):
             self.visit.status_events.filter(to_status=VisitStatus.CONFIRMED).count(), 1
         )
 
-    def test_a_patient_with_no_number_can_still_be_confirmed(self):
-        # The ticket is explicit: say so on the card, but do not block.
+    def test_a_patient_with_no_number_still_appears_and_can_be_marked_arrived(self):
+        # Nothing about the queue depends on having a telephone number now that
+        # nobody is ringing them.
         self.patient.phone = ""
         self.patient.guardian_phone = ""
         self.patient.save()
 
         response = self.client.get(reverse("reception_home"))
-        self.assertContains(response, "No contact number")
+        self.assertContains(response, self.patient.patient_id)
+        self.assertContains(response, "Mark arrived")
 
         self._confirm()
         self.visit.refresh_from_db()

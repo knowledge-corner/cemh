@@ -18,9 +18,11 @@ from decimal import Decimal
 from django.conf import settings
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
@@ -57,16 +59,28 @@ def _safe_next(request, fallback="reception_home"):
 
 #: Columns of the queue board, in the order a patient moves through them.
 #:
-#: "To confirm" is separate from "Confirmed" on purpose: the receptionist rings
-#: each patient on the appointment day, and this is how she sees who is left.
+#: Four stages, not six. "To confirm" and "Confirmed" were separate while the
+#: receptionist rang every patient on the morning of their appointment; that
+#: call is not made any more, so the two columns held the same thing and one of
+#: them was always empty. They are now one Appointments column.
+#:
+#: "Ready to bill" and "Settled" are likewise one column: with a single
+#: receptionist, a patient waiting to pay and a patient who has paid are the
+#: same row of the desk's work, and splitting them pushed the rest of the board
+#: off the side of the screen.
 QUEUE_COLUMNS = [
-    ("to_confirm", "To confirm", (VisitStatus.BOOKED,)),
-    ("confirmed", "Confirmed", (VisitStatus.CONFIRMED,)),
-    ("waiting", "In the waiting room", (VisitStatus.ARRIVED,)),
-    ("with_doctor", "With the doctor", (VisitStatus.IN_CABIN,)),
-    ("to_bill", "Ready to bill", (VisitStatus.CONSULTED,)),
-    ("done", "Settled", (VisitStatus.BILLED, VisitStatus.COMPLETED)),
+    ("appointments", "Stage 1 · Appointments", (VisitStatus.BOOKED, VisitStatus.CONFIRMED)),
+    ("waiting", "Stage 2 · In waiting room", (VisitStatus.ARRIVED,)),
+    ("cabin", "Stage 3 · Cabin", (VisitStatus.IN_CABIN,)),
+    ("billing", "Stage 4 · Ready to bill / Settled",
+     (VisitStatus.CONSULTED, VisitStatus.BILLED, VisitStatus.COMPLETED)),
 ]
+
+#: Which stage each status is drawn in. Derived from the columns above rather
+#: than written out again, so the two cannot disagree.
+STAGE_OF_STATUS = {
+    status: key for key, _label, statuses in QUEUE_COLUMNS for status in statuses
+}
 
 
 def _queue_context(request, day=None):
@@ -103,16 +117,29 @@ def _queue_context(request, day=None):
     for visit in visits:
         by_status.setdefault(visit.status, []).append(visit)
 
+    for visit in visits:
+        # Whether "← Back" would actually move the card anywhere the user can
+        # see. Booked and Confirmed share the Appointments stage now, so a
+        # confirmed booking has a previous *status* but no previous *stage*, and
+        # offering the button there gives the receptionist a control that
+        # visibly does nothing — which reads as a broken screen rather than as
+        # a correction they did not need.
+        previous = visit.previous_status
+        visit.can_step_back = (
+            previous is not None
+            and STAGE_OF_STATUS.get(previous) != STAGE_OF_STATUS.get(visit.status)
+        )
+
     columns = []
     for key, label, statuses in QUEUE_COLUMNS:
         rows = [v for status in statuses for v in by_status.get(status, [])]
         rows.sort(key=lambda v: v.scheduled_start)
         columns.append({"key": key, "label": label, "visits": rows, "count": len(rows)})
 
-    cancelled = [
-        v for status in (VisitStatus.CANCELLED, VisitStatus.NO_SHOW)
-        for v in by_status.get(status, [])
-    ]
+    # Cancelled visits and no-shows are deliberately not on this board. They are
+    # not work: nothing on them can be acted on, and a panel of rows that only
+    # ever grows through the day is noise on the one screen that has to be
+    # scannable at a glance. They stay in the record and on the Bookings screen.
 
     # Anything still open from a previous day. A patient left showing as in the
     # cabin overnight is not a record of anything — it is a queue nobody closed,
@@ -122,7 +149,6 @@ def _queue_context(request, day=None):
     return {
         "day": day,
         "columns": columns,
-        "cancelled": cancelled,
         "total": len(visits),
         "doctors": doctors,
         "chosen_doctor": chosen_doctor,
@@ -132,10 +158,12 @@ def _queue_context(request, day=None):
         "can_work_queue": request.user.role == Role.RECEPTIONIST or request.user.is_superuser,
         "stale": stale,
         "stale_count": len(stale),
-        # What still has to happen before the receptionist can go home.
+        # What still has to happen before the receptionist can go home. Stage 4
+        # holds both the unpaid and the paid now, so "still open" counts the
+        # money owed rather than the whole column.
         "open_today": sum(
-            column["count"] for column in columns if column["key"] != "done"
-        ),
+            column["count"] for column in columns if column["key"] != "billing"
+        ) + len(by_status.get(VisitStatus.CONSULTED, [])),
     }
 
 
@@ -266,25 +294,32 @@ def move_visit(request, pk, to_status):
 
 # ── Bookings ──────────────────────────────────────────────────────────────────
 
-#: The three things a receptionist does on the bookings screen, in the order
-#: they matter: today's calls, then the diary, then looking something up.
+#: Two tabs: what is still to come, and what is finished and paid for.
+#:
+#: The old "Confirmation calls to make" tab has gone with the telephone
+#: confirmation step itself. Its bookings are not lost — a booking nobody has
+#: confirmed is simply an upcoming appointment, which is what it always was.
 BOOKING_TABS = [
-    ("calls", "Confirmation calls to make"),
-    ("upcoming", "Confirmed & upcoming"),
-    ("past", "Past bookings"),
+    ("upcoming", "Upcoming appointments"),
+    ("completed", "Completed appointments"),
 ]
 
+#: A visit is upcoming while it has not yet reached the doctor. CONFIRMED is
+#: included so that a patient moved back out of the waiting room reappears here
+#: rather than vanishing from both screens.
+UPCOMING_STATUSES = (VisitStatus.BOOKED, VisitStatus.CONFIRMED)
 
-def _past_filters(request):
-    """Read the filter form, returning the queryset and what was chosen."""
-    visits = (
-        Visit.objects.filter(status__in=(VisitStatus.BILLED, VisitStatus.COMPLETED))
-        .with_related()
-        .select_related("charge")
-        .order_by("-scheduled_start")
-    )
 
-    chosen = {
+def _as_date(value):
+    try:
+        return timezone.datetime.strptime(value, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _chosen_filters(request):
+    """What the filter form was set to, whichever tab is showing."""
+    return {
         "from": request.GET.get("from", "").strip(),
         "to": request.GET.get("to", "").strip(),
         "doctor": request.GET.get("doctor", "").strip(),
@@ -292,19 +327,84 @@ def _past_filters(request):
         "condition": request.GET.get("condition", "").strip(),
     }
 
-    def as_date(value):
-        try:
-            return timezone.datetime.strptime(value, "%Y-%m-%d").date()
-        except (ValueError, TypeError):
-            return None
 
-    start, end = as_date(chosen["from"]), as_date(chosen["to"])
+def _apply_date_and_doctor(visits, chosen):
+    """The two filters both tabs share."""
+    start, end = _as_date(chosen["from"]), _as_date(chosen["to"])
     if start:
         visits = visits.filter(scheduled_start__date__gte=start)
     if end:
         visits = visits.filter(scheduled_start__date__lte=end)
     if chosen["doctor"]:
         visits = visits.filter(doctor_id=chosen["doctor"])
+    return visits
+
+
+def _upcoming_filters(request):
+    """
+    Appointments still to happen, split into today and the days after it.
+
+    Today's group is *not* narrowed to slots that have not passed yet. A patient
+    twenty minutes late is exactly the one reception is looking for, and hiding
+    their appointment the moment the clock passes it is how they end up being
+    told there is no booking.
+    """
+    chosen = _chosen_filters(request)
+    today = timezone.localdate()
+
+    visits = (
+        Visit.objects.filter(status__in=UPCOMING_STATUSES, scheduled_start__date__gte=today)
+        .with_related()
+        .order_by("scheduled_start")
+    )
+    visits = _apply_date_and_doctor(visits, chosen)
+
+    if chosen["patient_id"]:
+        visits = visits.filter(
+            Q(patient__patient_id__icontains=chosen["patient_id"])
+            | Q(patient__phone__icontains=chosen["patient_id"])
+            | Q(patient__first_name__icontains=chosen["patient_id"])
+            | Q(patient__last_name__icontains=chosen["patient_id"])
+        )
+
+    rows = list(visits)
+    return (
+        [v for v in rows if timezone.localtime(v.scheduled_start).date() == today],
+        [v for v in rows if timezone.localtime(v.scheduled_start).date() > today],
+        chosen,
+    )
+
+
+def _past_filters(request):
+    """
+    Completed appointments: seen, billed, and the money actually in.
+
+    Filtered on the payment rather than on the stage. A visit sitting at BILLED
+    with a part payment against it is not finished — somebody still has to
+    collect the rest — and listing it as completed is how that balance stops
+    being chased.
+    """
+    visits = (
+        Visit.objects.filter(status__in=(VisitStatus.BILLED, VisitStatus.COMPLETED))
+        .with_related()
+        .select_related("charge")
+        .annotate(
+            _paid=Coalesce(
+                Sum("charge__payments__amount"), Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=10, decimal_places=2),
+            ),
+        )
+        .filter(
+            _paid__gte=F("charge__consultation_fee")
+            + F("charge__procedure_fee")
+            - F("charge__discount")
+        )
+        .order_by("-scheduled_start")
+    )
+
+    chosen = _chosen_filters(request)
+    visits = _apply_date_and_doctor(visits, chosen)
+
     if chosen["patient_id"]:
         visits = visits.filter(
             Q(patient__patient_id__icontains=chosen["patient_id"])
@@ -326,23 +426,14 @@ def _past_filters(request):
 
 @role_required(Role.RECEPTIONIST)
 def bookings(request):
-    """Confirmation calls, the diary ahead, and a searchable history."""
-    today = timezone.localdate()
-    tab = request.GET.get("tab", "calls")
+    """The diary ahead, and what has been seen and paid for."""
+    tab = request.GET.get("tab", "upcoming")
     if tab not in dict(BOOKING_TABS):
-        tab = "calls"
+        tab = "upcoming"
 
-    calls = (
-        Visit.objects.filter(status=VisitStatus.BOOKED, scheduled_start__date__gte=today)
-        .with_related().order_by("scheduled_start")
-    )
-    upcoming = (
-        Visit.objects.filter(
-            status=VisitStatus.CONFIRMED, scheduled_start__date__gte=today
-        ).with_related().order_by("scheduled_start")
-    )
+    today_rows, ahead_rows, chosen = _upcoming_filters(request)
 
-    past, chosen = _past_filters(request)
+    past, past_chosen = _past_filters(request)
     total_collected = sum(
         (v.charge.amount_paid for v in past[:500] if getattr(v, "charge", None)), Decimal("0.00")
     )
@@ -350,12 +441,13 @@ def bookings(request):
     return render(request, "portal/reception/bookings.html", {
         "tabs": BOOKING_TABS,
         "active_tab": tab,
-        "calls": calls,
-        "upcoming": upcoming,
+        "today_rows": today_rows,
+        "ahead_rows": ahead_rows,
+        "upcoming_count": len(today_rows) + len(ahead_rows),
         "past": past[:300],
         "past_count": past.count(),
         "total_collected": total_collected,
-        "filters": chosen,
+        "filters": chosen if tab == "upcoming" else past_chosen,
         "doctors": User.objects.filter(role=Role.DOCTOR, is_active=True),
     })
 
@@ -579,6 +671,106 @@ def register_patient(request):
 
 # ── Billing ───────────────────────────────────────────────────────────────────
 
+def _take_payment(request, visit, charge, form):
+    """
+    Record one payment against a charge and issue its receipt.
+
+    Shared by the billing page and the Generate receipt pop-up, because the part
+    that must not be got wrong is the same in both: the charge is re-read under
+    a row lock and the balance checked there. The form has already refused an
+    amount larger than the balance, but two clicks — or two people on the same
+    bill — each read that balance before either wrote to it, and only the lock
+    sees that collision.
+
+    Returns the receipt, or ``None`` when the bill was already settled.
+    """
+    with transaction.atomic():
+        locked = Charge.objects.select_for_update().get(pk=charge.pk)
+
+        if locked.balance <= 0:
+            return None
+
+        payment = form.save(commit=False)
+        payment.charge = locked
+        payment.received_by = request.user
+        payment.save()
+        receipt = Receipt.objects.create(payment=payment)
+
+        # Only settle the visit once nothing is outstanding — a part payment
+        # must leave it on the billing list.
+        if locked.balance <= 0 and visit.status == VisitStatus.CONSULTED:
+            visit.transition_to(VisitStatus.BILLED, by_user=request.user)
+
+    record(
+        request, AuditAction.CREATE, obj=payment, patient=visit.patient,
+        description=f"Payment received, receipt {receipt.receipt_number}",
+    )
+    messages.success(
+        request,
+        f"Receipt {receipt.receipt_number} issued for "
+        f"{settings.CLINIC.CURRENCY_SYMBOL}{payment.amount}.",
+    )
+    return receipt
+
+
+@role_required(Role.RECEPTIONIST)
+def generate_receipt(request, pk):
+    """
+    Take the fee without leaving the board (Stage 4, "Generate receipt").
+
+    A pop-up rather than a page: collecting the money is a ten-second job at the
+    desk with the patient standing there, and sending the receptionist to
+    another screen and back lost the board — and, with it, whichever doctor
+    filter she had set.
+
+    The full billing page is still there for anything harder: a part payment
+    that needs the history, or a visit somebody wants to read before taking
+    money for it.
+    """
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor", "charge"), pk=pk
+    )
+    charge = getattr(visit, "charge", None)
+
+    if charge is None:
+        # Nothing to collect: the doctor has not set a fee. Said in the dialog
+        # the user opened rather than as a 404, which would read as a bug.
+        return HttpResponse(render_to_string(
+            "portal/reception/_payment_modal.html",
+            {"visit": visit, "charge": None, "form": None},
+            request=request,
+        ))
+
+    if request.method == "POST":
+        form = clinic_forms.PaymentForm(request.POST, charge=charge)
+        if form.is_valid():
+            if _take_payment(request, visit, charge, form) is None:
+                messages.info(
+                    request, "This bill was already settled; nothing further was taken."
+                )
+            # Close the dialog and put the refreshed board back underneath it,
+            # so the card moves to Settled while the receptionist is still
+            # looking at it.
+            return HttpResponse(render_to_string(
+                "portal/reception/_payment_done.html",
+                {"board_html": render_to_string(
+                    "portal/reception/_board.html", _queue_context(request), request=request,
+                )},
+                request=request,
+            ))
+    else:
+        form = clinic_forms.PaymentForm(
+            initial={"amount": charge.balance} if charge.balance > 0 else {},
+            charge=charge,
+        )
+
+    return HttpResponse(render_to_string(
+        "portal/reception/_payment_modal.html",
+        {"visit": visit, "charge": charge, "form": form},
+        request=request,
+    ))
+
+
 @role_required(Role.RECEPTIONIST)
 def billing(request, pk):
     """
@@ -596,44 +788,9 @@ def billing(request, pk):
     if request.method == "POST" and charge:
         form = clinic_forms.PaymentForm(request.POST, charge=charge)
         if form.is_valid():
-            receipt = None
-            with transaction.atomic():
-                # KAN-6 AC-5, T-5 and T-6. The form has already refused an
-                # amount larger than the balance, but two clicks — or two
-                # receptionists on the same bill — each read that balance
-                # before either wrote to it. Re-read it under a row lock so the
-                # second one is looking at the first one's payment, and the
-                # money is not taken twice.
-                locked = Charge.objects.select_for_update().get(pk=charge.pk)
-
-                if locked.balance <= 0:
-                    settled = True
-                else:
-                    settled = False
-                    payment = form.save(commit=False)
-                    payment.charge = locked
-                    payment.received_by = request.user
-                    payment.save()
-                    receipt = Receipt.objects.create(payment=payment)
-
-                    # Only settle the visit once nothing is outstanding — a part
-                    # payment must leave it on the billing list.
-                    if locked.balance <= 0 and visit.status == VisitStatus.CONSULTED:
-                        visit.transition_to(VisitStatus.BILLED, by_user=request.user)
-
-            if settled:
+            if _take_payment(request, visit, charge, form) is None:
                 messages.info(
                     request, "This bill was already settled; nothing further was taken."
-                )
-            else:
-                record(
-                    request, AuditAction.CREATE, obj=payment, patient=visit.patient,
-                    description=f"Payment received, receipt {receipt.receipt_number}",
-                )
-                messages.success(
-                    request,
-                    f"Receipt {receipt.receipt_number} issued for "
-                    f"{settings.CLINIC.CURRENCY_SYMBOL}{payment.amount}.",
                 )
             return redirect("reception_billing", pk=visit.pk)
     else:

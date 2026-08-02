@@ -1,0 +1,51 @@
+{% comment %}
+One group of upcoming appointments — Today, or Ahead.
+
+No "Mark arrived" and no "Cancel" button here. This screen is the diary, not the
+queue: marking a patient arrived is done on Today's Clinic, in front of the
+person who has just walked in. Rescheduling and cancelling both live behind
+"Reschedule / cancel", which opens the booking properly and records a reason,
+rather than a one-click cancel next to rows the user is only scanning.
+{% endcomment %}
+
+<h2 class="section-title">
+  {{ title }}
+  <span class="badge badge--grey">{{ rows|length }}</span>
+</h2>
+
+{% if rows %}
+  <div class="table-scroll" style="margin-bottom:1.25rem">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{% if show_date %}When{% else %}Time{% endif %}</th>
+          <th>Patient</th><th>{{ patient_id_label }}</th><th>Doctor</th>
+          <th>Reason</th><th>Contact</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for visit in rows %}
+          <tr>
+            <td class="nowrap mono">
+              {% if show_date %}{{ visit.scheduled_start|date:"j M" }} {% endif %}
+              {{ visit.scheduled_start|time:"H:i" }}
+            </td>
+            <td class="strong">{{ visit.patient.full_name }}</td>
+            <td class="mono faint">{{ visit.patient.patient_id }}</td>
+            <td>{{ visit.doctor.display_name }}</td>
+            <td>{{ visit.reason|default:"—" }}</td>
+            <td class="mono">{{ visit.patient.contact_phone|default:"—" }}</td>
+            <td class="row-actions">
+              <a class="btn btn--secondary"
+                 href="{% url 'reception_edit_booking' visit.pk %}?next={{ request.get_full_path|urlencode }}">
+                Reschedule / cancel
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="faint small" style="margin:0 0 1.25rem">{{ empty_hint }}</p>
+{% endif %}

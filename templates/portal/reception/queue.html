@@ -19,46 +19,25 @@ on the Bookings screen.
       {% if open_today %}&middot; {{ open_today }} still open{% endif %}
     </p>
   </div>
-  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-    {% comment %}
-    Doctor filter. Deliberately not remembered between page loads: a filter left
-    on from yesterday is how a receptionist becomes certain the clinic is empty
-    while somebody sits in the waiting room.
-    {% endcomment %}
-    <form method="get" style="display:flex;gap:.375rem;align-items:center;margin:0">
-      <label class="field__label" for="doctor-filter" style="margin:0">Doctor</label>
-      <select class="input" id="doctor-filter" name="doctor" style="width:auto"
-              onchange="this.form.submit()"
-              {% if not doctors %}disabled title="No active doctors to filter by"{% endif %}>
-        <option value="">All doctors</option>
-        {% for d in doctors %}
-          <option value="{{ d.pk }}"
-                  {% if chosen_doctor and chosen_doctor.pk == d.pk %}selected{% endif %}>
-            {{ d.display_name }}
-          </option>
-        {% endfor %}
-      </select>
-      <noscript><button class="btn btn--secondary" type="submit">Filter</button></noscript>
-    </form>
-    {% if chosen_doctor %}
-      <a class="btn btn--secondary" href="{% url 'reception_home' %}">Show all</a>
-    {% endif %}
-
-    {% comment %}
-    KAN-10 — the four actions reception reaches for from this screen. Each
-    carries the doctor filter so returning here lands on the same view they
-    left, rather than silently widening back to all doctors.
-    {% endcomment %}
-    {% if can_work_queue %}
-      <a class="btn btn--secondary"
-         href="{% url 'reception_register_patient' %}?next={{ request.get_full_path|urlencode }}">+ Add patient</a>
-      <a class="btn btn--primary"
-         href="{% url 'reception_new_booking' %}?next={{ request.get_full_path|urlencode }}">+ New booking</a>
-      <a class="btn btn--dark" href="{% url 'reception_bookings' %}">All bookings</a>
-      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor availability</a>
-    {% endif %}
-  </div>
 </div>
+
+{% comment %}
+The doctor filter and the actions, in one bar shared with the Bookings screen so
+the two cannot drift into looking like different applications.
+
+The filter is deliberately not remembered between page loads: one left on from
+yesterday is how a receptionist becomes certain the clinic is empty while
+somebody sits in the waiting room. Each action carries the current view along in
+`next`, so coming back lands where they left rather than widening to all
+doctors.
+
+Doctor availability is not here. Setting a doctor's working days and leave is
+not part of running today's clinic; it is reached from Bookings, where looking
+up a diary belongs.
+{% endcomment %}
+{% if can_work_queue %}
+  {% include "portal/reception/_nav.html" with nav_active="queue" show_doctor_filter=1 %}
+{% endif %}
 
 {% comment %}
 Anything left open from an earlier day. A patient still showing as in the cabin
@@ -91,6 +70,8 @@ opens.
 {% comment %}
 The board reloads itself every 30 seconds. A receptionist leaves this open all
 day, and a stale board is worse than useless — it sends the wrong patient in.
+Anything done from the board swaps the fresh state straight back, so the poll is
+the backstop rather than the mechanism.
 
 The refresh carries the doctor filter with it. Without that, the board would
 quietly widen back to all doctors half a minute after being filtered, which is

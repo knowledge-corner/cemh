@@ -417,10 +417,12 @@ class TestChartShowsTheVisitInProgress(TestCase):
         self.assertEqual(response.context["active_visit"], self.today_visit)
 
 
-class TestConfirmationCallIsVisibleWork(TestCase):
+class TestAppointmentsAreOneStage(TestCase):
     """
-    The board must separate patients still to ring from those already reached —
-    that separation is the whole point of the confirmation call.
+    The board used to separate patients still to ring from those already
+    reached. The confirming call is not made any more, so the two columns held
+    the same thing and one of them was always empty: they are one Appointments
+    stage now, and both bookings belong to it.
     """
 
     def setUp(self):
@@ -437,16 +439,33 @@ class TestConfirmationCallIsVisibleWork(TestCase):
         )
         confirmed.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
 
-    def test_board_has_a_to_confirm_column(self):
+    def test_the_board_has_no_to_confirm_column(self):
         response = self.client.get(reverse("reception_home"))
-        self.assertContains(response, "To confirm")
-        self.assertContains(response, "Confirmed")
+        self.assertNotContains(response, "To confirm")
+        self.assertContains(response, "Stage 1 · Appointments")
 
-    def test_an_unconfirmed_booking_offers_the_number_to_ring(self):
+    def test_both_bookings_sit_in_the_appointments_stage(self):
+        columns = {c["key"]: c["count"] for c in
+                   self.client.get(reverse("reception_home")).context["columns"]}
+        self.assertEqual(columns["appointments"], 2)
+
+    def test_the_number_is_still_on_the_card(self):
+        # Nobody rings to confirm any more, but reception still has to reach a
+        # patient who has not turned up.
         response = self.client.get(reverse("reception_home"))
         self.assertContains(response, f'tel:{self.to_ring.contact_phone}')
 
-    def test_confirming_moves_the_patient_across(self):
+    def test_an_unconfirmed_booking_can_be_marked_arrived_directly(self):
+        # There is no confirming step in between any more. The patient is either
+        # standing at the desk or they are not.
+        visit = Visit.objects.get(patient=self.to_ring)
+        self.client.post(reverse("reception_move_visit", args=[visit.pk, "ARRIVED"]))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.ARRIVED)
+
+    def test_confirming_still_works_underneath(self):
+        # Kept rather than removed: visits already carry it, and backward
+        # movement out of the waiting room lands on it.
         visit = Visit.objects.get(patient=self.to_ring)
         self.client.post(reverse("reception_move_visit", args=[visit.pk, "CONFIRMED"]))
         visit.refresh_from_db()

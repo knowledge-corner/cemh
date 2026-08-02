@@ -7,108 +7,94 @@
 <div class="page-header">
   <div>
     <h1 class="page-header__title">Bookings</h1>
-    <p class="page-header__sub">Calls to make, the diary ahead, and everything already seen</p>
-  </div>
-  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-    <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor availability</a>
-    <a class="btn btn--secondary" href="{% url 'reception_home' %}">Today's queue</a>
-    <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
+    <p class="page-header__sub">The diary ahead, and everything already seen and paid for</p>
   </div>
 </div>
 
 {% comment %}
-Three tabs rather than three stacked cards. The calls list is worked through
-once a day and the history is looked at rarely, so showing all of it at once
-buried the one thing that is actually urgent.
+The same bar as Today's Clinic, so the two screens are one application. Doctor
+schedule is reached from here rather than from the board: setting working days
+and leave is diary work, not part of running today's clinic.
+{% endcomment %}
+{% include "portal/reception/_nav.html" with nav_active="bookings" %}
+
+{% comment %}
+Two tabs: what is still to come, and what is finished and paid for. There is no
+longer a calls tab — the confirming telephone call is not made, and a booking
+nobody has confirmed is simply an upcoming appointment, which is what it always
+was.
 {% endcomment %}
 <div class="tabs" role="tablist">
   {% for key, label in tabs %}
     <a class="tab" role="tab" href="?tab={{ key }}"
        aria-selected="{% if active_tab == key %}true{% else %}false{% endif %}">
       {{ label }}
-      {% if key == 'calls' and calls %}<span class="badge badge--warning">{{ calls|length }}</span>{% endif %}
+      {% if key == 'upcoming' and upcoming_count %}
+        <span class="badge badge--info">{{ upcoming_count }}</span>
+      {% endif %}
     </a>
   {% endfor %}
 </div>
 
 <div class="tab-panel">
 
-  {% if active_tab == 'calls' %}
-    {% if calls %}
-      <p class="faint small" style="margin:0 0 .75rem">
-        Ring each patient to confirm. Confirming moves them onto today's board.
-      </p>
-      <div class="table-scroll">
-        <table class="table">
-          <thead>
-            <tr><th>When</th><th>Patient</th><th>{{ patient_id_label }}</th><th>Doctor</th>
-                <th>Reason</th><th>Telephone</th><th></th></tr>
-          </thead>
-          <tbody>
-            {% for visit in calls %}
-              <tr>
-                <td class="nowrap mono">{{ visit.scheduled_start|date:"j M" }} {{ visit.scheduled_start|time:"H:i" }}</td>
-                <td class="strong">{{ visit.patient.full_name }}</td>
-                <td class="mono faint">{{ visit.patient.patient_id }}</td>
-                <td>{{ visit.doctor.display_name }}</td>
-                <td>{{ visit.reason|default:"—" }}</td>
-                <td><a class="mono" href="tel:{{ visit.patient.contact_phone }}">{{ visit.patient.contact_phone }}</a></td>
-                <td class="row-actions" style="display:flex;gap:.375rem;justify-content:flex-end">
-                  <form method="post" action="{% url 'reception_move_visit' visit.pk 'CONFIRMED' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="btn btn--primary" type="submit">Confirmed</button>
-                  </form>
-                  <a class="btn btn--secondary" href="{% url 'reception_edit_booking' visit.pk %}">Change</a>
-                  <form method="post" action="{% url 'reception_move_visit' visit.pk 'CANCELLED' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="btn btn--secondary" type="submit">Decline</button>
-                  </form>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+  {% if active_tab == 'upcoming' %}
+    {% comment %}
+    Date and doctor, on this tab as well as the completed one. "Which of Dr
+    Rao's patients are booked next Tuesday" is the question this screen exists
+    to answer, and it could only be asked of the past before.
+    {% endcomment %}
+    <form method="get" class="filters"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      <input type="hidden" name="tab" value="upcoming">
+      <div class="field" style="margin:0">
+        <label class="field__label" for="u-from">From</label>
+        <input class="input" type="date" id="u-from" name="from" value="{{ filters.from }}">
       </div>
-    {% else %}
-      <div class="empty">
-        <div class="empty__icon">✓</div>
-        <div class="empty__title">No calls outstanding</div>
-        <div class="empty__hint">Every upcoming booking has been confirmed by telephone.</div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="u-to">To</label>
+        <input class="input" type="date" id="u-to" name="to" value="{{ filters.to }}">
       </div>
-    {% endif %}
+      <div class="field" style="margin:0">
+        <label class="field__label" for="u-doctor">Doctor</label>
+        <select class="input" id="u-doctor" name="doctor">
+          <option value="">All doctors</option>
+          {% for d in doctors %}
+            <option value="{{ d.pk }}" {% if filters.doctor == d.pk|stringformat:"s" %}selected{% endif %}>
+              {{ d.display_name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="u-patient">Patient or {{ patient_id_label }}</label>
+        <input class="input" type="text" id="u-patient" name="patient_id"
+               value="{{ filters.patient_id }}" placeholder="Name, {{ patient_id_label }} or mobile">
+      </div>
+      <button class="btn btn--primary" type="submit">Filter</button>
+      <a class="btn btn--secondary" href="?tab=upcoming">Clear</a>
+    </form>
 
-  {% elif active_tab == 'upcoming' %}
-    {% if upcoming %}
-      <div class="table-scroll">
-        <table class="table">
-          <thead>
-            <tr><th>When</th><th>Patient</th><th>{{ patient_id_label }}</th><th>Doctor</th>
-                <th>Reason</th><th>Contact</th><th></th></tr>
-          </thead>
-          <tbody>
-            {% for visit in upcoming %}
-              <tr>
-                <td class="nowrap mono">{{ visit.scheduled_start|date:"j M" }} {{ visit.scheduled_start|time:"H:i" }}</td>
-                <td class="strong">{{ visit.patient.full_name }}</td>
-                <td class="mono faint">{{ visit.patient.patient_id }}</td>
-                <td>{{ visit.doctor.display_name }}</td>
-                <td>{{ visit.reason|default:"—" }}</td>
-                <td class="mono">{{ visit.patient.contact_phone }}</td>
-                <td class="row-actions">
-                  <a class="btn btn--secondary" href="{% url 'reception_edit_booking' visit.pk %}">Change</a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+    {% if today_rows or ahead_rows %}
+      {% comment %}
+      Today first, then the days after it. Today's group holds every slot of the
+      day, including ones the clock has already passed — a patient twenty
+      minutes late is precisely the one being looked for, and hiding their
+      appointment is how they get told there is no booking.
+      {% endcomment %}
+      {% include "portal/reception/_upcoming_group.html" with title="Today" rows=today_rows show_date=0 empty_hint="Nothing else booked for today." %}
+      {% include "portal/reception/_upcoming_group.html" with title="Ahead" rows=ahead_rows show_date=1 empty_hint="Nothing booked beyond today." %}
     {% else %}
       <div class="empty">
         <div class="empty__icon">📅</div>
-        <div class="empty__title">Nothing confirmed yet</div>
-        <div class="empty__hint">Confirmed appointments appear here once the calls are made.</div>
+        <div class="empty__title">No upcoming appointments</div>
+        <div class="empty__hint">
+          {% if filters.from or filters.to or filters.doctor or filters.patient_id %}
+            Nothing matches those filters. Clear them to see everything booked.
+          {% else %}
+            New bookings appear here as soon as they are taken.
+          {% endif %}
+        </div>
       </div>
     {% endif %}
 
@@ -120,7 +106,7 @@ buried the one thing that is actually urgent.
     {% endcomment %}
     <form method="get" class="filters"
           style="display:flex;gap:.625rem;flex-wrap:end;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
-      <input type="hidden" name="tab" value="past">
+      <input type="hidden" name="tab" value="completed">
       <div class="field" style="margin:0">
         <label class="field__label" for="f-from">From</label>
         <input class="input" type="date" id="f-from" name="from" value="{{ filters.from }}">
@@ -151,7 +137,7 @@ buried the one thing that is actually urgent.
                value="{{ filters.condition }}" placeholder="e.g. thyroid">
       </div>
       <button class="btn btn--primary" type="submit">Filter</button>
-      <a class="btn btn--secondary" href="?tab=past">Clear</a>
+      <a class="btn btn--secondary" href="?tab=completed">Clear</a>
       <a class="btn btn--dark"
          href="{% url 'reception_export_bookings' %}?{{ request.GET.urlencode }}">Download CSV</a>
     </form>
