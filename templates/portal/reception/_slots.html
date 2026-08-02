@@ -3,10 +3,23 @@ Free appointment times. Clicking one fills the hidden `slot` field — the value
 is a full timestamp, so the form never has to re-derive a time from a label.
 {% endcomment %}
 
+{% comment %}
+A closed day is always something a person recorded — a clinic holiday, or a
+weekday left out of this doctor's working week. Saying which saves the
+receptionist guessing, because what to do about it differs.
+{% endcomment %}
 {% if closed %}
   <div class="alert-strip alert-strip--warning">
-    <div><span class="alert-strip__title">Clinic closed</span><br>
-      {{ day|date:"l, j F" }} is not a consulting day.</div>
+    <div>
+      {% if holiday %}
+        <span class="alert-strip__title">Clinic closed &mdash; {{ holiday.name }}</span><br>
+        {{ day|date:"l, j F" }} is a clinic holiday.
+      {% else %}
+        <span class="alert-strip__title">{{ doctor.display_name }} is not consulting</span><br>
+        {{ day|date:"l, j F" }} is not in their working week. Change it under
+        Doctor availability, or choose another day.
+      {% endif %}
+    </div>
   </div>
 {% elif slots %}
   <p class="faint small" style="margin:0 0 .625rem">

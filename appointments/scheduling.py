@@ -12,6 +12,11 @@ that applies, in this order:
      when a doctor has no schedule of their own. A single-doctor clinic never
      has to fill in any of the tables above.
 
+The clinic is **open every day** unless one of those says otherwise. There is no
+weekend rule: a Sunday is a working day until somebody enters it as a holiday or
+leaves it out of a doctor's week. Closure is always something a person recorded,
+never something the software assumed.
+
 Leave is then subtracted, and finally any slot already held by an active visit.
 
 The database still has the final say: the exclusion constraint on ``Visit``

@@ -433,7 +433,11 @@ def slot_options(request):
         "slots": slots,
         "doctor": doctor,
         "day": day,
-        "closed": bool(day) and not scheduling.is_working_day(day),
+        # Asked per doctor, not clinic-wide: the clinic is open every day now,
+        # so a day with no slots means either a holiday or this doctor not
+        # working it, and the message needs to say which.
+        "closed": bool(day and doctor) and not scheduling.is_working_day(day, doctor),
+        "holiday": ClinicHoliday.objects.filter(date=day).first() if day else None,
     })
 
 

@@ -68,13 +68,17 @@ OPTIONAL_APPS = tuple(
 
 # ── Consulting hours ──────────────────────────────────────────────────────────
 #
-# Used to offer appointment slots. Kept as configuration rather than a model
-# because a single-doctor clinic's hours change rarely; if a clinic needs
-# per-doctor or per-day variation, this is the thing to promote to a model.
+# The fallback used when a doctor has no working week of their own. Per-doctor
+# days and hours now live in Doctor availability, and take precedence over
+# everything here.
 
-# Monday = 0 … Sunday = 6. Sunday is closed by default.
+# Monday = 0 … Sunday = 6. **Every day by default.** The clinic is treated as
+# open unless something explicit says otherwise, and there are only two such
+# things: a date entered under Clinic holidays, or a doctor's own working week.
+# A blanket "Sundays are shut" rule was wrong for this clinic, and guessing it
+# for the next one would be no better.
 WORKING_DAYS = tuple(
-    int(d) for d in os.environ.get("WORKING_DAYS", "0,1,2,3,4,5").split(",") if d.strip()
+    int(d) for d in os.environ.get("WORKING_DAYS", "0,1,2,3,4,5,6").split(",") if d.strip()
 )
 
 CONSULTING_START = os.environ.get("CONSULTING_START", "10:00")
@@ -90,7 +94,7 @@ BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "45"))
 # times above, because what a clinic advertises and what it schedules are not
 # always the same thing (lunch breaks, alternating doctors, and so on).
 CONSULTING_HOURS_DISPLAY = os.environ.get("CONSULTING_HOURS_DISPLAY", "10:00 am – 6:00 pm")
-WORKING_DAYS_DISPLAY = os.environ.get("WORKING_DAYS_DISPLAY", "Monday to Saturday")
+WORKING_DAYS_DISPLAY = os.environ.get("WORKING_DAYS_DISPLAY", "Open all week")
 
 # ── Billing ───────────────────────────────────────────────────────────────────
 

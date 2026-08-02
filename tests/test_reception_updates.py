@@ -25,11 +25,11 @@ from .factories import make_doctor, make_patient, make_receptionist, make_visit
 
 def _next_working_day():
     """
-    The soonest day the clinic is actually open.
+    The soonest day the clinic is open.
 
-    Tomorrow is not good enough: the clinic is shut on Sundays, so a test that
-    simply added a day would fail about one run in seven, and only ever when
-    run on a Saturday.
+    Now that the clinic runs every day this is simply tomorrow, but it still
+    consults the scheduler rather than assuming: a test that hard-codes
+    "tomorrow" would start failing the moment somebody enters a holiday.
     """
     day = timezone.localdate() + timedelta(days=1)
     for _ in range(10):
@@ -527,3 +527,77 @@ class TestAvailabilityScreenAccess(TestCase):
         self.assertEqual(
             self.client.get(reverse("reception_availability")).status_code, 403
         )
+
+
+class TestTheClinicIsOpenEveryDay(TestCase):
+    """
+    There is no weekend rule. Closure is always something a person recorded —
+    a clinic holiday, or a weekday left out of a doctor's working week.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.client.force_login(make_receptionist())
+        self.sunday = timezone.localdate() + timedelta(days=1)
+        while self.sunday.weekday() != 6:
+            self.sunday += timedelta(days=1)
+
+    def test_a_sunday_is_a_working_day(self):
+        self.assertTrue(scheduling.is_working_day(self.sunday))
+        self.assertTrue(scheduling.is_working_day(self.sunday, self.doctor))
+
+    def test_slots_are_offered_on_a_sunday(self):
+        self.assertTrue(scheduling.available_slots(self.doctor, self.sunday))
+
+    def test_every_day_of_the_week_is_bookable_by_default(self):
+        day = timezone.localdate() + timedelta(days=1)
+        for _ in range(7):
+            self.assertTrue(
+                scheduling.available_slots(self.doctor, day),
+                msg=f"no slots on {day:%A}",
+            )
+            day += timedelta(days=1)
+
+    def test_a_holiday_is_the_only_blanket_closure(self):
+        ClinicHoliday.objects.create(date=self.sunday, name="Diwali")
+        self.assertFalse(scheduling.is_working_day(self.sunday, self.doctor))
+        self.assertEqual(scheduling.available_slots(self.doctor, self.sunday), [])
+
+    def test_a_doctors_own_week_still_narrows_their_days(self):
+        # Once a doctor has any schedule rows, only those weekdays count.
+        DoctorSchedule.objects.create(
+            doctor=self.doctor, weekday=0,   # Mondays only
+            start_time=time(10, 0), end_time=time(13, 0),
+        )
+        self.assertFalse(scheduling.is_working_day(self.sunday, self.doctor))
+
+    def test_a_sunday_booking_is_accepted(self):
+        patient = make_patient()
+        slot = timezone.make_aware(
+            timezone.datetime.combine(self.sunday, time(11, 0)),
+            timezone.get_current_timezone(),
+        )
+        response = self.client.post(reverse("reception_new_booking"), {
+            "patient": patient.pk, "doctor": self.doctor.pk,
+            "day": self.sunday.strftime("%Y-%m-%d"), "slot": slot.isoformat(),
+            "reason": "Sunday clinic",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Visit.objects.filter(patient=patient).exists())
+
+    def test_the_slot_picker_names_the_holiday_when_there_is_one(self):
+        ClinicHoliday.objects.create(date=self.sunday, name="Diwali")
+        response = self.client.get(reverse("reception_slots"), {
+            "doctor": self.doctor.pk, "day": self.sunday.strftime("%Y-%m-%d"),
+        })
+        self.assertContains(response, "Diwali")
+
+    def test_the_slot_picker_names_the_doctor_when_it_is_their_week(self):
+        DoctorSchedule.objects.create(
+            doctor=self.doctor, weekday=0,
+            start_time=time(10, 0), end_time=time(13, 0),
+        )
+        response = self.client.get(reverse("reception_slots"), {
+            "doctor": self.doctor.pk, "day": self.sunday.strftime("%Y-%m-%d"),
+        })
+        self.assertContains(response, "not consulting")
