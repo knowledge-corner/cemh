@@ -1,9 +1,13 @@
 {% comment %}
 Moves a visit one step. Posts to the server and swaps the whole board back, so
 the patient appears in their new column immediately.
+
+The doctor filter rides along in the query string: without it the board that
+comes back would be unfiltered, so every action would silently undo the filter
+the receptionist had set.
 {% endcomment %}
 <button type="button"
         class="btn {% if primary %}btn--primary{% else %}btn--secondary{% endif %}"
-        hx-post="{% url 'reception_move_visit' visit.pk to %}"
+        hx-post="{% url 'reception_move_visit' visit.pk to %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}"
         hx-target="#queue-board"
         hx-swap="innerHTML">{{ label }}</button>

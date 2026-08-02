@@ -196,9 +196,23 @@ class TestReceptionQueue(TestCase):
             ).exists()
         )
 
-    def test_a_doctor_cannot_work_the_queue(self):
+    def test_a_doctor_may_read_the_queue(self):
+        # KAN-2 FR-7: a doctor needs to see who is in the waiting room without
+        # having to ask reception.
         self.client.force_login(self.doctor)
-        self.assertEqual(self.client.get(reverse("reception_home")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("reception_home")).status_code, 200)
+
+    def test_a_doctor_still_cannot_work_the_queue(self):
+        # Reading it is not working it. The stage buttons are hidden from the
+        # doctor, and the view underneath refuses the move regardless.
+        self.client.force_login(self.doctor)
+        response = self.client.post(
+            reverse("reception_move_visit", args=[self.visit.pk, VisitStatus.CONFIRMED]),
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, VisitStatus.BOOKED)
 
 
 class TestConsultationHandover(TestCase):

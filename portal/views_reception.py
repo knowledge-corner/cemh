@@ -70,8 +70,20 @@ def _queue_context(request, day=None):
         Visit.objects.filter(scheduled_start__date=day)
         .with_related()
         .select_related("charge", "prescription")
+        .prefetch_related("status_events__changed_by")
         .order_by("scheduled_start")
     )
+
+    # Doctor filter (KAN-2). Deliberately not remembered between page loads:
+    # a filter left on from yesterday is how a receptionist ends up certain the
+    # clinic is empty while somebody sits in the waiting room.
+    doctors = User.objects.filter(role=Role.DOCTOR, is_active=True)
+    chosen_doctor = None
+    requested = request.GET.get("doctor", "").strip()
+    if requested:
+        chosen_doctor = doctors.filter(pk=requested).first()
+        if chosen_doctor:
+            visits = visits.filter(doctor=chosen_doctor)
 
     by_status = {}
     for visit in visits:
@@ -98,6 +110,12 @@ def _queue_context(request, day=None):
         "columns": columns,
         "cancelled": cancelled,
         "total": len(visits),
+        "doctors": doctors,
+        "chosen_doctor": chosen_doctor,
+        # Doctors may read the board — they need to see who is waiting — but
+        # only reception works it. Actions are hidden here and refused by the
+        # view underneath, so this is presentation, not the access control.
+        "can_work_queue": request.user.role == Role.RECEPTIONIST or request.user.is_superuser,
         "stale": stale,
         "stale_count": len(stale),
         # What still has to happen before the receptionist can go home.
@@ -107,13 +125,19 @@ def _queue_context(request, day=None):
     }
 
 
-@role_required(Role.RECEPTIONIST)
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def reception_home(request):
-    """Today's queue. Refreshes itself so the board stays true without F5."""
+    """
+    Today's queue. Refreshes itself so the board stays true without F5.
+
+    Readable by doctors as well as reception: a doctor needs to see who is in
+    the waiting room without asking. The stage buttons are reception's alone,
+    and :func:`move_visit` still refuses anyone else.
+    """
     return render(request, "portal/reception/queue.html", _queue_context(request))
 
 
-@role_required(Role.RECEPTIONIST)
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def queue_board(request):
     """Just the board, for the polling refresh."""
     return render(request, "portal/reception/_board.html", _queue_context(request))
@@ -191,16 +215,26 @@ def move_visit(request, pk, to_status):
 
     moved = False
     if request.method == "POST":
-        try:
-            visit.transition_to(to_status, by_user=request.user)
-        except InvalidTransition as exc:
-            messages.error(request, str(getattr(exc, "message", exc)))
-        else:
-            moved = True
-            record(
-                request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
-                description=f"Visit moved to {visit.get_status_display()}",
+        # Two receptionists clicking Confirm on the same card is not an error —
+        # they both did the right thing, and one of them simply got there
+        # second. Say so plainly rather than reporting a failure.
+        if visit.status == to_status:
+            messages.info(
+                request,
+                f"{visit.patient.full_name} was already "
+                f"{visit.get_status_display().lower()}.",
             )
+        else:
+            try:
+                visit.transition_to(to_status, by_user=request.user)
+            except InvalidTransition as exc:
+                messages.error(request, str(getattr(exc, "message", exc)))
+            else:
+                moved = True
+                record(
+                    request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+                    description=f"Visit moved to {visit.get_status_display()}",
+                )
 
     if request.headers.get("HX-Request"):
         return render(

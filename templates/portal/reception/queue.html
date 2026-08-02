@@ -20,9 +20,35 @@ on the Bookings screen.
     </p>
   </div>
   <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-    <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Availability</a>
-    <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
-    <a class="btn btn--dark" href="{% url 'reception_bookings' %}">All bookings</a>
+    {% comment %}
+    Doctor filter. Deliberately not remembered between page loads: a filter left
+    on from yesterday is how a receptionist becomes certain the clinic is empty
+    while somebody sits in the waiting room.
+    {% endcomment %}
+    <form method="get" style="display:flex;gap:.375rem;align-items:center;margin:0">
+      <label class="field__label" for="doctor-filter" style="margin:0">Doctor</label>
+      <select class="input" id="doctor-filter" name="doctor" style="width:auto"
+              onchange="this.form.submit()"
+              {% if not doctors %}disabled title="No active doctors to filter by"{% endif %}>
+        <option value="">All doctors</option>
+        {% for d in doctors %}
+          <option value="{{ d.pk }}"
+                  {% if chosen_doctor and chosen_doctor.pk == d.pk %}selected{% endif %}>
+            {{ d.display_name }}
+          </option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn--secondary" type="submit">Filter</button></noscript>
+    </form>
+    {% if chosen_doctor %}
+      <a class="btn btn--secondary" href="{% url 'reception_home' %}">Show all</a>
+    {% endif %}
+
+    {% if can_work_queue %}
+      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Availability</a>
+      <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
+      <a class="btn btn--dark" href="{% url 'reception_bookings' %}">All bookings</a>
+    {% endif %}
   </div>
 </div>
 
@@ -32,7 +58,7 @@ overnight makes today's board lie about who the doctor is with, so this sits at
 the top of the screen until it is dealt with rather than in a report nobody
 opens.
 {% endcomment %}
-{% if stale %}
+{% if stale and can_work_queue %}
   <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
     <div>
       <span class="alert-strip__title">
@@ -57,9 +83,13 @@ opens.
 {% comment %}
 The board reloads itself every 30 seconds. A receptionist leaves this open all
 day, and a stale board is worse than useless — it sends the wrong patient in.
+
+The refresh carries the doctor filter with it. Without that, the board would
+quietly widen back to all doctors half a minute after being filtered, which is
+worse than not having the filter at all.
 {% endcomment %}
 <div id="queue-board"
-     hx-get="{% url 'reception_board' %}"
+     hx-get="{% url 'reception_board' %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}"
      hx-trigger="every 30s"
      hx-swap="innerHTML">
   {% include "portal/reception/_board.html" %}

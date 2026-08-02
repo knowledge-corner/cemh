@@ -16,8 +16,10 @@
               <span class="badge badge--success">Issued</span>
             {% else %}
               <span class="badge badge--warning">Draft</span>
-              {# Finalising is the handover to reception, so it is a deliberate
-                 second action rather than a side effect of saving. #}
+              {% comment %}
+              Finalising is the handover to reception, so it is a deliberate
+              second action rather than a side effect of saving.
+              {% endcomment %}
               <button type="button" class="btn-edit btn-edit--solid"
                       hx-post="{% url 'doctor_generate_prescription' patient.patient_id prescription.pk %}"
                       hx-target="#modal-host"

@@ -85,3 +85,45 @@ class TestNoDanglingSourceMaps(SimpleTestCase):
                     f"{reference}. Strip the sourceMappingURL comment — see "
                     f"static/js/vendor/README.md.",
                 )
+
+
+class TestNoTemplateCommentLeaksOntoThePage(SimpleTestCase):
+    """
+    Django strips a ``{# … #}`` comment only when it sits on **one line**. A
+    multi-line one is not a comment at all — every word of it renders onto the
+    page. This has now happened twice in this codebase, both times reaching a
+    screen a receptionist was looking at, and both times invisible in the
+    template source unless you already knew the rule.
+
+    The fix is always ``{% comment %}``, which spans lines properly.
+    """
+
+    #: Opens a hash comment without closing it on the same line.
+    UNCLOSED_HASH_COMMENT = re.compile(r"\{#(?![^\n]*#\})")
+
+    def _templates(self):
+        from django.conf import settings
+
+        for directory in settings.TEMPLATES[0]["DIRS"]:
+            yield from Path(directory).rglob("*.html")
+
+    def test_the_scan_reaches_the_templates(self):
+        names = {path.name for path in self._templates()}
+        self.assertIn("_board.html", names)
+        self.assertGreater(len(names), 10)
+
+    def test_no_template_opens_a_hash_comment_it_does_not_close_on_that_line(self):
+        offenders = []
+        for path in self._templates():
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if self.UNCLOSED_HASH_COMMENT.search(line):
+                    offenders.append(f"{path.name}:{number}")
+
+        self.assertEqual(
+            offenders, [],
+            msg="These would render onto the page as visible text. Use "
+                "{% comment %}…{% endcomment %} for anything spanning lines: "
+                + ", ".join(offenders),
+        )

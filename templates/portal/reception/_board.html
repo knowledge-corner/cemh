@@ -35,21 +35,44 @@ possible from the interface, as well as being refused by the model.
             {% endif %}
 
             {% if visit.status == "BOOKED" %}
-              {# This card exists to be acted on by telephone, so the number leads. #}
-              <a href="tel:{{ visit.patient.contact_phone }}" class="pcard__call">
-                📞 {{ visit.patient.contact_phone }}
-              </a>
+              {% comment %}
+              This card exists to be acted on by telephone, so the number leads.
+              A patient with no number can still be confirmed — they may have
+              walked in to book — so this says so rather than blocking it.
+
+              Note the tag: Django strips a hash-comment only when it is on one
+              line, so a multi-line one renders straight onto the card.
+              {% endcomment %}
+              {% if visit.patient.contact_phone %}
+                <a href="tel:{{ visit.patient.contact_phone }}" class="pcard__call">
+                  📞 {{ visit.patient.contact_phone }}
+                </a>
+              {% else %}
+                <p class="pcard__meta faint">No contact number</p>
+              {% endif %}
               {% if visit.patient.is_paediatric and visit.patient.guardian_name %}
                 <p class="pcard__meta">Ask for {{ visit.patient.guardian_name }}</p>
               {% endif %}
-            {% else %}
+            {% elif visit.patient.contact_phone %}
               <p class="pcard__meta">
                 <a href="tel:{{ visit.patient.contact_phone }}" class="mono">{{ visit.patient.contact_phone }}</a>
               </p>
             {% endif %}
 
+            {% comment %}
+            Who made the confirming call, and when. Recorded already in the
+            status trail; shown here so reception can see the call was made
+            without opening anything.
+            {% endcomment %}
+            {% if visit.confirmation %}
+              <p class="pcard__meta faint small">
+                Confirmed {{ visit.confirmation.created_at|date:"H:i" }}
+                {% if visit.confirmation.changed_by %} by {{ visit.confirmation.changed_by.display_name }}{% endif %}
+              </p>
+            {% endif %}
+
             <div class="pcard__actions">
-              {% if visit.status == "BOOKED" %}
+              {% if not can_work_queue %}{% elif visit.status == "BOOKED" %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="CONFIRMED" label="Confirmed by phone" primary=1 %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="CANCELLED" label="Cancel" %}
               {% elif visit.status == "CONFIRMED" %}

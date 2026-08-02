@@ -273,6 +273,21 @@ class Visit(models.Model):
         return self.status not in INACTIVE_STATUSES
 
     @property
+    def confirmation(self):
+        """
+        Who confirmed this booking by telephone, and when.
+
+        Read from the status trail rather than stored again on the visit: the
+        trail already answers it and a second copy is a second thing to get out
+        of step. Reads from ``status_events`` in memory when the caller has
+        prefetched them, which the board does.
+        """
+        for event in self.status_events.all():
+            if event.to_status == VisitStatus.CONFIRMED:
+                return event
+        return None
+
+    @property
     def waiting_minutes(self):
         """How long the patient sat in the waiting room, once known."""
         if not self.arrived_at:
