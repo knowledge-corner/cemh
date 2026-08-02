@@ -7,6 +7,7 @@ the growth chart does not reload the whole file.
 """
 
 from django.contrib import messages
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -80,13 +81,57 @@ def doctor_home(request):
         )
         if patient:
             return redirect("doctor_patient_dashboard", patient_id=patient.patient_id)
-        messages.error(request, f"No patient found with ID or phone “{query}”.")
+        messages.error(
+            request,
+            f"No patient found matching “{query}”. Try typing part of their name.",
+        )
 
     return render(
         request,
         "portal/doctor/home.html",
         {"queue": services.todays_queue(request.user), "query": query},
     )
+
+
+@role_required(Role.DOCTOR)
+def doctor_queue(request):
+    """
+    Just the queue table, for the polling refresh.
+
+    The queue used to sit still until somebody pressed F5, so a patient sent
+    through from reception did not appear at all — the doctor had no way of
+    knowing anybody was waiting.
+    """
+    return render(
+        request, "portal/doctor/_queue.html",
+        {"queue": services.todays_queue(request.user)},
+    )
+
+
+@role_required(Role.DOCTOR)
+def doctor_patient_search(request):
+    """
+    Type-ahead over the whole patient list.
+
+    The doctor previously had an exact-match box for a UHID or mobile number,
+    which is fine when the paper file is in front of them and useless when the
+    patient is remembered by name. This is the search reception already had.
+    """
+    query = request.GET.get("q", "").strip()
+
+    results = []
+    if len(query) >= 2:
+        results = Patient.objects.filter(is_active=True).filter(
+            Q(patient_id__icontains=query)
+            | Q(first_name__icontains=query)
+            | Q(last_name__icontains=query)
+            | Q(phone__icontains=query)
+            | Q(guardian_phone__icontains=query)
+        ).order_by("first_name")[:8]
+
+    return render(request, "portal/doctor/_search_results.html", {
+        "results": results, "query": query,
+    })
 
 
 @role_required(Role.DOCTOR)

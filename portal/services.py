@@ -59,18 +59,33 @@ def summary_context(patient):
     """Everything the doctor should see the moment the file opens."""
     history = getattr(patient, "history", None)
 
+    # Visit history means consultations that actually happened, plus the one
+    # happening right now. A booking made for next week is not history, and a
+    # cancellation or a no-show is a diary event rather than a clinical one —
+    # listing them padded the record with rows the doctor had to read past.
     visits = (
-        patient.visits.exclude(status=VisitStatus.CANCELLED)
+        patient.visits.filter(status__in=(
+            VisitStatus.IN_CABIN, VisitStatus.CONSULTED,
+            VisitStatus.BILLED, VisitStatus.COMPLETED,
+        ))
         .select_related("doctor")
         .order_by("-scheduled_start")
     )
     last_visit = visits.first()
     last_note = patient.notes.order_by("-created_at").first()
 
+    diagnoses = patient.diagnoses.all()
+    resolved = diagnoses.exclude(status=Diagnosis.Status.ACTIVE)
+
     context = {
         "patient": patient,
         "history": history,
-        "active_diagnoses": patient.diagnoses.filter(status=Diagnosis.Status.ACTIVE),
+        "active_diagnoses": diagnoses.filter(status=Diagnosis.Status.ACTIVE),
+        # Kept apart from the active list rather than mixed in. A resolved
+        # problem is still worth having — "treated for this in 2023" changes
+        # what today's symptom might be — but it must never read as current.
+        "past_diagnoses": resolved,
+        "past_diagnosis_count": resolved.count(),
         "last_visit": last_visit,
         "last_note": last_note,
         "visit_count": visits.count(),

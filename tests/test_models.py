@@ -53,7 +53,8 @@ class TestPatientAge(TestCase):
 
     def test_infant_age_displays_in_months(self):
         patient = make_patient(date_of_birth=timezone.localdate() - timedelta(days=200))
-        self.assertTrue(patient.age_display.endswith("mo"))
+        # Spelled out, and with no leading "0 yrs" — see Patient.age_display.
+        self.assertEqual(patient.age_display, "6 months")
 
     def test_child_is_paediatric_and_adult_is_not(self):
         self.assertTrue(make_patient().is_paediatric)

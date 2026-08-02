@@ -4,6 +4,8 @@ from . import views_doctor, views_edit
 
 urlpatterns = [
     path("", views_doctor.doctor_home, name="doctor_home"),
+    path("queue/", views_doctor.doctor_queue, name="doctor_queue"),
+    path("search/", views_doctor.doctor_patient_search, name="doctor_patient_search"),
     path(
         "patient/<str:patient_id>/",
         views_doctor.patient_dashboard,

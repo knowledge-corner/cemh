@@ -72,12 +72,53 @@ the visit history grouped into the time bands clinicians actually think in.
   {% else %}
     <p class="faint small">No active problems recorded.</p>
   {% endif %}
+
+  {% comment %}
+  Resolved problems, folded away. Worth keeping — "treated for this in 2023"
+  changes what today's symptom might be — but shown separately so a finished
+  problem can never be misread as a current one. A <details> element keeps it
+  one click away without costing a request.
+  {% endcomment %}
+  {% if past_diagnoses %}
+    <details style="margin-top:.75rem">
+      <summary class="faint small" style="cursor:pointer">
+        Past problems ({{ past_diagnosis_count }})
+      </summary>
+      <div class="table-scroll" style="margin-top:.5rem">
+        <table class="table">
+          <thead>
+            <tr><th>Problem</th><th>Diagnosed</th><th>Resolved</th><th>ICD-10</th>
+                <th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for diagnosis in past_diagnoses %}
+              <tr>
+                <td class="strong">{{ diagnosis.description }}</td>
+                <td class="nowrap">{{ diagnosis.diagnosed_on|date:"j M Y" }}</td>
+                <td class="nowrap faint">{{ diagnosis.resolved_on|date:"j M Y"|default:"—" }}</td>
+                <td class="faint">{{ diagnosis.icd10_code|default:"—" }}</td>
+                <td><span class="badge badge--grey">{{ diagnosis.get_status_display }}</span></td>
+                <td class="row-actions">
+                  {% include "portal/doctor/_edit_button.html" with kind="diagnosis" pk=diagnosis.pk label="Edit" %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% endif %}
 </section>
 
 <section style="margin-bottom:1.25rem">
   <div class="section-head">
     <h3>Visit history <span class="faint small">({{ visit_count }} total)</span></h3>
   </div>
+  {% comment %}
+  Consultations that happened, plus the one happening now. A booking for next
+  week is not history, and a cancellation is a diary event rather than a
+  clinical one — both padded this list with rows to read past.
+  {% endcomment %}
 
   {% if visit_groups %}
     <div class="table-scroll">

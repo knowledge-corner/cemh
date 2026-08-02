@@ -1,0 +1,28 @@
+{% comment %}
+Type-ahead results for the doctor's "open a patient record" box.
+
+Each result is a link straight to the chart, rather than the reception version
+which fills a hidden field on the booking form. Same query, different
+destination.
+{% endcomment %}
+
+{% if results %}
+  <ul class="picklist">
+    {% for p in results %}
+      <li>
+        <a class="picklist__item" href="{% url 'doctor_patient_dashboard' p.patient_id %}">
+          <span class="picklist__name">{{ p.full_name }}</span>
+          <span class="picklist__meta">
+            <span class="mono">{{ p.patient_id }}</span>
+            &middot; {{ p.age_display }} {{ p.get_sex_display|slice:":1" }}
+            &middot; <span class="mono">{{ p.contact_phone }}</span>
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query|length >= 2 %}
+  <p class="faint small" style="margin:.5rem 0 0">
+    No patient matches “{{ query }}”.
+  </p>
+{% endif %}

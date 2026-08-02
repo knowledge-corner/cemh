@@ -64,6 +64,27 @@ top for the obvious reason.
   {% else %}
     <p class="faint small" style="margin:0">None recorded</p>
   {% endif %}
+
+  {% comment %}
+  "Active problems (0)" on a patient with a long history reads as though the
+  file is empty. Naming the resolved ones underneath says the opposite: there
+  is history here, it is just finished.
+  {% endcomment %}
+  {% if past_diagnoses %}
+    <details style="margin-top:.5rem">
+      <summary class="faint small" style="cursor:pointer">
+        Past problems ({{ past_diagnosis_count }})
+      </summary>
+      <ul class="storyboard__list" style="margin-top:.375rem">
+        {% for diagnosis in past_diagnoses %}
+          <li>
+            {{ diagnosis.description }}
+            <span class="faint small">— {{ diagnosis.get_status_display|lower }}{% if diagnosis.resolved_on %}, {{ diagnosis.resolved_on|date:"M Y" }}{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
 </div>
 
 {% if latest_measurement %}

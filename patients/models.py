@@ -148,19 +148,42 @@ class Patient(models.Model):
         return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
     @property
-    def age_display(self):
-        """Human-readable age — months matter enormously for infants."""
+    def age_months_part(self):
+        """Whole months completed since the last birthday, 0–11."""
         today = date.today()
         born = self.date_of_birth
-        years = self.age_years
-        if years >= 2:
-            return f"{years} yr"
         months = (today.year - born.year) * 12 + today.month - born.month
         if today.day < born.day:
             months -= 1
+        return max(months, 0) % 12
+
+    @property
+    def age_display(self):
+        """
+        Human-readable age, at the precision the patient's care needs.
+
+        A child is shown to the month — "9 yrs 2 months" — because two months
+        is a visible distance on a growth chart and changes what a centile
+        means. An adult is shown in whole years, because for them the months
+        are noise on every screen that carries an age.
+
+        Infants drop the years entirely: "0 yrs 3 months" reads worse than
+        "3 months", and under a month old it is days that matter.
+        """
+        years = self.age_years
+        months = self.age_months_part
+
+        if not self.is_paediatric:
+            return f"{years} yrs"
+
+        if years >= 1:
+            if months:
+                return f"{years} yrs {months} month{'' if months == 1 else 's'}"
+            return f"{years} yrs"
+
         if months >= 1:
-            return f"{months} mo"
-        return f"{(today - born).days} d"
+            return f"{months} month{'' if months == 1 else 's'}"
+        return f"{(date.today() - self.date_of_birth).days} days"
 
     @property
     def is_paediatric(self):

@@ -1,0 +1,59 @@
+{% comment %}
+The doctor's queue, on its own so it can be polled.
+
+Swapped in every 15 seconds by home.html. Reception sends a patient through
+from a different screen entirely, so without this the doctor sat looking at an
+empty list with somebody already waiting outside the door.
+{% endcomment %}
+
+<div class="card__header">
+  <h2 class="card__title">Patient queue</h2>
+  <span class="badge {% if queue %}badge--teal{% else %}badge--grey{% endif %}">
+    {{ queue|length }} waiting
+  </span>
+</div>
+
+{% if queue %}
+  <div class="card__body card__body--flush table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Patient</th>
+          <th>{{ patient_id_label }}</th>
+          <th>Age / Sex</th>
+          <th>Reason</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for visit in queue %}
+          <tr>
+            <td class="queue__time">{{ visit.scheduled_start|time:"H:i" }}</td>
+            <td class="queue__name">{{ visit.patient.full_name }}</td>
+            <td class="queue__uhid">{{ visit.patient.patient_id }}</td>
+            <td class="nowrap">{{ visit.patient.age_display }} &middot; {{ visit.patient.get_sex_display }}</td>
+            <td>{{ visit.reason|default:"—" }}</td>
+            <td>
+              {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
+            </td>
+            <td class="text-right">
+              <a class="btn btn--secondary" href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="card__body">
+    <div class="empty">
+      <div class="empty__icon">🗓</div>
+      <div class="empty__title">No patients in the queue</div>
+      <div class="empty__hint">
+        Patients appear here on their own once reception marks them as arrived.
+      </div>
+    </div>
+  </div>
+{% endif %}
