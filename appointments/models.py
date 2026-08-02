@@ -218,8 +218,17 @@ class Visit(models.Model):
         # is real: the consultation actually happening loses its place. Refused
         # here rather than in the view, so it holds wherever the move comes from.
         if new_status == VisitStatus.IN_CABIN:
+            # Scoped to this visit's own day. A doctor sees one patient at a
+            # time, but a visit left open from a previous day is a queue nobody
+            # closed, not a consultation in progress — and letting it block
+            # today's clinic would turn a tidying-up problem into a stoppage.
+            # The end-of-day sweep is what deals with those.
             occupied = (
-                Visit.objects.filter(doctor=self.doctor, status=VisitStatus.IN_CABIN)
+                Visit.objects.filter(
+                    doctor=self.doctor,
+                    status=VisitStatus.IN_CABIN,
+                    scheduled_start__date=timezone.localtime(self.scheduled_start).date(),
+                )
                 .exclude(pk=self.pk)
                 .select_related("patient")
                 .first()

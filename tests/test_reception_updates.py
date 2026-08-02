@@ -117,6 +117,18 @@ class TestOnlyOneInCabin(TestCase):
         self.second.transition_to(VisitStatus.IN_CABIN, by_user=self.receptionist)
         self.assertEqual(self.second.status, VisitStatus.IN_CABIN)
 
+    def test_a_visit_left_open_yesterday_does_not_block_todays_clinic(self):
+        # Found only because seeding a fresh install failed: a stale in-cabin
+        # visit is a queue nobody closed, not a consultation in progress, and
+        # letting it stop today's clinic turns tidying-up into a stoppage.
+        stale = make_visit(make_patient(phone="9820033333"), self.doctor,
+                           start=timezone.now() - timedelta(days=1))
+        for step in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED, VisitStatus.IN_CABIN):
+            stale.transition_to(step, by_user=self.receptionist)
+
+        self.first.transition_to(VisitStatus.IN_CABIN, by_user=self.receptionist)
+        self.assertEqual(self.first.status, VisitStatus.IN_CABIN)
+
     def test_another_doctor_is_unaffected(self):
         other = make_doctor(username="dr2", email="dr2@example.in")
         theirs = make_visit(make_patient(phone="9820022222"), other,

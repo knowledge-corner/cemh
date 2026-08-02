@@ -1,25 +1,29 @@
-# Local development only. Runs Postgres alongside the app so a developer needs
-# nothing installed but Docker.
+# Everything needed to run the clinic system on one machine.
 #
-#   docker compose up --build -d      # -d, so the next commands get a prompt
-#   docker compose exec web python manage.py migrate
-#   docker compose exec web python manage.py seed_demo
+# The usual way in is to double-click START-CLINIC.bat (Windows) or
+# START-CLINIC.command (Mac), which just runs `docker compose up -d` for you.
+# Docker Desktop's own Start button on this project works too.
+#
+# Nothing else has to be run by hand: the container prepares its own database,
+# creates the administrator account and — only on a genuinely empty database —
+# loads the demo patients. See docker/entrypoint.sh.
+#
+# For developers:
 #   docker compose exec web pytest
-#
-# Then http://127.0.0.1:8000/ — sign in as vrushali / clinicdemo2026.
-# `docker compose logs -f web` if something does not come up.
+#   docker compose logs -f web
 #
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: clinic_pms
       POSTGRES_USER: clinic
       POSTGRES_PASSWORD: clinic
     volumes:
+      # Named volume, so the clinic's data survives the container being
+      # rebuilt, updated or removed. Deleting this volume deletes the records.
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U clinic -d clinic_pms"]
       interval: 5s
@@ -30,14 +34,28 @@ services:
     build:
       context: .
       target: dev
+    # Comes back up on its own after a reboot or a Docker Desktop restart, so
+    # the clinic does not need someone to remember to start it each morning.
+    restart: unless-stopped
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DATABASE_URL: postgres://clinic:clinic@db:5432/clinic_pms
       SECRET_KEY: dev-only-insecure-key-do-not-use-in-production
+      # The first administrator, created on the first start only. Changing an
+      # existing account's password here has no effect — set it in the admin.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: clinicadmin2026
+      # Set to 0 for a real clinic, so the demo patients are never loaded.
+      SEED_DEMO: "1"
     volumes:
       - .:/app
     ports:
       - "8000:8000"
+    # Invoked through `sh` rather than as an executable: Windows checkouts do
+    # not preserve the execute bit, and a "permission denied" on first run is
+    # exactly the failure this setup exists to avoid.
+    entrypoint: ["sh", "/app/docker/entrypoint.sh"]
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     depends_on:
       db:
         condition: service_healthy
