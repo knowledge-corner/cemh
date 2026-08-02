@@ -19,7 +19,7 @@ from typing import Callable
 
 from django.conf import settings
 from django.db import transaction
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -51,6 +51,24 @@ class Editable:
     attach: Callable = lambda obj, patient, request: None
     #: Whether a new record of this kind can be created at all.
     can_add: bool = True
+
+
+def _blocked(request, title, explanation):
+    """
+    Refuse an action inside the dialog the user opened, and say why.
+
+    Returned instead of a 404 where the record plainly exists and the user can
+    already see it on the board: a page that vanishes teaches nothing, and the
+    doctor standing there needs to know it is the wrong screen, not a broken
+    one. 403 so it is refused for a script posting at the endpoint too.
+    """
+    return HttpResponseForbidden(
+        render_to_string(
+            "portal/doctor/_blocked_modal.html",
+            {"title": title, "explanation": explanation},
+            request=request,
+        )
+    )
 
 
 def _attach_simple(obj, patient, request):
@@ -269,10 +287,28 @@ def complete_consultation(request, patient_id):
     the patient appears on reception's billing list with everything they need.
     """
     patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
-    visit = patient.visits.filter(status=VisitStatus.IN_CABIN).order_by("-scheduled_start").first()
+    visit = (
+        patient.visits.filter(status=VisitStatus.IN_CABIN)
+        .select_related("doctor")
+        .order_by("-scheduled_start")
+        .first()
+    )
 
     if visit is None:
         raise Http404("This patient is not currently in the cabin.")
+
+    # KAN-5 FR-2 and AC-3. Only the doctor who has the patient in front of them
+    # may end the consultation: the fee, the prescription and the signature on
+    # the record all belong to whoever saw the patient, and this action sets all
+    # three at once. Said plainly rather than raising a 404 — every doctor can
+    # already see the whole board, so there is nothing to conceal here.
+    if visit.doctor_id != request.user.id:
+        return _blocked(
+            request,
+            "This is not your consultation",
+            f"{patient.full_name} is with {visit.doctor.display_name}. "
+            "Only the doctor seeing the patient can complete the consultation.",
+        )
 
     charge = getattr(visit, "charge", None)
     prescription = getattr(visit, "prescription", None)

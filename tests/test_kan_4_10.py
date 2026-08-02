@@ -85,7 +85,15 @@ class TestDoctorCallsTheNextPatient(TestCase):
     def test_a_doctor_cannot_call_another_doctors_patient(self):
         other = make_doctor(username="dr2", email="dr2@example.in")
         theirs = _arrived(make_patient(phone="9820022222"), other, self.receptionist)
-        self.assertEqual(self._send(theirs).status_code, 404)
+
+        response = self._send(theirs)
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.status, VisitStatus.ARRIVED)
+
+        # The Edge Cases table asks for an explanatory message, not a page that
+        # vanishes — and it should name the doctor to go and find.
+        messages = " ".join(str(m) for m in response.wsgi_request._messages)
+        self.assertIn(other.display_name, messages)
 
     def test_two_doctors_can_each_hold_a_patient(self):
         # AC-5.
@@ -102,6 +110,111 @@ class TestDoctorCallsTheNextPatient(TestCase):
     def test_a_receptionist_cannot_use_the_doctors_send_action(self):
         self.client.force_login(self.receptionist)
         self.assertEqual(self._send(self.first).status_code, 403)
+
+
+class TestCompletingTheConsultation(TestCase):
+    """
+    KAN-5 — FR-2, AC-3, AC-5 and the zero-or-negative edge case.
+
+    Everything else in KAN-5 already worked. These are the parts that did not:
+    any doctor could end any other doctor's consultation, and a bill of zero, a
+    negative fee or a discount larger than the fee all went through to the desk.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.other = make_doctor(username="dr9", email="dr9@example.in")
+        self.receptionist = make_receptionist()
+        self.visit = _arrived(make_patient(), self.doctor, self.receptionist)
+        self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.patient = self.visit.patient
+        self.client.force_login(self.doctor)
+
+    def _complete(self, **overrides):
+        payload = {
+            "consultation_fee": "800", "procedure_fee": "0",
+            "discount": "0", "notes": "",
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("doctor_complete_consultation", args=[self.patient.patient_id]),
+            payload,
+        )
+
+    def _status(self):
+        self.visit.refresh_from_db()
+        return self.visit.status
+
+    def test_the_doctor_seeing_the_patient_can_complete(self):
+        self._complete()
+        self.assertEqual(self._status(), VisitStatus.CONSULTED)
+
+    def test_another_doctor_cannot_complete_this_consultation(self):
+        # FR-2 / AC-3 / T-3.
+        self.client.force_login(self.other)
+        response = self._complete()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self._status(), VisitStatus.IN_CABIN)
+
+    def test_the_refusal_names_the_doctor_who_has_the_patient(self):
+        self.client.force_login(self.other)
+        self.assertContains(
+            self._complete(), self.doctor.display_name, status_code=403
+        )
+
+    def test_another_doctor_is_not_even_offered_the_dialog(self):
+        self.client.force_login(self.other)
+        response = self.client.get(
+            reverse("doctor_complete_consultation", args=[self.patient.patient_id])
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_negative_fee_is_refused(self):
+        self._complete(consultation_fee="-500")
+        self.assertEqual(self._status(), VisitStatus.IN_CABIN)
+
+    def test_a_bill_of_nothing_is_refused(self):
+        # AC-5 — prompted, rather than moving forward with a zero amount.
+        response = self._complete(consultation_fee="0")
+        self.assertEqual(self._status(), VisitStatus.IN_CABIN)
+        self.assertContains(response, "comes to nothing")
+
+    def test_a_free_visit_goes_through_when_the_reason_is_given(self):
+        # A free visit is real; it just has to be deliberate.
+        self._complete(consultation_fee="0", notes="Wound check, no charge")
+        self.assertEqual(self._status(), VisitStatus.CONSULTED)
+
+    def test_a_discount_larger_than_the_fee_is_refused(self):
+        # Otherwise the clinic ends up owing the patient money.
+        response = self._complete(consultation_fee="500", discount="900")
+        self.assertEqual(self._status(), VisitStatus.IN_CABIN)
+        self.assertContains(response, "more than the fee")
+
+    def test_nothing_is_charged_when_the_bill_is_refused(self):
+        self._complete(consultation_fee="500", discount="900")
+        self.assertFalse(Charge.objects.filter(visit=self.visit).exists())
+
+    def test_completing_twice_records_one_completion(self):
+        # T-5 — the second attempt finds no patient in the cabin.
+        self._complete()
+        self.assertEqual(self._complete().status_code, 404)
+        self.assertEqual(self._status(), VisitStatus.CONSULTED)
+
+    def test_completion_records_who_and_when(self):
+        # AC-4.
+        self._complete()
+        charge = Charge.objects.get(visit=self.visit)
+        self.assertEqual(charge.set_by, self.doctor)
+        self.assertIsNotNone(charge.created_at)
+
+    def test_completing_frees_the_cabin_for_the_next_patient(self):
+        # AC-2 / T-2.
+        nxt = _arrived(make_patient(phone="9820044444"), self.doctor,
+                       self.receptionist, hours=3)
+        self._complete()
+        self.client.post(reverse("doctor_send_for_patient", args=[nxt.pk]))
+        nxt.refresh_from_db()
+        self.assertEqual(nxt.status, VisitStatus.IN_CABIN)
 
 
 class TestReadyToBillShowsTheAmount(TestCase):

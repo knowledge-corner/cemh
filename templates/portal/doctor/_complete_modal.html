@@ -22,6 +22,17 @@ together, in one action.
           and the prescription for this visit.
         </p>
 
+        {% comment %}
+        The bill-level checks — a discount larger than the fee, a total of
+        nothing — belong to no single box, so they would be swallowed silently
+        if only field errors were drawn.
+        {% endcomment %}
+        {% if form.non_field_errors %}
+          <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+            <div>{% for error in form.non_field_errors %}{{ error }}{% endfor %}</div>
+          </div>
+        {% endif %}
+
         <div class="form-grid">
           {% for field in form %}
             <div class="field">

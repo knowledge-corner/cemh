@@ -1,0 +1,29 @@
+{% comment %}
+A refusal, shown where the dialog would have been.
+
+Swapped into #modal-host exactly like the form it replaces, so the doctor reads
+the reason in the place they were looking rather than losing the page.
+{% endcomment %}
+
+<div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
+  <div class="modal modal--narrow" role="alertdialog" aria-modal="true" aria-labelledby="blocked-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="blocked-title">{{ title }}</h2>
+      <button type="button" class="modal__close" aria-label="Close"
+              onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
+    </div>
+
+    <div class="modal__body">
+      <div class="alert-strip alert-strip--warning">
+        <div>{{ explanation }}</div>
+      </div>
+    </div>
+
+    <div class="modal__footer">
+      <button type="button" class="btn btn--primary" autofocus
+              onclick="document.getElementById('modal-host').innerHTML = '';">Close</button>
+    </div>
+
+  </div>
+</div>

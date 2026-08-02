@@ -196,8 +196,17 @@ def send_for_patient(request, pk):
         Visit.objects.select_related("patient", "doctor"), pk=pk
     )
 
+    # A doctor calls their own patients in. Said plainly and named, rather than
+    # raised as a 404: every doctor can already see the whole waiting room, so
+    # there is nothing here to conceal, and a covering doctor needs to know who
+    # to ask rather than that a page is missing.
     if visit.doctor_id != request.user.id:
-        raise Http404("That patient is waiting for a different doctor.")
+        messages.error(
+            request,
+            f"{visit.patient.full_name} is waiting for {visit.doctor.display_name}, "
+            "so only they can call this patient in.",
+        )
+        return redirect("doctor_home")
 
     if request.method == "POST":
         try:

@@ -142,6 +142,54 @@ class ChargeForm(StyledModelForm):
             "procedure_fee": "Procedure / other charges",
             "discount": "Discount",
         }
+        help_texts = {
+            "notes": "Required if the visit is being made free of charge.",
+        }
+
+    # KAN-5 AC-5 and the zero-or-negative edge case. The doctor is typing into
+    # this box at the end of a consultation with the next patient waiting, so
+    # the numbers are checked here rather than being noticed at the desk.
+
+    def _not_negative(self, name):
+        value = self.cleaned_data.get(name)
+        if value is not None and value < 0:
+            raise forms.ValidationError("This cannot be a negative amount.")
+        return value
+
+    def clean_consultation_fee(self):
+        return self._not_negative("consultation_fee")
+
+    def clean_procedure_fee(self):
+        return self._not_negative("procedure_fee")
+
+    def clean_discount(self):
+        return self._not_negative("discount")
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.errors:
+            return cleaned
+
+        fees = cleaned.get("consultation_fee", 0) + cleaned.get("procedure_fee", 0)
+        discount = cleaned.get("discount", 0)
+
+        if discount > fees:
+            raise forms.ValidationError(
+                "The discount is more than the fee, which would leave the clinic "
+                "owing the patient money. Reduce the discount."
+            )
+
+        # A free visit is a real thing — a colleague's child, a repeat wound
+        # check — so zero is not refused outright. It has to be deliberate
+        # though, because a bill of nothing is otherwise indistinguishable from
+        # a fee that was never typed in.
+        if fees - discount <= 0 and not cleaned.get("notes"):
+            raise forms.ValidationError(
+                "This bill comes to nothing. If the visit really is free of "
+                "charge, say why in the notes; otherwise enter the fee."
+            )
+
+        return cleaned
 
 
 class PaymentForm(StyledModelForm):
