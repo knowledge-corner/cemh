@@ -559,35 +559,53 @@ def billing(request, pk):
     prescription = getattr(visit, "prescription", None)
 
     if request.method == "POST" and charge:
-        form = clinic_forms.PaymentForm(request.POST)
+        form = clinic_forms.PaymentForm(request.POST, charge=charge)
         if form.is_valid():
+            receipt = None
             with transaction.atomic():
-                payment = form.save(commit=False)
-                payment.charge = charge
-                payment.received_by = request.user
-                payment.save()
-                receipt = Receipt.objects.create(payment=payment)
+                # KAN-6 AC-5, T-5 and T-6. The form has already refused an
+                # amount larger than the balance, but two clicks — or two
+                # receptionists on the same bill — each read that balance
+                # before either wrote to it. Re-read it under a row lock so the
+                # second one is looking at the first one's payment, and the
+                # money is not taken twice.
+                locked = Charge.objects.select_for_update().get(pk=charge.pk)
 
-                # Only settle the visit once nothing is outstanding — a part
-                # payment must leave it on the billing list.
-                if charge.balance <= 0 and visit.status == VisitStatus.CONSULTED:
-                    visit.transition_to(VisitStatus.BILLED, by_user=request.user)
+                if locked.balance <= 0:
+                    settled = True
+                else:
+                    settled = False
+                    payment = form.save(commit=False)
+                    payment.charge = locked
+                    payment.received_by = request.user
+                    payment.save()
+                    receipt = Receipt.objects.create(payment=payment)
 
-            record(
-                request, AuditAction.CREATE, obj=payment, patient=visit.patient,
-                description=f"Payment received, receipt {receipt.receipt_number}",
-            )
-            messages.success(
-                request,
-                f"Receipt {receipt.receipt_number} issued for "
-                f"{settings.CLINIC.CURRENCY_SYMBOL}{payment.amount}.",
-            )
+                    # Only settle the visit once nothing is outstanding — a part
+                    # payment must leave it on the billing list.
+                    if locked.balance <= 0 and visit.status == VisitStatus.CONSULTED:
+                        visit.transition_to(VisitStatus.BILLED, by_user=request.user)
+
+            if settled:
+                messages.info(
+                    request, "This bill was already settled; nothing further was taken."
+                )
+            else:
+                record(
+                    request, AuditAction.CREATE, obj=payment, patient=visit.patient,
+                    description=f"Payment received, receipt {receipt.receipt_number}",
+                )
+                messages.success(
+                    request,
+                    f"Receipt {receipt.receipt_number} issued for "
+                    f"{settings.CLINIC.CURRENCY_SYMBOL}{payment.amount}.",
+                )
             return redirect("reception_billing", pk=visit.pk)
     else:
         initial = {}
         if charge and charge.balance > 0:
             initial["amount"] = charge.balance
-        form = clinic_forms.PaymentForm(initial=initial)
+        form = clinic_forms.PaymentForm(initial=initial, charge=charge)
 
     return render(request, "portal/reception/billing.html", {
         "visit": visit,

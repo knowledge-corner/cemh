@@ -162,12 +162,13 @@
       </div>
     </div>
 
-    {% if visit.status == "BILLED" %}
-      <form method="post" action="{% url 'reception_complete_visit' visit.pk %}">
-        {% csrf_token %}
-        <button type="submit" class="btn btn--dark btn--block">Check patient out</button>
-      </form>
-    {% endif %}
+    {% comment %}
+    The check-out button was removed here too (KAN-8 FR-2). Taking the payment
+    is what settles a visit; a second click that meant nothing left visits
+    sitting unfinished every time somebody forgot it. Removing it from the board
+    and leaving it here would have been worse than either — the same visit
+    finished on one screen and not on the other.
+    {% endcomment %}
   </div>
 
 </div>

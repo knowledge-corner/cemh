@@ -11,6 +11,12 @@
   <div><dt>Date</dt><dd>{{ receipt.issued_at|date:"j F Y, H:i" }}</dd></div>
   <div><dt>Patient</dt><dd>{{ patient.full_name }}</dd></div>
   <div><dt>{{ patient_id_label }}</dt><dd class="mono">{{ patient.patient_id }}</dd></div>
+  {% comment %}
+  KAN-6 AC-3 asks for the doctor on the receipt. It matters beyond the
+  paperwork: a patient who comes back with a query about the fee needs to be
+  sent to the right person, and the clinic's own reconciliation is by doctor.
+  {% endcomment %}
+  <div><dt>Doctor</dt><dd>{{ visit.doctor.display_name }}</dd></div>
 </dl>
 
 <table class="sheet__table">

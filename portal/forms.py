@@ -193,11 +193,48 @@ class ChargeForm(StyledModelForm):
 
 
 class PaymentForm(StyledModelForm):
+    """
+    Money taken at the desk.
+
+    Given the charge it is being taken against, so the amount can be checked
+    against what is actually outstanding. Part payments are allowed — the visit
+    stays on the billing list until nothing is left — but paying more than the
+    bill, or a negative amount, is not: a refund is a decision somebody makes,
+    not a minus sign typed into the payment box.
+    """
+
     class Meta:
         model = Payment
         fields = ["amount", "method", "reference", "notes"]
         widgets = {"notes": forms.TextInput(attrs=INPUT)}
         help_texts = {"reference": "UPI reference or card approval code, if any."}
+
+    def __init__(self, *args, charge=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.charge = charge
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+
+        if amount <= 0:
+            raise forms.ValidationError(
+                "Enter the amount taken. A payment of nothing would still issue "
+                "a receipt number."
+            )
+
+        if self.charge is not None:
+            outstanding = self.charge.balance
+            if outstanding <= 0:
+                raise forms.ValidationError(
+                    "This bill is already paid in full. Nothing further is due."
+                )
+            if amount > outstanding:
+                raise forms.ValidationError(
+                    f"That is more than the {outstanding} outstanding on this "
+                    "bill. Enter what was actually taken."
+                )
+
+        return amount
 
 
 class BookingForm(forms.Form):

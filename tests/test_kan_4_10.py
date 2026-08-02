@@ -10,12 +10,14 @@ see the comment on the ticket.
 """
 
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
 
 from appointments.models import BACKWARD_TRANSITIONS, InvalidTransition, VisitStatus
 from billing.models import Charge, Payment, Receipt
+from portal.forms import PaymentForm
 
 from .factories import (
     later_today, make_doctor, make_patient, make_receptionist, make_visit,
@@ -236,6 +238,135 @@ class TestReadyToBillShowsTheAmount(TestCase):
         response = self.client.get(reverse("reception_home"))
         self.assertContains(response, "800")
         self.assertContains(response, "to collect")
+
+
+class TestTakingTheMoney(TestCase):
+    """
+    KAN-6 — AC-2, AC-3, AC-5, and the amount edge cases.
+
+    The receipt itself, its numbering and the move to Settled already worked.
+    What did not: a second click took the fee twice, and the payment box would
+    accept a negative amount, a zero, or more than the bill came to.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.receptionist = make_receptionist()
+        self.visit = _arrived(make_patient(), self.doctor, self.receptionist)
+        self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.visit.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.charge = Charge.objects.create(
+            visit=self.visit, patient=self.visit.patient,
+            consultation_fee=Decimal("800.00"), set_by=self.doctor,
+        )
+        self.client.force_login(self.receptionist)
+
+    def _pay(self, amount="800", method="CASH"):
+        return self.client.post(
+            reverse("reception_billing", args=[self.visit.pk]),
+            {"amount": amount, "method": method, "reference": "", "notes": ""},
+        )
+
+    def test_confirming_payment_issues_a_receipt_and_settles_the_visit(self):
+        # AC-2.
+        self._pay()
+        self.visit.refresh_from_db()
+        self.assertEqual(Receipt.objects.count(), 1)
+        self.assertEqual(self.visit.status, VisitStatus.BILLED)
+
+    def test_a_second_click_does_not_take_the_money_twice(self):
+        # AC-5 / T-5. Two payments of 800 against an 800 bill used to leave the
+        # patient 800 in credit and two receipt numbers spent.
+        self._pay()
+        self._pay()
+        self.assertEqual(Payment.objects.count(), 1)
+        self.assertEqual(Receipt.objects.count(), 1)
+        self.assertEqual(self.charge.balance, Decimal("0.00"))
+
+    def test_a_settled_bill_offers_no_second_payment(self):
+        # What the receptionist sees once the fee is in: the payment box is
+        # replaced by the settled notice, so there is nothing left to click.
+        self._pay()
+        page = self.client.get(reverse("reception_billing", args=[self.visit.pk]))
+        self.assertContains(page, "Nothing outstanding")
+
+    def test_a_payment_posted_at_a_settled_bill_is_refused(self):
+        # The box being hidden is not the guard — this is.
+        self._pay()
+        self._pay()
+        self.assertEqual(Payment.objects.count(), 1)
+
+    def test_the_refusal_survives_the_form_check_being_bypassed(self):
+        # T-6 proper. Two receptionists submitting at the same instant both read
+        # a positive balance before either wrote to it, so the form check cannot
+        # see the collision — the row lock in the view is what stops it. Proved
+        # by taking the form check out of the way, which is the same position a
+        # genuinely simultaneous second request is in.
+        self._pay()
+        with patch.object(PaymentForm, "clean_amount", lambda self: self.cleaned_data["amount"]):
+            response = self._pay()
+
+        self.assertEqual(Payment.objects.count(), 1)
+        self.assertEqual(Receipt.objects.count(), 1)
+        messages = " ".join(str(m) for m in response.wsgi_request._messages)
+        self.assertIn("already settled", messages)
+
+    def test_a_negative_payment_is_refused(self):
+        # Refunds are out of scope for this ticket, and a minus sign is not one.
+        self._pay(amount="-200")
+        self.assertEqual(Payment.objects.count(), 0)
+
+    def test_a_payment_of_nothing_is_refused(self):
+        # It would otherwise spend a receipt number on no money.
+        self._pay(amount="0")
+        self.assertEqual(Receipt.objects.count(), 0)
+
+    def test_more_than_the_bill_is_refused(self):
+        response = self._pay(amount="5000")
+        self.assertEqual(Payment.objects.count(), 0)
+        self.assertContains(response, "outstanding on this bill")
+
+    def test_a_part_payment_leaves_the_visit_on_the_billing_list(self):
+        self._pay(amount="300")
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, VisitStatus.CONSULTED)
+        self.assertEqual(self.charge.balance, Decimal("500.00"))
+
+    def test_the_rest_of_a_part_payment_settles_it(self):
+        self._pay(amount="300")
+        self._pay(amount="500")
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, VisitStatus.BILLED)
+        self.assertEqual(Receipt.objects.count(), 2)
+
+    def test_the_printed_receipt_carries_everything_ac_3_asks_for(self):
+        # AC-3 — patient, doctor, date, amount, payment mode, receipt number.
+        self._pay(method="UPI")
+        receipt = Receipt.objects.get()
+        page = self.client.get(reverse("print_receipt", args=[receipt.pk]))
+        for expected in (
+            self.visit.patient.full_name,
+            self.doctor.display_name,
+            receipt.receipt_number,
+            "800",
+            "UPI",
+        ):
+            self.assertContains(page, expected)
+
+    def test_reprinting_does_not_issue_a_new_number(self):
+        self._pay()
+        receipt = Receipt.objects.get()
+        self.client.get(reverse("print_receipt", args=[receipt.pk]))
+        self.client.get(reverse("print_receipt", args=[receipt.pk]))
+        self.assertEqual(Receipt.objects.count(), 1)
+        receipt.refresh_from_db()
+        self.assertEqual(Receipt.objects.get().receipt_number, receipt.receipt_number)
+
+    def test_a_doctor_cannot_take_the_money(self):
+        # T-3.
+        self.client.force_login(self.doctor)
+        self.assertEqual(self._pay().status_code, 403)
+        self.assertEqual(Payment.objects.count(), 0)
 
 
 class TestSettledIsReadOnly(TestCase):
