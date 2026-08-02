@@ -459,6 +459,15 @@ class TestSettledIsReadOnly(TestCase):
         self.receipt.refresh_from_db()
         self.assertEqual(self.receipt.printed_at, first_printed)
 
+    def test_a_visit_settled_earlier_can_still_be_opened_from_all_bookings(self):
+        # KAN-8's last edge case — the same read-only view, reached from the
+        # Past bookings tab. A patient ringing next month for a copy of their
+        # receipt is what that screen's date filter is for.
+        page = self.client.get(reverse("reception_bookings") + "?tab=past")
+        self.assertContains(
+            page, reverse("reception_settled_visit", args=[self.visit.pk])
+        )
+
     def test_every_print_is_still_recorded_in_the_audit_log(self):
         # The history of prints belongs in the append-only log, not in a
         # timestamp on the document that reprinting would overwrite.
@@ -567,6 +576,19 @@ class TestBackwardMovement(TestCase):
     def test_a_doctor_cannot_move_a_visit_backward(self):
         self.client.force_login(self.doctor)
         self.assertEqual(self._back().status_code, 403)
+
+    def test_a_locked_card_says_it_is_locked(self):
+        # AC-2 and the accessibility note. A button that has simply vanished
+        # reads as a page that has not finished loading, so the reason is said
+        # in words rather than left to the absence of a control.
+        self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.visit.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        response = self.client.get(reverse("reception_home"))
+        self.assertContains(response, "Locked")
+        self.assertContains(response, "closed to changes")
+
+    def test_an_open_card_is_not_marked_locked(self):
+        self.assertNotContains(self.client.get(reverse("reception_home")), "Locked")
 
 
 class TestTheActionsBar(TestCase):

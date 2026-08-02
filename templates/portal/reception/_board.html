@@ -120,6 +120,17 @@ possible from the interface, as well as being refused by the model.
                         hx-post="{% url 'reception_move_visit_back' visit.pk %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}"
                         hx-target="#queue-board"
                         hx-swap="innerHTML">&larr; Back</button>
+              {% elif visit.is_locked %}
+                {% comment %}
+                KAN-9 AC-2. A missing button says nothing — it reads as a screen
+                that has not finished loading. This says why it is missing, in
+                words rather than by the absence of one, so nobody stands at the
+                desk clicking for a control that is never coming back.
+                {% endcomment %}
+                <span class="badge badge--grey"
+                      title="The doctor has completed this consultation, so the record is closed to changes.">
+                  &#128274; Locked
+                </span>
               {% endif %}
             </div>
           </article>
