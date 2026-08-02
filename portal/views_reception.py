@@ -39,6 +39,20 @@ from patients.models import Patient
 from . import forms as clinic_forms
 
 
+def _safe_next(request, fallback="reception_home"):
+    """
+    Where to return to after a save or a cancel (KAN-10 FR-2, FR-3, FR-5).
+
+    Only ever an internal path. A ``next`` carrying a full URL would be an open
+    redirect — a login page that bounces to somebody else's site is a real
+    phishing route, and this is a clinical system.
+    """
+    target = request.GET.get("next") or request.POST.get("next") or ""
+    if target.startswith("/") and not target.startswith("//"):
+        return target
+    return reverse(fallback)
+
+
 # ── Queue ─────────────────────────────────────────────────────────────────────
 
 #: Columns of the queue board, in the order a patient moves through them.
@@ -437,13 +451,15 @@ def new_booking(request):
                     f"Booked {visit.patient.full_name} with {visit.doctor.display_name} "
                     f"on {timezone.localtime(visit.scheduled_start):%d %b at %H:%M}.",
                 )
-                return redirect("reception_bookings")
+                return redirect(_safe_next(request, "reception_bookings"))
     else:
         form = clinic_forms.BookingForm(initial={"patient": patient} if patient else None)
 
     return render(request, "portal/reception/new_booking.html", {
         "form": form,
         "chosen_patient": patient,
+        "cancel_url": _safe_next(request, "reception_bookings"),
+        "next": request.GET.get("next", ""),
     })
 
 
@@ -509,12 +525,21 @@ def register_patient(request):
             messages.success(
                 request, f"Registered {patient.full_name} — {patient.patient_id}."
             )
-            # Straight on to booking them in; that is why they are on the phone.
+            # Straight on to booking them in; that is why they are on the
+            # phone. Unless they came from the board with a filter applied, in
+            # which case that is where they expect to land back (KAN-10 AC-4).
+            after = _safe_next(request, "reception_new_booking")
+            if request.GET.get("next") or request.POST.get("next"):
+                return redirect(after)
             return redirect(f"{reverse('reception_new_booking')}?patient_id={patient.patient_id}")
     else:
         form = clinic_forms.PatientForm()
 
-    return render(request, "portal/reception/register_patient.html", {"form": form})
+    return render(request, "portal/reception/register_patient.html", {
+        "form": form,
+        "cancel_url": _safe_next(request),
+        "next": request.GET.get("next", ""),
+    })
 
 
 # ── Billing ───────────────────────────────────────────────────────────────────
@@ -829,3 +854,73 @@ def remove_availability(request, kind, pk):
     record(request, AuditAction.DELETE, description=f"Availability removed: {description}")
     messages.success(request, "Removed.")
     return redirect("reception_availability")
+
+
+# ── Corrections (KAN-9) ───────────────────────────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def move_visit_back(request, pk):
+    """
+    Put a visit back one stage, to undo a mis-click.
+
+    Reception's action, not the doctor's: the mistakes this fixes are made at
+    the desk. Refused once the doctor has finished — see ``Visit.move_back`` for
+    why that is the line.
+    """
+    visit = get_object_or_404(Visit.objects.select_related("patient", "doctor"), pk=pk)
+
+    if request.method == "POST":
+        try:
+            visit.move_back(by_user=request.user, note=request.POST.get("reason", "").strip())
+        except InvalidTransition as exc:
+            messages.error(request, str(getattr(exc, "message", exc)))
+        else:
+            record(
+                request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+                description=f"Visit moved back to {visit.get_status_display()}",
+            )
+            messages.success(
+                request,
+                f"{visit.patient.full_name} moved back to "
+                f"{visit.get_status_display().lower()}.",
+            )
+
+    if request.headers.get("HX-Request"):
+        return render(
+            request, "portal/reception/_board.html",
+            _queue_context(request, timezone.localtime(visit.scheduled_start).date()),
+        )
+    return redirect("reception_home")
+
+
+# ── Settled (KAN-8) ───────────────────────────────────────────────────────────
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
+def settled_visit(request, pk):
+    """
+    A finished visit, read only.
+
+    No form and no save anywhere on this view — the documents are reprintable
+    and nothing else about the visit can be touched. The lock itself is on the
+    model, so this is the honest presentation of it rather than the enforcement.
+    """
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor", "charge"), pk=pk
+    )
+    record_patient_view(request, visit.patient, "Opened a settled visit")
+
+    charge = getattr(visit, "charge", None)
+    payments = (
+        charge.payments.select_related("receipt", "received_by") if charge else []
+    )
+    receipt = next((p.receipt for p in payments if hasattr(p, "receipt")), None)
+
+    return render(request, "portal/reception/settled.html", {
+        "visit": visit,
+        "patient": visit.patient,
+        "charge": charge,
+        "payments": payments,
+        "receipt": receipt,
+        "prescription": getattr(visit, "prescription", None),
+        "events": visit.status_events.select_related("changed_by").order_by("created_at"),
+    })

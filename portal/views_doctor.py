@@ -176,3 +176,37 @@ def patient_tab(request, patient_id, tab):
 
     context["active_tab"] = tab
     return render(request, template, context)
+
+
+@role_required(Role.DOCTOR)
+def send_for_patient(request, pk):
+    """
+    Call the next patient in from the waiting room (KAN-4 FR-3).
+
+    The doctor triggers this, not reception. Reception knows who has arrived;
+    only the doctor knows they are ready for the next one, and a patient sent
+    in before then sits in an empty cabin.
+
+    The one-patient-per-cabin rule lives in ``Visit.transition_to``, so a second
+    send is refused there and reported here rather than being re-checked.
+    """
+    from appointments.models import InvalidTransition, Visit
+
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor"), pk=pk
+    )
+
+    if visit.doctor_id != request.user.id:
+        raise Http404("That patient is waiting for a different doctor.")
+
+    if request.method == "POST":
+        try:
+            visit.transition_to(VisitStatus.IN_CABIN, by_user=request.user)
+        except InvalidTransition as exc:
+            # AC-3: the cabin is occupied. Said plainly, and the patient stays
+            # exactly where they were.
+            messages.error(request, str(getattr(exc, "message", exc)))
+        else:
+            messages.success(request, f"{visit.patient.full_name} sent in.")
+
+    return redirect("doctor_home")

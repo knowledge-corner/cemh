@@ -28,6 +28,20 @@ possible from the interface, as well as being refused by the model.
             <p class="pcard__meta">{{ visit.doctor.display_name }}</p>
             {% if visit.reason %}<p class="pcard__reason">{{ visit.reason }}</p>{% endif %}
 
+            {% if visit.status == "CONSULTED" and visit.charge %}
+              {% comment %}KAN-6 AC-1 — reception should not have to open the
+              visit to find out what to ask for.{% endcomment %}
+              <p class="pcard__amount strong">
+                {{ clinic_currency }}{{ visit.charge.total }} to collect
+              </p>
+            {% endif %}
+
+            {% if visit.status == "BILLED" or visit.status == "COMPLETED" %}
+              <p class="pcard__meta">
+                <a href="{% url 'reception_settled_visit' visit.pk %}">View &amp; reprint</a>
+              </p>
+            {% endif %}
+
             {% if visit.status == "ARRIVED" and visit.waiting_minutes is not None %}
               <p class="pcard__waiting {% if visit.waiting_minutes > 30 %}pcard__waiting--long{% endif %}">
                 Waiting {{ visit.waiting_minutes }} min
@@ -79,15 +93,33 @@ possible from the interface, as well as being refused by the model.
                 {% include "portal/reception/_move_button.html" with visit=visit to="ARRIVED" label="Mark arrived" primary=1 %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="NO_SHOW" label="No show" %}
               {% elif visit.status == "ARRIVED" %}
-                {% include "portal/reception/_move_button.html" with visit=visit to="IN_CABIN" label="Send to cabin" primary=1 %}
+                {% comment %}
+                KAN-4 FR-3: the doctor calls the next patient in, not reception.
+                Reception knows who has arrived; only the doctor knows they have
+                finished with the last one. Reception's button is therefore gone
+                from this column — the doctor has "Send in" on their own queue.
+                {% endcomment %}
               {% elif visit.status == "CONSULTED" %}
                 <a class="btn btn--primary" href="{% url 'reception_billing' visit.pk %}">Collect fee</a>
-              {% elif visit.status == "BILLED" %}
-                <a class="btn btn--secondary" href="{% url 'reception_billing' visit.pk %}">Receipt</a>
-                <form method="post" action="{% url 'reception_complete_visit' visit.pk %}" style="display:inline">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn--secondary">Check out</button>
-                </form>
+              {% endif %}
+
+              {% comment %}
+              KAN-8 FR-2: the Settled stage carries no action buttons, and no
+              check-out button exists anywhere in it. Taking the payment is what
+              settles a visit; a second "check out" click added a step that
+              meant nothing and left visits sitting unfinished when it was
+              forgotten. The card opens a read-only view instead.
+
+              KAN-9: one step back, to undo a mis-click. Offered only while the
+              visit is still open — once the doctor has finished, the record
+              locks and a correction is a clinical amendment, not a queue fix.
+              {% endcomment %}
+              {% if visit.previous_status %}
+                <button type="button" class="btn btn--secondary"
+                        title="Put this patient back a stage"
+                        hx-post="{% url 'reception_move_visit_back' visit.pk %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}"
+                        hx-target="#queue-board"
+                        hx-swap="innerHTML">&larr; Back</button>
               {% endif %}
             </div>
           </article>

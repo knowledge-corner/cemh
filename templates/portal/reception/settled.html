@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Settled visit — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+<div class="page page--narrow">
+
+  {% comment %}
+  KAN-8. A finished visit, read only. There is deliberately no form, no save and
+  no check-out anywhere on this page — the documents can be reprinted and
+  nothing else about the visit can be touched. The lock itself lives on the
+  model, so this page is the honest presentation of it, not the enforcement.
+  {% endcomment %}
+  <div class="page-header">
+    <div>
+      <h1 class="page-header__title">Settled visit</h1>
+      <p class="page-header__sub">
+        {{ patient.full_name }} &middot; <span class="mono">{{ patient.patient_id }}</span>
+        &middot; {{ visit.doctor.display_name }}
+        &middot; {{ visit.scheduled_start|date:"j M Y" }} at {{ visit.scheduled_start|time:"H:i" }}
+      </p>
+    </div>
+    <a class="btn btn--secondary" href="{% url 'reception_home' %}">Back to the board</a>
+  </div>
+
+  <div class="alert-strip" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">🔒 This visit is closed</span><br>
+      Nothing here can be changed. Documents can be reprinted as often as needed
+      without altering the record or issuing a new receipt number.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">Documents</h2></div>
+    <div class="card__body" style="display:flex;gap:.625rem;flex-wrap:wrap">
+      {% if prescription and prescription.generated_at %}
+        <a class="btn btn--secondary" target="_blank"
+           href="{% url 'print_prescription' visit.pk %}">Print prescription</a>
+      {% else %}
+        <button class="btn btn--secondary" disabled
+                title="No prescription was issued for this visit">Print prescription</button>
+      {% endif %}
+
+      {% if receipt %}
+        <a class="btn btn--secondary" target="_blank"
+           href="{% url 'print_receipt' receipt.pk %}">Print receipt {{ receipt.receipt_number }}</a>
+      {% else %}
+        <button class="btn btn--secondary" disabled
+                title="No receipt was issued for this visit">Print receipt</button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if charge %}
+    <div class="card">
+      <div class="card__header"><h2 class="card__title">What was charged</h2></div>
+      <div class="card__body card__body--flush table-scroll">
+        <table class="table">
+          <tbody>
+            <tr><td>Consultation</td><td class="table__num">{{ clinic_currency }}{{ charge.consultation_fee }}</td></tr>
+            <tr><td>Procedure</td><td class="table__num">{{ clinic_currency }}{{ charge.procedure_fee }}</td></tr>
+            <tr><td>Discount</td><td class="table__num">−{{ clinic_currency }}{{ charge.discount }}</td></tr>
+            <tr><td class="strong">Total</td><td class="table__num strong">{{ clinic_currency }}{{ charge.total }}</td></tr>
+            <tr><td>Paid</td><td class="table__num">{{ clinic_currency }}{{ charge.amount_paid }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if payments %}
+    <div class="card">
+      <div class="card__header"><h2 class="card__title">Payments taken</h2></div>
+      <div class="card__body card__body--flush table-scroll">
+        <table class="table">
+          <thead><tr><th>When</th><th>Amount</th><th>Method</th><th>Receipt</th><th>Taken by</th></tr></thead>
+          <tbody>
+            {% for payment in payments %}
+              <tr>
+                <td class="nowrap">{{ payment.received_at|date:"j M Y H:i" }}</td>
+                <td class="table__num">{{ clinic_currency }}{{ payment.amount }}</td>
+                <td>{{ payment.get_method_display }}</td>
+                <td class="mono">{{ payment.receipt.receipt_number|default:"—" }}</td>
+                <td>{{ payment.received_by.display_name|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">What happened, and when</h2></div>
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table">
+        <thead><tr><th>When</th><th>Stage</th><th>By</th><th>Note</th></tr></thead>
+        <tbody>
+          {% for event in events %}
+            <tr>
+              <td class="nowrap mono">{{ event.created_at|date:"j M H:i" }}</td>
+              <td>{{ event.get_to_status_display }}</td>
+              <td>{{ event.changed_by.display_name|default:"—" }}</td>
+              <td class="faint">{{ event.note|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

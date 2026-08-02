@@ -29,7 +29,7 @@ empty list with somebody already waiting outside the door.
       </thead>
       <tbody>
         {% for visit in queue %}
-          <tr>
+          <tr {% if visit.status == "IN_CABIN" %}class="queue__row--in-cabin"{% endif %}>
             <td class="queue__time">{{ visit.scheduled_start|time:"H:i" }}</td>
             <td class="queue__name">{{ visit.patient.full_name }}</td>
             <td class="queue__uhid">{{ visit.patient.patient_id }}</td>
@@ -38,7 +38,22 @@ empty list with somebody already waiting outside the door.
             <td>
               {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
             </td>
-            <td class="text-right">
+            <td class="text-right" style="white-space:nowrap">
+              {% comment %}
+              KAN-4 FR-3: the doctor calls the next patient in, not reception.
+              Reception knows who has arrived; only the doctor knows they are
+              ready, and a patient sent in before then sits in an empty cabin.
+
+              The one-per-cabin rule is enforced in Visit.transition_to, so a
+              second send is refused there rather than re-checked here.
+              {% endcomment %}
+              {% if visit.status == "ARRIVED" %}
+                <form method="post" action="{% url 'doctor_send_for_patient' visit.pk %}"
+                      style="display:inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn--primary">Send in</button>
+                </form>
+              {% endif %}
               <a class="btn btn--secondary" href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open</a>
             </td>
           </tr>

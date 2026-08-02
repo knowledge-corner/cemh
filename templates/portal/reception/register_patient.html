@@ -16,6 +16,7 @@
   <div class="card__body">
     <form method="post">
       {% csrf_token %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       {% if form.non_field_errors %}
         <ul class="messages">{% for e in form.non_field_errors %}<li class="error">{{ e }}</li>{% endfor %}</ul>
       {% endif %}
@@ -34,6 +35,7 @@
       <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
         <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
         <button type="submit" class="btn btn--primary">Register &amp; book</button>
+        <a class="btn btn--secondary" href="{{ cancel_url }}">Cancel</a>
       </div>
     </form>
   </div>

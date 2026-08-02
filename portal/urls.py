@@ -10,6 +10,10 @@ urlpatterns = [
          views_reception.move_visit, name="reception_move_visit"),
 
     path("reception/close-day/", views_reception.close_day, name="reception_close_day"),
+    path("reception/visit/<int:pk>/back/", views_reception.move_visit_back,
+         name="reception_move_visit_back"),
+    path("reception/visit/<int:pk>/settled/", views_reception.settled_visit,
+         name="reception_settled_visit"),
 
     path("reception/bookings/", views_reception.bookings, name="reception_bookings"),
     path("reception/bookings/export/", views_reception.export_bookings,

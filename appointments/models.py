@@ -61,6 +61,22 @@ ALLOWED_TRANSITIONS = {
     VisitStatus.NO_SHOW: set(),
 }
 
+#: Corrections — one step back, and only while the visit is still open (KAN-9).
+#:
+#: Kept separate from ALLOWED_TRANSITIONS rather than merged into it. Forward is
+#: the clinic day happening; backward is somebody fixing a mis-click, and the two
+#: want different rules, different permissions and a different note in the trail.
+#: Merging them would also make "what happens next" unreadable.
+#:
+#: Nothing goes back out of CONSULTED. That is the point at which the doctor has
+#: finished and the record locks; a correction after that is a clinical
+#: amendment, not a queue fix.
+BACKWARD_TRANSITIONS = {
+    VisitStatus.CONFIRMED: VisitStatus.BOOKED,
+    VisitStatus.ARRIVED: VisitStatus.CONFIRMED,
+    VisitStatus.IN_CABIN: VisitStatus.ARRIVED,
+}
+
 #: Statuses that no longer occupy a slot, so they are excluded from the
 #: double-booking constraint and from the day's queue.
 #:
@@ -271,6 +287,60 @@ class Visit(models.Model):
     @property
     def is_active(self):
         return self.status not in INACTIVE_STATUSES
+
+    # ── Corrections and the edit lock (KAN-9) ────────────────────────────────
+
+    #: The point after which a visit is a clinical record rather than a queue
+    #: entry. Editing stops here, not at Settled: the doctor has finished, and
+    #: what was recorded is what happened.
+    LOCKED_STATUSES = (
+        VisitStatus.CONSULTED, VisitStatus.BILLED, VisitStatus.COMPLETED,
+    )
+
+    @property
+    def is_locked(self):
+        """Has the doctor finished, making this a record rather than a booking?"""
+        return self.status in self.LOCKED_STATUSES
+
+    @property
+    def previous_status(self):
+        """The stage this visit can be put back to, or ``None``."""
+        if self.is_locked:
+            return None
+        return BACKWARD_TRANSITIONS.get(self.status)
+
+    def move_back(self, by_user=None, note=""):
+        """
+        Put this visit back one stage — a correction, not part of the workflow.
+
+        Raises :class:`InvalidTransition` when there is nowhere to go back to,
+        which covers both the first stage and anything the doctor has finished
+        with. Moving out of the cabin frees it for the next patient, which falls
+        out of the status change rather than needing its own step.
+        """
+        target = self.previous_status
+        if target is None:
+            raise InvalidTransition(
+                f"A visit that is {self.get_status_display().lower()} cannot be "
+                f"moved back."
+                if self.is_locked else
+                f"{self.get_status_display()} is the first stage; there is "
+                f"nothing before it."
+            )
+
+        previous = self.status
+        self.status = target
+        self.save(update_fields=["status", "updated_at"])
+
+        VisitStatusEvent.objects.create(
+            visit=self,
+            from_status=previous,
+            to_status=target,
+            changed_by=by_user,
+            note=f"Moved back to {VisitStatus(target).label}"
+                 + (f" — {note}" if note else ""),
+        )
+        return self
 
     @property
     def confirmation(self):

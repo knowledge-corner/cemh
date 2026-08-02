@@ -880,3 +880,17 @@ p { margin: 0 0 .75rem; }
   body { background: #fff; }
   .card, .tab-panel, .storyboard { border: none; box-shadow: none; }
 }
+
+/* The patient currently in the cabin, on the doctor's queue. Exactly one row
+   can carry this — the rule is enforced in the model, not by the stylesheet. */
+.queue__row--in-cabin {
+  background: var(--brand-teal-soft);
+  box-shadow: inset 3px 0 0 var(--brand-teal);
+}
+
+/* What reception has to collect, on a Ready-to-bill card. */
+.pcard__amount {
+  margin-top: .375rem;
+  color: var(--brand-teal-dark);
+  font-size: .9375rem;
+}

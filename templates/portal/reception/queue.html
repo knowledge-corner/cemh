@@ -44,10 +44,18 @@ on the Bookings screen.
       <a class="btn btn--secondary" href="{% url 'reception_home' %}">Show all</a>
     {% endif %}
 
+    {% comment %}
+    KAN-10 — the four actions reception reaches for from this screen. Each
+    carries the doctor filter so returning here lands on the same view they
+    left, rather than silently widening back to all doctors.
+    {% endcomment %}
     {% if can_work_queue %}
-      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Availability</a>
-      <a class="btn btn--primary" href="{% url 'reception_new_booking' %}">+ New booking</a>
+      <a class="btn btn--secondary"
+         href="{% url 'reception_register_patient' %}?next={{ request.get_full_path|urlencode }}">+ Add patient</a>
+      <a class="btn btn--primary"
+         href="{% url 'reception_new_booking' %}?next={{ request.get_full_path|urlencode }}">+ New booking</a>
       <a class="btn btn--dark" href="{% url 'reception_bookings' %}">All bookings</a>
+      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor availability</a>
     {% endif %}
   </div>
 </div>

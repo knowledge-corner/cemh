@@ -163,13 +163,15 @@ class TestDoctorsCanReadTheBoard(TestCase):
         self.client.force_login(self.doctor)
         response = self.client.get(reverse("reception_home"))
         self.assertFalse(response.context["can_work_queue"])
-        self.assertNotContains(response, "Send to cabin")
+        self.assertNotContains(response, "All bookings")
 
     def test_a_receptionist_is(self):
+        # "Send to cabin" moved to the doctor under KAN-4 FR-3, so the marker
+        # here is a stage action reception still owns.
         self.client.force_login(self.receptionist)
         response = self.client.get(reverse("reception_home"))
         self.assertTrue(response.context["can_work_queue"])
-        self.assertContains(response, "Send to cabin")
+        self.assertContains(response, "All bookings")
 
     def test_a_doctor_cannot_move_a_visit_even_by_posting_directly(self):
         self.client.force_login(self.doctor)
