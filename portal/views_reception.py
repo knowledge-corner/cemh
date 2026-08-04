@@ -36,6 +36,7 @@ from appointments.models import (
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from billing.models import Charge, Payment, Receipt
+from patients import importing, matching
 from patients.models import Patient
 
 from . import forms as clinic_forms
@@ -620,21 +621,15 @@ def _possible_duplicates(form):
     """
     Patients who look like the one being registered.
 
-    Name *and* number together, not either alone: families share a mobile
-    constantly — a mother's number sits on three of her children's records —
-    so matching on the number by itself would stop the ordinary case rather
-    than the mistaken one.
+    The comparison itself lives in :mod:`patients.matching`, because the CSV
+    import has to make exactly the same judgement and two implementations of
+    "is this the same person" would eventually disagree.
     """
-    first = (form.cleaned_data.get("first_name") or "").strip()
-    last = (form.cleaned_data.get("last_name") or "").strip()
-    phone = (form.cleaned_data.get("phone") or "").strip()
-
-    if not (first and phone):
-        return Patient.objects.none()
-
-    return Patient.objects.filter(
-        is_active=True, phone=phone, first_name__iexact=first, last_name__iexact=last
-    )[:5]
+    return matching.find_duplicates(
+        form.cleaned_data.get("first_name"),
+        form.cleaned_data.get("last_name"),
+        form.cleaned_data.get("phone"),
+    )
 
 
 @role_required(Role.RECEPTIONIST)
@@ -643,7 +638,7 @@ def register_patient(request):
     duplicates = None
 
     if request.method == "POST":
-        form = clinic_forms.PatientForm(request.POST)
+        form = clinic_forms.PatientRegistrationForm(request.POST)
         if form.is_valid():
             # A second record for somebody already here does not just make a
             # mess: it splits their history in two and the doctor reads half of
@@ -669,7 +664,7 @@ def register_patient(request):
                 return redirect(after)
             return redirect(f"{reverse('reception_new_booking')}?patient_id={patient.patient_id}")
     else:
-        form = clinic_forms.PatientForm()
+        form = clinic_forms.PatientRegistrationForm()
 
     return render(request, "portal/reception/register_patient.html", {
         "form": form,
@@ -679,6 +674,63 @@ def register_patient(request):
         # re-posts the page, and losing the filter on the way back would defeat
         # the point of keeping it (AC-4).
         "next": request.GET.get("next") or request.POST.get("next", ""),
+    })
+
+
+# ── Bringing patients in from a spreadsheet ───────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def patient_template(request):
+    """The blank CSV to fill in."""
+    response = HttpResponse(importing.template_csv(), content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="patient-import-template.csv"'
+    return response
+
+
+@role_required(Role.RECEPTIONIST)
+def import_patients(request):
+    """
+    Load a filled-in template.
+
+    Two steps on purpose. The first pass only reads the file and reports what
+    it found, so the receptionist sees how many patients are about to be
+    created, which rows are already registered and which are wrong, before
+    anything is written. Nothing is created until she presses the second
+    button.
+    """
+    result = None
+
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+
+        if upload is None:
+            messages.error(request, "Choose a CSV file first.")
+        else:
+            result = importing.parse(upload)
+
+            # Written only on the confirming pass, and only when the whole file
+            # is clean. A half-finished import is the worst outcome available:
+            # nobody can tell which rows landed, running it again duplicates
+            # the ones that did, and the clinic reconciles a spreadsheet
+            # against a database by eye.
+            if request.POST.get("confirm") and result.ok and result.created:
+                created = importing.commit(result)
+                for patient in created:
+                    record(
+                        request, AuditAction.CREATE, obj=patient, patient=patient,
+                        description="Patient imported from a spreadsheet",
+                    )
+                messages.success(
+                    request,
+                    f"Imported {len(created)} patient{'' if len(created) == 1 else 's'}."
+                    + (f" {len(result.skipped)} were already registered."
+                       if result.skipped else ""),
+                )
+                return redirect("reception_bookings")
+
+    return render(request, "portal/reception/import_patients.html", {
+        "result": result,
+        "columns": importing.COLUMNS,
     })
 
 

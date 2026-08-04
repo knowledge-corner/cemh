@@ -745,11 +745,15 @@ class TestTheActionsBar(TestCase):
 
     def test_a_sibling_on_the_same_number_is_not_treated_as_a_duplicate(self):
         # Families share a mobile constantly; this is the ordinary case, not
-        # the mistaken one.
+        # the mistaken one. The sibling is a child, so KAN-11 now wants a
+        # guardian with them.
         from patients.models import Patient
 
         self._register()
-        self._register(first_name="Rohan", date_of_birth="2015-07-02", sex="M")
+        self._register(
+            first_name="Rohan", date_of_birth="2015-07-02", sex="M",
+            guardian_name="Meera Kulkarni", guardian_relation="Mother",
+        )
         self.assertEqual(Patient.objects.filter(phone="9820099999").count(), 2)
 
     def test_the_return_path_survives_the_duplicate_warning(self):

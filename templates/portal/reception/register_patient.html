@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Register patient — {{ clinic_name }}{% endblock %}
 
@@ -13,20 +14,22 @@
   Cancel lives with the submit button at the foot of the form, and only there.
   This page had three of them, two pointing somewhere else entirely.
   {% endcomment %}
+  <a class="btn btn--secondary" href="{% url 'reception_import_patients' %}">Import from a spreadsheet</a>
 </div>
 
 <div class="card page--narrow">
   <div class="card__body">
     <form method="post">
       {% csrf_token %}
-        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
       {% if form.non_field_errors %}
         <ul class="form-errors">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
       {% endif %}
 
       {% comment %}
-      KAN-10's duplicate edge case. A second record for a patient who is already
-      here does not merely make a mess — it splits their history in two, and the
+      The duplicate warning. A second record for a patient who is already here
+      does not merely make a mess — it splits their history in two, and the
       doctor then reads half of it. So the existing record is offered first.
 
       Not a hard block: families share a mobile number constantly, and a mother
@@ -57,17 +60,52 @@
 
       <div class="form-grid">
         {% for field in form %}
-          <div class="field">
-            <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
-            {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
-          </div>
+          {% if field.name != "guardian_name" and field.name != "guardian_relation" %}
+            <div class="field">
+              <label class="field__label" for="{{ field.id_for_label }}">
+                {{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}
+              </label>
+              {{ field }}
+              {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+              {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+            </div>
+          {% endif %}
         {% endfor %}
       </div>
 
-      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
-        <a class="btn btn--secondary" href="{{ cancel_url }}">Cancel</a>
+      {% comment %}
+      Guardian details, for a patient under 18.
+
+      Hidden until the date of birth says it is needed, and revealed by the
+      script at the foot of the page. `hidden` rather than a CSS class, so a
+      screen reader treats it as absent too rather than reading out fields that
+      are not on screen — and so the change of state is announced when it
+      appears.
+
+      Whether these are *required* is decided on the server. A section that is
+      only hidden is not a rule.
+      {% endcomment %}
+      <fieldset id="guardian-section" class="guardian-section" hidden>
+        <legend class="guardian-section__legend">Guardian</legend>
+        <p class="faint small" style="margin:0 0 .75rem">
+          This patient is under 18, so the clinic needs to know who brings them in.
+        </p>
+        <div class="form-grid">
+          {% for field in form %}
+            {% if field.name == "guardian_name" or field.name == "guardian_relation" %}
+              <div class="field">
+                <label class="field__label" for="{{ field.id_for_label }}">
+                  {{ field.label }} <span aria-hidden="true">*</span>
+                </label>
+                {{ field }}
+                {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="form-actions">
         {% if duplicates %}
           <button type="submit" name="confirm" value="1" class="btn btn--primary">
             This is a different person — register anyway
@@ -77,8 +115,13 @@
             {% if next %}Register{% else %}Register &amp; book{% endif %}
           </button>
         {% endif %}
+        <a class="btn btn--secondary" href="{{ cancel_url }}">Cancel</a>
       </div>
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/guardian_section.js' %}" defer></script>
 {% endblock %}

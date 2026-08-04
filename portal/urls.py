@@ -24,6 +24,11 @@ urlpatterns = [
     path("reception/bookings/slots/", views_reception.slot_options, name="reception_slots"),
     path("reception/bookings/search/", views_reception.patient_lookup, name="reception_patient_lookup"),
     path("reception/bookings/register/", views_reception.register_patient, name="reception_register_patient"),
+    # Bringing an existing patient list in from a spreadsheet.
+    path("reception/patients/import/", views_reception.import_patients,
+         name="reception_import_patients"),
+    path("reception/patients/template.csv", views_reception.patient_template,
+         name="reception_patient_template"),
 
     # ── Doctor availability ──────────────────────────────────────────────
     path("reception/availability/", views_reception.availability,

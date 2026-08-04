@@ -40,10 +40,35 @@ def allocate_patient_id():
     return f"{prefix}-{year}-{serial:05d}"
 
 
+def age_in_years(born, on=None):
+    """
+    Completed years between ``born`` and ``on`` (default today).
+
+    A module-level function as well as a model property, because the
+    registration form has to know a patient's age from a typed date of birth
+    before there is any patient to ask.
+
+    Completed years, so somebody whose eighteenth birthday is today is 18 — the
+    boundary the guardian rules turn on.
+    """
+    on = on or date.today()
+    return on.year - born.year - ((on.month, on.day) < (born.month, born.day))
+
+
 class Sex(models.TextChoices):
+    """
+    Shown to users as "Gender".
+
+    The column keeps the name ``sex`` because renaming it would mean a data
+    migration across every template, export and growth-chart lookup that reads
+    it, to change a word the database never displays. The label is what the
+    clinic sees, and the label is what changed.
+    """
+
     MALE = "M", "Male"
     FEMALE = "F", "Female"
     OTHER = "O", "Other"
+    NOT_STATED = "N", "Prefer not to mention"
 
 
 class BloodGroup(models.TextChoices):
@@ -72,7 +97,7 @@ class Patient(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
     date_of_birth = models.DateField()
-    sex = models.CharField(max_length=1, choices=Sex.choices)
+    sex = models.CharField(max_length=1, choices=Sex.choices, verbose_name="Gender")
     blood_group = models.CharField(max_length=3, choices=BloodGroup.choices, blank=True)
 
     # Contact
@@ -143,9 +168,7 @@ class Patient(models.Model):
     @property
     def age_years(self):
         """Completed years, accounting for whether this year's birthday has passed."""
-        today = date.today()
-        born = self.date_of_birth
-        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        return age_in_years(self.date_of_birth)
 
     @property
     def age_months_part(self):

@@ -14,7 +14,7 @@ from appointments import scheduling
 from appointments.models import Visit, VisitStatus
 from billing.models import Charge, Payment
 from clinical.models import ClinicalNote, Diagnosis, Investigation
-from patients.models import Patient, PatientHistory
+from patients.models import Patient, PatientHistory, age_in_years
 from pharmacy.models import Prescription, PrescriptionItem
 
 INPUT = {"class": "input"}
@@ -36,7 +36,24 @@ class StyledModelForm(forms.ModelForm):
                 widget.attrs["class"] = (existing + " input").strip()
 
 
+#: Nobody is 120. A date of birth further back than this is a typed year, and
+#: letting it through puts a nonsense age on the chart and the growth curve.
+MAX_PLAUSIBLE_AGE_YEARS = 120
+
+#: Under this, the clinic needs to know who brings the patient in.
+GUARDIAN_AGE = 18
+
+
 class PatientForm(StyledModelForm):
+    """
+    The whole patient record, as the doctor's chart edits it.
+
+    Deliberately still the full field set. Trimming the registration form is
+    about what reception is asked for with a patient standing in front of them;
+    editing an existing record is a different job, done later and with the notes
+    open, and the blood group and address have to be reachable somewhere.
+    """
+
     class Meta:
         model = Patient
         fields = [
@@ -46,6 +63,103 @@ class PatientForm(StyledModelForm):
             "address", "city", "pincode", "referred_by",
         ]
         widgets = {"date_of_birth": forms.DateInput(attrs=DATE, format="%Y-%m-%d")}
+        labels = {"sex": "Gender"}
+
+
+class PatientRegistrationForm(StyledModelForm):
+    """
+    Registering a patient at the desk.
+
+    Five fields, and two more only when the patient is a child. Everything the
+    clinic does not need at that moment came off: the columns are still on the
+    model, still edited from the chart and still in the admin, so nothing is
+    lost — but a receptionist with a patient in front of her is not asked for a
+    blood group nobody has taken yet.
+    """
+
+    class Meta:
+        model = Patient
+        fields = [
+            "first_name", "last_name", "date_of_birth", "sex", "phone",
+            "guardian_name", "guardian_relation",
+        ]
+        widgets = {"date_of_birth": forms.DateInput(attrs=DATE, format="%Y-%m-%d")}
+        labels = {
+            "sex": "Gender",
+            "phone": "Phone",
+        }
+        help_texts = {
+            # The ticket contradicts itself on whether this becomes "Guardian
+            # phone" for a minor. It stays one field with one label — see the
+            # note on the ticket — and the help text carries the meaning
+            # instead, which is true at any age and does not move as a date of
+            # birth is typed.
+            "phone": "The number the clinic should ring. For a child, the guardian's.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Guardian details are asked for only when the patient is a child. The
+        # section is hidden by the page until a date of birth says otherwise;
+        # required-ness is decided here, where it cannot be skipped by posting
+        # straight at the endpoint.
+        for name in ("guardian_name", "guardian_relation"):
+            self.fields[name].required = False
+
+        # The model allows a blank surname; this form does not, because the
+        # surname is part of the key the duplicate check compares on and a
+        # missing one weakens it to a first name and a number.
+        #
+        # This does block registering somebody who genuinely has one name, which
+        # is not rare here. The ticket asks for it and raises the same worry in
+        # its own Open Questions — flagged there rather than decided quietly.
+        self.fields["last_name"].required = True
+
+        today = timezone.localdate()
+        self.fields["date_of_birth"].widget.attrs["max"] = today.isoformat()
+        self.fields["date_of_birth"].widget.attrs["min"] = today.replace(
+            year=today.year - MAX_PLAUSIBLE_AGE_YEARS
+        ).isoformat()
+
+    def clean_date_of_birth(self):
+        dob = self.cleaned_data["date_of_birth"]
+        today = timezone.localdate()
+
+        if dob > today:
+            raise forms.ValidationError("A date of birth cannot be in the future.")
+
+        if dob < today.replace(year=today.year - MAX_PLAUSIBLE_AGE_YEARS):
+            raise forms.ValidationError(
+                f"That is over {MAX_PLAUSIBLE_AGE_YEARS} years ago. Check the year."
+            )
+        return dob
+
+    def clean(self):
+        cleaned = super().clean()
+        dob = cleaned.get("date_of_birth")
+        if dob is None:
+            return cleaned
+
+        if age_in_years(dob) < GUARDIAN_AGE:
+            for name, label in (
+                ("guardian_name", "guardian's name"),
+                ("guardian_relation", "relation to the patient"),
+            ):
+                if not (cleaned.get(name) or "").strip():
+                    self.add_error(
+                        name,
+                        f"This patient is under {GUARDIAN_AGE}, so the {label} "
+                        f"is needed.",
+                    )
+        else:
+            # An adult carries no guardian, even if the fields were filled in
+            # before the date of birth was corrected. Discarded here rather than
+            # in the page, so a stale value cannot be posted back.
+            cleaned["guardian_name"] = ""
+            cleaned["guardian_relation"] = ""
+
+        return cleaned
 
 
 class PatientHistoryForm(StyledModelForm):
