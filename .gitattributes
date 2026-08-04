@@ -1,0 +1,38 @@
+# Line endings.
+#
+# Git on Windows converts LF to CRLF on checkout by default. Every file here
+# that is read by a Linux shell inside the container then arrives with a
+# trailing carriage return, and `set -e\r` is not `set -e` — the shell reports
+# "Illegal option -", the entrypoint dies on its first line, and the container
+# restarts forever while `docker compose` cheerfully reports "Started".
+#
+# Without this file that failure depends on which machine cloned the repo,
+# which is the worst kind of bug to be handed: it works for the person who
+# wrote it and nowhere else.
+
+# Normalise everything to LF in the repository and on checkout. Windows editors
+# have handled LF for years; Linux shells have never handled CR.
+* text=auto eol=lf
+
+# Said again explicitly for the files where getting it wrong stops the clinic
+# system from starting at all.
+*.sh        text eol=lf
+*.command   text eol=lf
+docker/*    text eol=lf
+
+# Except Windows batch files, which are the one thing that genuinely wants CRLF:
+# cmd.exe can mis-parse a LF-only .bat, and these are the files the clinic
+# double-clicks every morning.
+*.bat       text eol=crlf
+
+# Binary — never touch these.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
+*.xlsx      binary
+*.xlsm      binary

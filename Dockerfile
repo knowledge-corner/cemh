@@ -19,6 +19,23 @@ RUN apt-get update \
 
 COPY requirements/ requirements/
 
+# The boot script is baked into the image rather than read from the bind mount,
+# with any carriage returns stripped on the way in.
+#
+# Both halves matter. A checkout on Windows hands the container a script with
+# CRLF endings, and `set -e\r` is not `set -e`: the shell refuses the first
+# line, the entrypoint dies, and the container restarts forever while
+# `docker compose` reports "Started". .gitattributes now prevents that at
+# source, but a repository can be unzipped, copied off a USB stick or saved by
+# an editor that knows better, and none of those consult .gitattributes.
+# Whether the clinic system starts in the morning should not rest on it.
+#
+# Application code stays bind mounted and live. This is the one file that does
+# not, so changing it needs `docker compose up -d --build`.
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
+
 
 # ── Development ───────────────────────────────────────────────────────────────
 #

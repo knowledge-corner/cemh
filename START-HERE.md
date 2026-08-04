@@ -109,3 +109,48 @@ not `/admin/` — that is deliberate.
 **This is not yet set up for use over the internet.** It runs on this one
 computer, reachable at `localhost`. Putting it online safely is a separate job
 involving a domain name, a certificate and India-resident hosting.
+
+---
+
+## If the address does not open
+
+Docker prints `Started` when it has *asked* the container to start, not when
+the system is actually up. So the first thing to do is ask what is really
+running:
+
+```
+docker compose ps
+```
+
+Look at the **STATUS** column for `cmeh-web-1`:
+
+| It says | What it means | What to do |
+|---|---|---|
+| `Up` | Running normally | Open <http://localhost:8000> |
+| `Restarting` | Starting, failing, and trying again | Read the log, below |
+| `Exited` | Stopped | Read the log, below |
+
+```
+docker compose logs --tail 50 web
+```
+
+The startup prints three numbered steps. Whichever number it stops at is where
+it failed, and the reason is on the line underneath.
+
+### "Illegal option -" in the log
+
+```
+/app/docker/entrypoint.sh: 7: set: Illegal option -
+```
+
+The files were copied to this computer with Windows line endings, which the
+Linux system inside the container cannot read. Repair the copy:
+
+```
+git add --renormalize .
+git checkout -- .
+docker compose up -d --build
+```
+
+`--build` matters here: the corrected startup file has to be rebuilt into the
+container image.

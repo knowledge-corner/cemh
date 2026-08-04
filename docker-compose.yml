@@ -51,10 +51,13 @@ services:
       - .:/app
     ports:
       - "8000:8000"
-    # Invoked through `sh` rather than as an executable: Windows checkouts do
-    # not preserve the execute bit, and a "permission denied" on first run is
-    # exactly the failure this setup exists to avoid.
-    entrypoint: ["sh", "/app/docker/entrypoint.sh"]
+    # The copy baked into the image, not the one under the bind mount. A
+    # checkout on Windows arrives with CRLF line endings and the shell inside
+    # the container refuses the script's first line — see the Dockerfile.
+    #
+    # Still invoked through `sh` rather than as an executable, because Windows
+    # checkouts do not preserve the execute bit either.
+    entrypoint: ["sh", "/usr/local/bin/entrypoint.sh"]
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     depends_on:
       db:
