@@ -26,15 +26,29 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+# Straight after the Mac is switched on, Docker Desktop needs half a minute or
+# so before it will answer. Giving up immediately made this file useless at
+# login, which is exactly when it is most wanted — so nudge Docker awake, wait,
+# and only complain if it really is not coming.
 if ! docker info >/dev/null 2>&1; then
-  echo "  Docker Desktop is installed but not running."
-  echo ""
-  echo "  1. Open Docker Desktop from Applications"
-  echo "  2. Wait for the whale icon in the menu bar to settle"
-  echo "  3. Double-click this file again"
-  echo ""
-  read -r _ 2>/dev/null
-  exit 1
+  open -a Docker >/dev/null 2>&1 || true
+  echo "  Waiting for Docker Desktop to be ready..."
+  tries=0
+  until docker info >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 40 ]; then
+      echo ""
+      echo "  Docker Desktop did not become ready after two minutes."
+      echo ""
+      echo "  1. Open Docker Desktop from Applications"
+      echo "  2. Wait for the whale icon in the menu bar to settle"
+      echo "  3. Double-click this file again"
+      echo ""
+      read -r _ 2>/dev/null
+      exit 1
+    fi
+    sleep 3
+  done
 fi
 
 echo "  Starting... the first time takes a few minutes."

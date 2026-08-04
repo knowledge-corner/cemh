@@ -35,6 +35,22 @@ When it is ready your browser opens by itself at **http://localhost:8000**.
 
 You can close the black window. The system keeps running.
 
+### Having it start on its own
+
+If you would rather not click anything at all, double-click **AUTOSTART-ON.bat**
+once. After that, switching the computer on starts the clinic system and opens
+it in your browser by itself.
+
+Two things to know:
+
+* In Docker Desktop, go to **Settings** and tick **"Start Docker Desktop when
+  you log in"**. Without it there is nothing for the automatic start to start.
+* It waits up to two minutes for Docker to wake up, because Docker Desktop is
+  not ready the instant you log in.
+
+To stop it happening, double-click **AUTOSTART-OFF.bat**. Nothing else changes,
+and no patient records are affected.
+
 ### Signing in
 
 | Who | Username | Password |

@@ -1,6 +1,6 @@
 @echo off
 REM  Shuts the clinic system down. Double-click this file.
-REM  Patient records are kept — they live in a Docker volume, not in the
+REM  Patient records are kept - they live in a Docker volume, not in the
 REM  containers this stops.
 title Clinic System - Shutting down
 cd /d "%~dp0"

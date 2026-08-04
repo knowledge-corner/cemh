@@ -31,17 +31,33 @@ if errorlevel 1 (
 )
 
 REM --- Is Docker actually running? ------------------------------------
+REM  Straight after the computer is switched on, Docker Desktop needs half a
+REM  minute or so before it will answer. Giving up immediately made this file
+REM  useless at startup, which is exactly when it is most wanted - so it waits,
+REM  and only complains if Docker really is not coming.
 docker info >nul 2>&1
-if errorlevel 1 (
-  echo   Docker Desktop is installed but not running.
-  echo.
-  echo   1. Open Docker Desktop from the Start menu
-  echo   2. Wait for the whale icon to stop moving
-  echo   3. Double-click this file again
-  echo.
-  pause
-  exit /b 1
-)
+if not errorlevel 1 goto dockerready
+
+echo   Waiting for Docker Desktop to be ready...
+set /a dtries=0
+:dockerwait
+set /a dtries+=1
+timeout /t 3 /nobreak >nul
+docker info >nul 2>&1
+if not errorlevel 1 goto dockerready
+if %dtries% LSS 40 goto dockerwait
+
+echo.
+echo   Docker Desktop did not become ready after two minutes.
+echo.
+echo   1. Open Docker Desktop from the Start menu
+echo   2. Wait for the whale icon to stop moving
+echo   3. Double-click this file again
+echo.
+pause
+exit /b 1
+
+:dockerready
 
 echo   Starting... the first time takes a few minutes.
 echo   Later starts take about ten seconds.
@@ -71,7 +87,7 @@ goto waitloop
 
 :slow
 echo.
-echo   It is taking longer than usual. Opening the browser anyway —
+echo   It is taking longer than usual. Opening the browser anyway -
 echo   if the page does not load, wait a minute and refresh.
 goto open
 
@@ -95,4 +111,8 @@ echo   ================================================
 echo.
 echo   You can close this window.
 echo.
+
+REM  Run from the Startup folder (AUTOSTART-ON.bat passes /auto) there is
+REM  nobody sitting there to press a key.
+if /i "%~1"=="/auto" exit /b 0
 pause
