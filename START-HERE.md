@@ -128,6 +128,29 @@ involving a domain name, a certificate and India-resident hosting.
 
 ---
 
+## Getting a new version
+
+```
+git pull
+```
+
+Then double-click **START-CLINIC.bat** (Windows) or **START-CLINIC.command**
+(Mac) as usual. That is the whole update.
+
+The launcher brings the database up to date as part of starting, so a new
+version that adds a field works straight away. Skipping the launcher and simply
+leaving the system running will pick up the new code but *not* the database
+change, and pages that use the new field will show an error like
+
+```
+column accounts_doctorprofile.category does not exist
+```
+
+If you see that, it means the system is running new code against an old
+database. Double-clicking the launcher fixes it.
+
+---
+
 ## If the address does not open
 
 Docker prints `Started` when it has *asked* the container to start, not when

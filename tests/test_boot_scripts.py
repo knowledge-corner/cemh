@@ -155,3 +155,38 @@ class TestGitKeepsThemThatWay(SimpleTestCase):
         # The one place CRLF is wanted: cmd.exe can mis-parse a LF-only .bat,
         # and these are what the clinic double-clicks every morning.
         self.assertIn("*.bat       text eol=crlf", self.rules)
+
+
+class TestTheLauncherKeepsTheDatabaseInStep(SimpleTestCase):
+    """
+    A clinic machine crashed with "column accounts_doctorprofile.category does
+    not exist" after pulling this batch.
+
+    The container applies migrations when it starts, but the development server
+    reloads changed Python without restarting the container. So a git pull put
+    new code live against an old database, and every page that touched the new
+    column died. The launcher applies migrations itself now, which makes
+    pulling and double-clicking sufficient on its own.
+    """
+
+    def setUp(self):
+        self.windows = (REPO / "START-CLINIC.bat").read_text()
+        self.mac = (REPO / "START-CLINIC.command").read_text()
+
+    def test_the_windows_launcher_applies_migrations(self):
+        self.assertIn("manage.py migrate --no-input", self.windows)
+
+    def test_the_mac_launcher_applies_migrations(self):
+        self.assertIn("manage.py migrate --no-input", self.mac)
+
+    def test_it_happens_before_the_browser_is_opened(self):
+        # Otherwise the receptionist is looking at the error page while the
+        # migration she needed runs behind it.
+        migrate = self.windows.index("manage.py migrate --no-input")
+        browser = self.windows.index('start "" http://localhost:8000/')
+        self.assertLess(migrate, browser)
+
+    def test_a_failure_to_migrate_does_not_stop_the_system_starting(self):
+        # A clinic that cannot open the system at all is worse off than one
+        # running with a warning it can act on.
+        self.assertIn("The system may still work", self.windows)

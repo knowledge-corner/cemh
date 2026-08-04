@@ -65,6 +65,23 @@ if ! docker compose up -d --build; then
 fi
 
 echo ""
+# The container applies migrations when it starts, but the web server reloads
+# changed code without restarting the container. So after a git pull the new
+# code is live while the database is still the old shape, and pages die with
+# "column ... does not exist". Applying them here means pulling and
+# double-clicking is always enough. It does nothing when there is nothing to do.
+echo "  Checking the database is up to date..."
+tries=0
+until docker compose exec -T web python manage.py migrate --no-input >/dev/null 2>&1; do
+  tries=$((tries + 1))
+  if [ "$tries" -ge 5 ]; then
+    echo "  Could not update the database. The system may still work; if a page"
+    echo "  shows an error about a missing column, send this window on."
+    break
+  fi
+  sleep 3
+done
+
 echo "  Waiting for the clinic system to be ready..."
 tries=0
 while [ "$tries" -lt 60 ]; do
