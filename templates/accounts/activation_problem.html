@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{{ heading }} — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+<div class="card page--narrow" style="max-width:34rem;margin:2rem auto">
+  <div class="card__body">
+    <div class="alert-strip alert-strip--warning">
+      <div>
+        <span class="alert-strip__title">{{ heading }}</span><br>
+        {{ detail }}
+      </div>
+    </div>
+    {% if show_login %}
+      <div class="form-actions">
+        <a class="btn btn--primary" href="{% url 'login' %}">Go to sign in</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

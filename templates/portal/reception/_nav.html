@@ -50,8 +50,12 @@ beside it only crowded the row. Screen readers get it from aria-label.
     a doctor's schedule. Reached from Bookings only — it is not part of running
     today's clinic, and it was crowding the board's bar.
     {% endcomment %}
-    {% if nav_active == "bookings" %}
+    {% if nav_active == "bookings" or nav_active == "doctors" %}
       <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor schedule</a>
+    {% endif %}
+
+    {% if nav_active != "doctors" %}
+      <a class="btn btn--secondary" href="{% url 'reception_doctors' %}">Doctors</a>
     {% endif %}
   </div>
 </nav>

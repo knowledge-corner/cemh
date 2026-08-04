@@ -1043,8 +1043,18 @@ def availability(request):
     doctors = User.objects.filter(role=Role.DOCTOR, is_active=True)
     today = timezone.localdate()
 
+    # Doctors who have been added but have not set a password yet. They are
+    # deliberately absent from every dropdown on this screen — hours for
+    # somebody who cannot sign in would put patients in front of an empty cabin
+    # — but absent and unexplained is how reception concludes the system has
+    # lost a doctor (KAN-21 AC-3).
+    pending = User.objects.filter(
+        role=Role.DOCTOR, doctor_profile__activated_at__isnull=True,
+    ).select_related("doctor_profile").order_by("first_name")
+
     return render(request, "portal/reception/availability.html", {
         "doctors": doctors,
+        "pending_doctors": pending,
         "schedules": DoctorSchedule.objects.select_related("doctor").order_by(
             "doctor__first_name", "weekday", "start_time"
         ),
@@ -1091,6 +1101,24 @@ def add_availability(request, kind):
         return redirect("reception_availability")
 
     obj = form.save(commit=False)
+
+    # KAN-21 FR-7 / AC-3. A doctor who has not set a password cannot be given
+    # working hours or leave: nobody can sign in as them, so a patient booked
+    # into those hours would arrive to a cabin with nobody in it. Refused here
+    # as well as being left off the doctor list — the list is presentation, and
+    # this is the rule.
+    scheduled_doctor = getattr(obj, "doctor", None)
+    if scheduled_doctor is not None:
+        profile = getattr(scheduled_doctor, "doctor_profile", None)
+        if profile is not None and profile.is_pending:
+            messages.error(
+                request,
+                f"{scheduled_doctor.display_name} has not set their password "
+                f"yet, so they cannot be given hours. Re-send their invitation "
+                f"from the Doctors screen.",
+            )
+            return redirect("reception_availability")
+
     for attribute in ("created_by",):
         if hasattr(obj, attribute):
             setattr(obj, attribute, request.user)

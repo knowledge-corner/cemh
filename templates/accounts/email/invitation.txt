@@ -1,0 +1,17 @@
+{% autoescape off %}Dear Dr {{ doctor.display_name }},
+
+You have been added to {{ clinic_name }}.
+
+To finish setting up your account, choose your own password here:
+
+{{ url }}
+
+This link works once and expires in {{ days }} days. If it has expired by the
+time you open it, ask reception to send a new one.
+
+This email does not contain a password, and nobody at the clinic can see
+yours. If you were not expecting this message, ignore it and tell reception —
+the link does nothing until it is used.
+
+{{ clinic_name }}
+{% endautoescape %}

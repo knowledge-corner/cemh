@@ -90,6 +90,14 @@ SLOT_MINUTES = int(os.environ.get("SLOT_MINUTES", "20"))
 # How many days ahead reception may book.
 BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "45"))
 
+# How long a doctor's set-password invitation stays usable.
+#
+# Seven days rather than twenty-four hours: a doctor invited on a Friday should
+# not find the link dead on Monday, and reception can always re-send. Short
+# enough that an old link in a mailbox is not a standing way in. The ticket
+# leaves this open — see the note on KAN-21.
+INVITATION_DAYS = int(os.environ.get("INVITATION_DAYS", "7"))
+
 # Shown on the public page. Kept as plain text rather than derived from the
 # times above, because what a clinic advertises and what it schedules are not
 # always the same thing (lunch breaks, alternating doctors, and so on).

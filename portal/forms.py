@@ -7,9 +7,14 @@ form class plus a registry entry rather than a new view.
 """
 
 from django import forms
+from django.db import transaction
+from django.utils.text import slugify
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
+from accounts.models import (
+    DoctorCategory, DoctorProfile, Role, User, phone_validator,
+)
 from appointments import scheduling
 from appointments.models import Visit, VisitStatus
 from billing.models import Charge, Payment
@@ -686,3 +691,104 @@ class DoctorLeaveForm(forms.ModelForm):
         )
         self.fields["start_time"].required = False
         self.fields["end_time"].required = False
+
+
+class DoctorForm(forms.Form):
+    """
+    Adding a doctor (KAN-21).
+
+    A plain form rather than a ModelForm because it writes two rows — the user
+    account and the doctor profile — and neither on its own is a doctor.
+
+    There is no password field, and there is not meant to be one. Reception
+    never chooses a doctor's password; the doctor sets their own by following
+    the emailed link.
+    """
+
+    full_name = forms.CharField(
+        label="Doctor's name",
+        max_length=150,
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Vrushali Kulkarni"}),
+    )
+    email = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs=INPUT),
+        help_text="Where the set-password link is sent. Also how they sign in.",
+    )
+    phone = forms.CharField(
+        label="Contact number", max_length=15, required=False,
+        widget=forms.TextInput(attrs=INPUT),
+    )
+    category = forms.ChoiceField(
+        label="Doctor category",
+        choices=[("", "Select a category")] + list(DoctorCategory.choices),
+        widget=forms.Select(attrs=INPUT),
+    )
+    registration_number = forms.CharField(
+        label="Medical council registration number", max_length=50, required=False,
+        widget=forms.TextInput(attrs=INPUT),
+        help_text="Printed on prescriptions.",
+    )
+    qualification = forms.CharField(
+        label="Qualification", max_length=200, required=False,
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. MBBS, MD, DM"}),
+    )
+
+    def clean_email(self):
+        # FR-8 / AC-7. Checked here for a readable message; the column is
+        # unique, so two receptionists saving the same address at the same
+        # instant still produce exactly one account.
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError(
+                "Somebody is already registered with that email address."
+            )
+        return email
+
+    def clean_phone(self):
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if phone:
+            phone_validator(phone)
+        return phone
+
+    def _username_for(self, email):
+        """
+        A login name derived from the email, made unique.
+
+        The doctor signs in with their email; this exists because the user
+        table still has a username column and it has to hold something.
+        """
+        base = slugify(email.split("@")[0]) or "doctor"
+        candidate, suffix = base, 1
+        while User.objects.filter(username=candidate).exists():
+            suffix += 1
+            candidate = f"{base}{suffix}"
+        return candidate
+
+    @transaction.atomic
+    def save(self):
+        """Create the account and its profile, both pending activation."""
+        name = self.cleaned_data["full_name"].strip()
+        first, _, last = name.partition(" ")
+
+        user = User.objects.create_user(
+            username=self._username_for(self.cleaned_data["email"]),
+            email=self.cleaned_data["email"],
+            first_name=first,
+            last_name=last.strip(),
+            phone=self.cleaned_data.get("phone", ""),
+            role=Role.DOCTOR,
+            # Cannot sign in until the invitation is followed, and there is no
+            # password to sign in with either.
+            is_active=False,
+        )
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+
+        DoctorProfile.objects.create(
+            user=user,
+            category=self.cleaned_data["category"],
+            registration_number=self.cleaned_data.get("registration_number", ""),
+            qualification=self.cleaned_data.get("qualification", ""),
+        )
+        return user

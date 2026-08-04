@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_reception
+from . import views_doctors, views_reception
 
 urlpatterns = [
     # ── Reception ────────────────────────────────────────────────────────
@@ -29,6 +29,14 @@ urlpatterns = [
          name="reception_import_patients"),
     path("reception/patients/template.csv", views_reception.patient_template,
          name="reception_patient_template"),
+
+    # ── Doctors ──────────────────────────────────────────────────────────
+    path("reception/doctors/", views_doctors.doctor_list, name="reception_doctors"),
+    path("reception/doctors/add/", views_doctors.add_doctor, name="reception_add_doctor"),
+    path("reception/doctors/<int:pk>/resend/", views_doctors.resend_invitation,
+         name="reception_resend_invitation"),
+    # Followed by the doctor from their email, so no sign-in required.
+    path("activate/<str:token>/", views_doctors.activate_doctor, name="doctor_activate"),
 
     # ── Doctor availability ──────────────────────────────────────────────
     path("reception/availability/", views_reception.availability,

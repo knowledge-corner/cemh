@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Set your password — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+<div class="card page--narrow" style="max-width:34rem;margin:2rem auto">
+  <div class="card__body">
+    <h1 class="page-header__title" style="margin-bottom:.25rem">Choose your password</h1>
+    <p class="faint" style="margin-bottom:1.25rem">
+      Welcome, Dr {{ doctor.display_name }}. Set a password and you are done —
+      nobody at the clinic will be able to see it.
+    </p>
+
+    <form method="post">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <ul class="form-errors">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      {% for field in form %}
+        <div class="field">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="field__help">{{ field.help_text|safe }}</div>{% endif %}
+          {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn--primary">Set my password</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

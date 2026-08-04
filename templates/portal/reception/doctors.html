@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Doctors — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Doctors</h1>
+    <p class="page-header__sub">Who consults here, and who has finished setting up</p>
+  </div>
+  <a class="btn btn--primary" href="{% url 'reception_add_doctor' %}">Add a doctor</a>
+</div>
+
+{% include "portal/reception/_nav.html" with nav_active="doctors" %}
+
+{% if doctors %}
+  <div class="card">
+    <div class="card__body card__body--flush table-scroll">
+      <table class="table table--middle">
+        <thead>
+          <tr><th>Doctor</th><th>Email</th><th>Category</th>
+              <th>Registration</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for doctor in doctors %}
+            <tr>
+              <td class="strong">{{ doctor.display_name }}</td>
+              <td class="mono">{{ doctor.email }}</td>
+              <td>{{ doctor.doctor_profile.get_category_display|default:"—" }}</td>
+              <td class="mono faint">{{ doctor.doctor_profile.registration_number|default:"—" }}</td>
+              <td>
+                {% comment %}
+                Said in a word as well as a colour — a status nobody can read
+                without seeing colour is not a status.
+                {% endcomment %}
+                {% if doctor.doctor_profile.is_pending %}
+                  <span class="badge badge--warning">Pending</span>
+                {% elif doctor.is_active %}
+                  <span class="badge badge--success">Active</span>
+                {% else %}
+                  <span class="badge badge--grey">Inactive</span>
+                {% endif %}
+              </td>
+              <td class="row-actions">
+                {% if doctor.doctor_profile.is_pending %}
+                  <form method="post" action="{% url 'reception_resend_invitation' doctor.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn--secondary">Resend invitation</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="faint small" style="margin-top:.75rem">
+    A doctor stays <strong>Pending</strong> until they follow the emailed link and
+    choose their own password. Until then they cannot be given working hours or
+    be booked, because nobody can sign in as them.
+  </p>
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">🩺</div>
+    <div class="empty__title">No doctors yet</div>
+    <div class="empty__hint">Add one, and they will be emailed a link to set their password.</div>
+  </div>
+{% endif %}
+{% endblock %}
