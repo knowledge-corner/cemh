@@ -135,13 +135,27 @@ def leave_for(doctor, day):
     return list(DoctorLeave.objects.filter(doctor=doctor, date=day))
 
 
-def available_slots(doctor, day, *, include_past=False):
-    """
-    Free slots for one doctor on one day.
+#: Why a slot cannot be booked. ``None`` means it can.
+SLOT_FREE = "free"
+SLOT_BOOKED = "booked"
+SLOT_PAST = "past"
+SLOT_AWAY = "away"
 
-    Past slots are dropped unless ``include_past`` is set. The booking form
-    deliberately does not set it: a booking taken for a time that has already
-    gone is a mis-key, not an intention.
+
+def slot_grid(doctor, day):
+    """
+    Every slot the doctor works that day, each with why it can or cannot be
+    taken.
+
+    Separate from :func:`available_slots`, which answers "what may be booked"
+    and is what validation asks. This answers "what should the receptionist
+    see", and the difference is the point: a slot that is already taken used to
+    vanish from the form, so a 10:30 gap between 10:15 and 10:45 looked
+    identical to a doctor who simply does not work at 10:30. Showing it as
+    booked is the difference between "no" and "not any more".
+
+    Booked wins over past when a slot is both. That a patient was seen is the
+    more useful fact; neither can be booked now anyway.
     """
     slots = day_slots(day, doctor)
     if not slots:
@@ -154,16 +168,33 @@ def available_slots(doctor, day, *, include_past=False):
     away = leave_for(doctor, day)
     now = timezone.now()
 
-    free = []
+    grid = []
     for start, end in slots:
-        if not include_past and start <= now:
-            continue
         if any(start < busy_end and busy_start < end for busy_start, busy_end in taken):
-            continue
-        if any(absence.covers(start, end) for absence in away):
-            continue
-        free.append((start, end))
-    return free
+            state = SLOT_BOOKED
+        elif any(absence.covers(start, end) for absence in away):
+            state = SLOT_AWAY
+        elif start <= now:
+            state = SLOT_PAST
+        else:
+            state = SLOT_FREE
+        grid.append({"start": start, "end": end, "state": state})
+    return grid
+
+
+def available_slots(doctor, day, *, include_past=False):
+    """
+    Free slots for one doctor on one day.
+
+    Past slots are dropped unless ``include_past`` is set. Booking a time that
+    has already gone is a mis-key, not an intention.
+    """
+    return [
+        (row["start"], row["end"])
+        for row in slot_grid(doctor, day)
+        if row["state"] == SLOT_FREE
+        or (include_past and row["state"] == SLOT_PAST)
+    ]
 
 
 def next_available(doctor, *, days=14):

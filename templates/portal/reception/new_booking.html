@@ -9,7 +9,11 @@
     <h1 class="page-header__title">New booking</h1>
     <p class="page-header__sub">At the desk or over the telephone</p>
   </div>
-  <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
+  {% comment %}
+  Cancel lives with the submit button at the foot of the form, and only there.
+  This page had three, two of them going somewhere other than where the user
+  came from.
+  {% endcomment %}
 </div>
 
 <form method="post" action="{% url 'reception_new_booking' %}">
@@ -92,8 +96,11 @@
 
   </div>
 
-  <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
-    <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Cancel</a>
+  {% comment %}
+  Left aligned, like every field above it. The buttons used to sit hard right,
+  a full screen-width away from the last thing the user filled in.
+  {% endcomment %}
+  <div class="form-actions">
     <button type="submit" class="btn btn--primary">Confirm booking</button>
     <a class="btn btn--secondary" href="{{ cancel_url }}">Cancel</a>
   </div>

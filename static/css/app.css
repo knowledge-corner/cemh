@@ -869,15 +869,19 @@ p { margin: 0 0 .75rem; }
 
 /* ── Booking ───────────────────────────────────────────────────────────── */
 
+/* One column, left aligned, read top to bottom: patient, then doctor and date,
+   then the time. Two columns put step 2 to the right of step 1, so filling the
+   form meant crossing back and forth, and the short first card left a hole
+   under it the width of half the screen.
+
+   `margin-right: auto` rather than `margin: auto` — bounded, but held to the
+   left edge with everything else on the page. */
 .booking-grid {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  align-items: start;
-}
-@media (min-width: 900px) {
-  .booking-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .booking-grid__slots { grid-column: 1 / -1; }
+  max-width: 56rem;
+  margin-right: auto;
 }
 .booking-grid .card { margin-top: 0; }
 
@@ -899,6 +903,46 @@ p { margin: 0 0 .75rem; }
   color: var(--text);
 }
 .slot:hover { border-color: var(--brand-teal); color: var(--brand-teal-dark); }
+
+/* Taken, passed, or on leave. Shown rather than hidden, so the shape of the
+   doctor's day is readable — a booked 10:30 left out looked exactly like a
+   doctor who does not work at 10:30. Struck through as well as greyed, because
+   colour alone is not a state. */
+.slot:disabled,
+.slot--booked,
+.slot--past,
+.slot--away {
+  cursor: not-allowed;
+  background: var(--surface-muted);
+  border-color: var(--border);
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+.slot:disabled:hover { border-color: var(--border); color: var(--text-faint); }
+.slot--booked { border-style: dashed; }
+
+.slot-key { display: flex; flex-wrap: wrap; gap: .875rem; margin: .625rem 0 0; }
+.slot-key__item { display: inline-flex; align-items: center; gap: .3125rem; }
+.slot-key__swatch {
+  width: .75rem;
+  height: .75rem;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+}
+.slot-key__swatch--free   { background: var(--surface); }
+.slot-key__swatch--booked { background: var(--surface-muted); border-style: dashed; }
+.slot-key__swatch--past   { background: var(--surface-muted); border-color: var(--border); }
+
+/* Form buttons sit under the fields they belong to, not hard right where the
+   user has to cross the screen to reach them. */
+.form-actions {
+  display: flex;
+  gap: .5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
 .slot--on {
   background: var(--brand-teal);
   border-color: var(--brand-teal);

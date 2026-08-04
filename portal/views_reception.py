@@ -572,12 +572,20 @@ def slot_options(request):
 
     if doctor_id and day_value:
         doctor = User.objects.filter(pk=doctor_id, role=Role.DOCTOR).first()
-        day = timezone.datetime.strptime(day_value, "%Y-%m-%d").date()
+        try:
+            day = timezone.datetime.strptime(day_value, "%Y-%m-%d").date()
+        except ValueError:
+            day = None
         if doctor and day:
-            slots = scheduling.available_slots(doctor, day, include_past=True)
+            # The whole grid, not only what is free. A taken slot shown greyed
+            # tells the receptionist the doctor works then and somebody else has
+            # it; a taken slot left out looks exactly like a time the doctor
+            # does not work, and she stops offering it.
+            slots = scheduling.slot_grid(doctor, day)
 
     return render(request, "portal/reception/_slots.html", {
         "slots": slots,
+        "free_count": sum(1 for s in slots if s["state"] == scheduling.SLOT_FREE),
         "doctor": doctor,
         "day": day,
         # Asked per doctor, not clinic-wide: the clinic is open every day now,

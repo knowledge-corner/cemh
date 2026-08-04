@@ -259,6 +259,9 @@ class BookingForm(forms.Form):
     day = forms.DateField(
         label="Date",
         widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+        # `min` and `max` are set per instance in __init__ — the booking window
+        # moves with the calendar, and a bound computed at import time would be
+        # yesterday's by the following morning.
     )
     slot = forms.DateTimeField(
         widget=forms.HiddenInput,
@@ -277,6 +280,13 @@ class BookingForm(forms.Form):
         self.fields["doctor"].queryset = User.objects.filter(
             role=Role.DOCTOR, is_active=True
         )
+
+        # Stop the date picker from offering a day that will only be refused.
+        # clean() still checks both ends: `min` is a courtesy from the browser,
+        # not a control — a typed date or a crafted post walks straight past it.
+        opens, closes = scheduling.booking_window()
+        self.fields["day"].widget.attrs["min"] = opens.isoformat()
+        self.fields["day"].widget.attrs["max"] = closes.isoformat()
 
     def clean(self):
         cleaned = super().clean()

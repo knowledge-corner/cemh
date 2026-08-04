@@ -1,6 +1,14 @@
 {% comment %}
-Free appointment times. Clicking one fills the hidden `slot` field — the value
-is a full timestamp, so the form never has to re-derive a time from a label.
+Every time the doctor works that day, and what can be done with each. Clicking a
+free one fills the hidden `slot` field — the value is a full timestamp, so the
+form never has to re-derive a time from a label.
+
+A taken slot is shown greyed rather than left out. Leaving it out made a booked
+10:30 look identical to a doctor who does not work at 10:30, and the
+receptionist would stop offering the time altogether. Past slots are shown for
+the same reason — the shape of the day stays readable — but neither can be
+clicked, so a mis-key is not possible from the interface. The form refuses both
+again on submit, because the interface is never the guarantee.
 {% endcomment %}
 
 {% comment %}
@@ -17,25 +25,52 @@ receptionist guessing, because what to do about it differs.
       {% else %}
         <span class="alert-strip__title">{{ doctor.display_name }} is not consulting</span><br>
         {{ day|date:"l, j F" }} is not in their working week. Change it under
-        Doctor availability, or choose another day.
+        Doctor schedule, or choose another day.
       {% endif %}
     </div>
   </div>
+
 {% elif slots %}
   <p class="faint small" style="margin:0 0 .625rem">
-    {{ slots|length }} free slot{{ slots|length|pluralize }} with {{ doctor.display_name }}
-    on {{ day|date:"j F" }}
+    {% if free_count %}
+      {{ free_count }} free slot{{ free_count|pluralize }} with
+      {{ doctor.display_name }} on {{ day|date:"j F" }}
+    {% else %}
+      No free slots left with {{ doctor.display_name }} on {{ day|date:"j F" }} &mdash;
+      every time below is taken or has passed.
+    {% endif %}
   </p>
+
   <div class="slot-grid">
-    {% for start, end in slots %}
-      <button type="button" class="slot" data-slot="{{ start|date:'c' }}"
-              onclick="pickSlot(this)">{{ start|time:"H:i" }}</button>
+    {% for slot in slots %}
+      {% if slot.state == "free" %}
+        <button type="button" class="slot" data-slot="{{ slot.start|date:'c' }}"
+                onclick="pickSlot(this)">{{ slot.start|time:"H:i" }}</button>
+      {% else %}
+        {% comment %}
+        Disabled, not merely greyed: a button that looks unavailable but still
+        submits is worse than no button at all. The title says why, because
+        colour on its own does not.
+        {% endcomment %}
+        <button type="button" class="slot slot--{{ slot.state }}" disabled
+                title="{% if slot.state == 'booked' %}Already booked{% elif slot.state == 'past' %}This time has passed{% else %}{{ doctor.display_name }} is on leave{% endif %}">
+          {{ slot.start|time:"H:i" }}
+        </button>
+      {% endif %}
     {% endfor %}
   </div>
+
+  <p class="slot-key faint small">
+    <span class="slot-key__item"><span class="slot-key__swatch slot-key__swatch--free"></span>Free</span>
+    <span class="slot-key__item"><span class="slot-key__swatch slot-key__swatch--booked"></span>Booked</span>
+    <span class="slot-key__item"><span class="slot-key__swatch slot-key__swatch--past"></span>Passed</span>
+  </p>
+
 {% elif doctor and day %}
   <div class="alert-strip alert-strip--warning">
-    <div><span class="alert-strip__title">Fully booked</span><br>
-      No free slots with {{ doctor.display_name }} on {{ day|date:"j F" }}. Try another date.</div>
+    <div><span class="alert-strip__title">No slots that day</span><br>
+      {{ doctor.display_name }} has no consulting hours set for
+      {{ day|date:"j F" }}. Try another date.</div>
   </div>
 {% else %}
   <p class="faint small" style="margin:0">Choose a doctor and date to see free times.</p>
