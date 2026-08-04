@@ -1,0 +1,21 @@
+{% comment %}
+The board, as returned to an HTMX action, with any message it produced.
+
+Actions on the board — marking a patient arrived, putting one back a stage —
+reply with the board fragment. Django's messages are only cleared once they are
+rendered, so a message set by one of those actions used to sit in the session
+and appear on whatever page the user opened next, minutes later and out of
+context. It is carried here instead, swapped into the toast host out of band.
+
+Only when there is something to say: this template also answers the thirty-second
+poll, and an unconditional swap would wipe an error toast off the screen while
+the receptionist was still reading it.
+{% endcomment %}
+{% include "portal/reception/_board.html" %}
+
+{% if messages %}
+  <div id="toast-host" class="toast-host" aria-live="polite" aria-atomic="false"
+       hx-swap-oob="true">
+    {% include "_toasts.html" %}
+  </div>
+{% endif %}

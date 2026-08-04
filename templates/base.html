@@ -43,16 +43,23 @@ queue) would otherwise be rejected.
 <div class="brand-rule"></div>
 
 <main class="page {% block page_class %}{% endblock %}">
-  {% if messages %}
-    <ul class="messages">
-      {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
-    </ul>
-  {% endif %}
-
   {% block content %}{% endblock %}
 </main>
 
+{% comment %}
+Messages are toasts, not a bar at the top of the page. The bar pushed the whole
+screen down as it appeared and back up as it went, which moves the button
+somebody is reaching for; and it stayed there until the next page load, so a
+receptionist could be reading "Booking saved" twenty minutes after saving it.
+
+Outside <main> and fixed, so it never takes part in the page's layout.
+{% endcomment %}
+<div id="toast-host" class="toast-host" aria-live="polite" aria-atomic="false">
+  {% include "_toasts.html" %}
+</div>
+
 <script src="{% static 'js/vendor/htmx.min.js' %}" defer></script>
+<script src="{% static 'js/toasts.js' %}" defer></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

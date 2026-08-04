@@ -7,3 +7,14 @@ Settled at the same moment rather than on the next thirty-second poll. Same
 pattern as the doctor's save.
 {% endcomment %}
 <div hx-swap-oob="innerHTML:#queue-board">{{ board_html|safe }}</div>
+
+{% comment %}
+The receipt number is announced by the same toast host as everything else, so
+the confirmation does not vanish with the dialog that produced it.
+{% endcomment %}
+{% if messages %}
+  <div id="toast-host" class="toast-host" aria-live="polite" aria-atomic="false"
+       hx-swap-oob="true">
+    {% include "_toasts.html" %}
+  </div>
+{% endif %}

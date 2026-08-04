@@ -182,7 +182,7 @@ def reception_home(request):
 @role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def queue_board(request):
     """Just the board, for the polling refresh."""
-    return render(request, "portal/reception/_board.html", _queue_context(request))
+    return render(request, "portal/reception/_board_swap.html", _queue_context(request))
 
 
 @role_required(Role.RECEPTIONIST)
@@ -280,7 +280,7 @@ def move_visit(request, pk, to_status):
 
     if request.headers.get("HX-Request"):
         return render(
-            request, "portal/reception/_board.html",
+            request, "portal/reception/_board_swap.html",
             _queue_context(request, timezone.localtime(visit.scheduled_start).date()),
         )
 
@@ -1113,7 +1113,7 @@ def move_visit_back(request, pk):
 
     if request.headers.get("HX-Request"):
         return render(
-            request, "portal/reception/_board.html",
+            request, "portal/reception/_board_swap.html",
             _queue_context(request, timezone.localtime(visit.scheduled_start).date()),
         )
     return redirect("reception_home")

@@ -445,18 +445,93 @@ p { margin: 0 0 .75rem; }
 
 /* ── Messages ──────────────────────────────────────────────────────────── */
 
-.messages { list-style: none; margin: 0 0 1rem; padding: 0; }
-.messages li {
+/* Form-level errors, shown inside the form they belong to. Not to be confused
+   with the toasts below: these are part of the page and stay until fixed. */
+.form-errors { list-style: none; margin: 0 0 1rem; padding: 0; }
+.form-errors li {
   padding: .625rem .875rem;
   border-radius: var(--radius);
   font-size: .875rem;
   margin-bottom: .5rem;
   border-left: 3px solid;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
 }
-.messages .error   { background: var(--danger-bg);  color: var(--danger);  border-color: var(--danger); }
-.messages .warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
-.messages .success { background: var(--success-bg); color: var(--success); border-color: var(--success); }
-.messages .info    { background: var(--info-bg);    color: var(--info);    border-color: var(--info); }
+
+/* ── Toasts ────────────────────────────────────────────────────────────────
+   Messages used to be a bar at the top of the page. It pushed the whole screen
+   down as it appeared and back up as it went — moving the button somebody was
+   reaching for — and it sat there until the next page load, so "Booking saved"
+   could still be on screen twenty minutes later.
+
+   Fixed, so nothing about the page moves. Top right, under the header, because
+   that is where the eye already is after pressing a button in the toolbar. */
+
+.toast-host {
+  position: fixed;
+  top: calc(var(--topbar-height) + .75rem);
+  right: 1rem;
+  z-index: 200;                      /* above the modal backdrop, which is 100:
+                                        a message about what just happened in a
+                                        dialog has to be visible over it */
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;              /* the empty host must never swallow a
+                                        click meant for the page underneath */
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: .625rem;
+  padding: .625rem .75rem;
+  border-radius: var(--radius);
+  border-left: 3px solid;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(46, 58, 64, .18);
+  font-size: .875rem;
+  animation: toast-in .18s ease-out;
+}
+.toast__text { flex: 1; min-width: 0; }
+.toast__close {
+  flex: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 1.125rem;
+  line-height: 1;
+  padding: 0 .125rem;
+  color: inherit;
+  opacity: .55;
+}
+.toast__close:hover { opacity: 1; }
+
+.toast--error   { background: var(--danger-bg);  color: var(--danger);  border-color: var(--danger); }
+.toast--warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+.toast--success { background: var(--success-bg); color: var(--success); border-color: var(--success); }
+.toast--info,
+.toast--debug   { background: var(--info-bg);    color: var(--info);    border-color: var(--info); }
+
+.toast--going { opacity: 0; transform: translateY(-.25rem); transition: opacity .2s, transform .2s; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-.5rem); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Someone who has asked for less motion gets the toast without the slide. */
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+  .toast--going { transition: none; }
+}
+
+@media (max-width: 480px) {
+  .toast-host { left: 1rem; right: 1rem; width: auto; }
+}
 
 /* ── Empty states ──────────────────────────────────────────────────────── */
 

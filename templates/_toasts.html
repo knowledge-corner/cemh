@@ -1,0 +1,27 @@
+{% comment %}
+One toast per queued message.
+
+Rendered into #toast-host by base.html on a full page load, and swapped into the
+same host out of band when an HTMX action produces a message — otherwise the
+message would sit in the session and surface later, on whatever page the user
+happened to open next.
+
+Errors and warnings do not time out. The rest of the ticket is right that a
+"Patient added" banner should get out of the way by itself, but a clinical
+system that hides "this bill was already settled" after three seconds is
+choosing tidiness over the receptionist knowing what happened. They carry a
+close button instead.
+{% endcomment %}
+{% for message in messages %}
+  {% if message.level_tag == "error" or message.level_tag == "warning" %}
+    <div class="toast toast--{{ message.level_tag }}" role="alert" data-persist="1">
+      <span class="toast__text">{{ message }}</span>
+      <button type="button" class="toast__close" aria-label="Dismiss this message">&times;</button>
+    </div>
+  {% else %}
+    <div class="toast toast--{{ message.level_tag }}" role="status">
+      <span class="toast__text">{{ message }}</span>
+      <button type="button" class="toast__close" aria-label="Dismiss this message">&times;</button>
+    </div>
+  {% endif %}
+{% endfor %}
