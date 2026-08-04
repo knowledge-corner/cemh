@@ -15,6 +15,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 # Indian mobile numbers, optionally with a +91 / 0 prefix.
@@ -31,19 +32,54 @@ class Role(models.TextChoices):
     ADMIN = "ADMIN", "Administrator"
 
 
-class DoctorCategory(models.TextChoices):
+class Specialisation(models.Model):
     """
-    What kind of patients a doctor sees, which the calendar filters on.
+    What a doctor specialises in.
 
-    Three values because this clinic is "Adult & Paediatric Endocrinology" and
-    that is the division its diary actually turns on. The ticket calls this
-    reference data maintained elsewhere without saying what is in it — see the
-    note on KAN-21; changing this list is a migration, not a code change.
+    A table rather than a fixed list of choices, because reception has to be
+    able to add one without waiting for a release. KAN-21 shipped this as three
+    hard-coded values — Adult, Paediatric, Adult & paediatric — which were not
+    specialisations at all but a division of the patient list; KAN-37 replaced
+    them with the real thing.
+
+    Uniqueness is case-insensitive. Otherwise the first person to type
+    "cardiology" creates a second entry beside "Cardiology", and from then on
+    the filter shows two of everything.
     """
 
-    ADULT = "ADULT", "Adult"
-    PAEDIATRIC = "PAEDIATRIC", "Paediatric"
-    BOTH = "BOTH", "Adult & paediatric"
+    name = models.CharField(max_length=100)
+
+    #: Retired rather than deleted. A specialisation in use cannot be removed
+    #: without orphaning the doctors on it, and the clinic's history should not
+    #: change because a list was tidied.
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Unticked, this stays on existing doctors but is not offered "
+                  "for new ones.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="specialisations_added",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"), name="specialisation_name_unique_ci",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        # Collapse the whitespace before the uniqueness check sees it, so
+        # "Cardiology " and "Cardiology" cannot both exist.
+        self.name = " ".join((self.name or "").split())
+        super().save(*args, **kwargs)
 
 
 class User(AbstractUser):
@@ -116,12 +152,16 @@ class DoctorProfile(models.Model):
     )
     speciality = models.CharField(max_length=200, blank=True)
 
-    #: What the calendar filters on (KAN-21 FR-9).
-    category = models.CharField(
-        max_length=20,
-        choices=DoctorCategory.choices,
-        blank=True,
-        help_text="Which patients this doctor sees. Drives the calendar filter.",
+    #: What the calendar filters on (KAN-21 FR-9, as revised by KAN-37).
+    #:
+    #: PROTECT, so a specialisation cannot be deleted out from under the
+    #: doctors who hold it. Retire it instead — see Specialisation.is_active.
+    specialisation = models.ForeignKey(
+        "accounts.Specialisation",
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name="doctors",
+        help_text="What this doctor specialises in. Drives the calendar filter.",
     )
 
     #: When the doctor followed their invitation and set a password.

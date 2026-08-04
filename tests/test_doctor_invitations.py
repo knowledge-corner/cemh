@@ -17,20 +17,33 @@ from django.utils import timezone
 
 from accounts import invitations
 from accounts.models import (
-    DoctorCategory, DoctorInvitation, DoctorProfile, Role, User,
+    DoctorInvitation, DoctorProfile, Role, Specialisation, User,
 )
 from appointments.models import DoctorSchedule
 
 from .factories import make_doctor, make_receptionist
 
-FORM = {
-    "full_name": "Vrushali Kulkarni",
-    "email": "vrushali@example.in",
-    "phone": "9820012345",
-    "category": DoctorCategory.PAEDIATRIC,
-    "registration_number": "MMC-12345",
-    "qualification": "MBBS, MD, DM",
-}
+def _form(**overrides):
+    """
+    A filled-in Add Doctor form.
+
+    The specialisation is looked up rather than hard-coded: KAN-37 turned it
+    from a fixed choice into a row in a table, so its value is a primary key
+    that differs between runs.
+    """
+    payload = {
+        "full_name": "Vrushali Kulkarni",
+        "email": "vrushali@example.in",
+        "phone": "9820012345",
+        "specialisation": str(
+            Specialisation.objects.get(name="Paediatric Endocrinology").pk
+        ),
+        "new_specialisation": "",
+        "registration_number": "MMC-12345",
+        "qualification": "MBBS, MD, DM",
+    }
+    payload.update(overrides)
+    return payload
 
 
 class TestAddingADoctor(TestCase):
@@ -41,7 +54,7 @@ class TestAddingADoctor(TestCase):
         self.client.force_login(self.receptionist)
 
     def _add(self, **overrides):
-        return self.client.post(reverse("reception_add_doctor"), {**FORM, **overrides})
+        return self.client.post(reverse("reception_add_doctor"), _form(**overrides))
 
     def test_the_record_is_created(self):
         self._add()
@@ -49,11 +62,11 @@ class TestAddingADoctor(TestCase):
         self.assertEqual(doctor.role, Role.DOCTOR)
         self.assertEqual(doctor.display_name, "Vrushali Kulkarni")
 
-    def test_the_category_is_stored(self):
-        # FR-9 — what the calendar filter reads.
+    def test_the_specialisation_is_stored(self):
+        # FR-9, as revised by KAN-37 — what the calendar filter reads.
         self._add()
         profile = DoctorProfile.objects.get(user__email="vrushali@example.in")
-        self.assertEqual(profile.category, DoctorCategory.PAEDIATRIC)
+        self.assertEqual(profile.specialisation.name, "Paediatric Endocrinology")
 
     def test_the_account_starts_pending(self):
         self._add()
@@ -98,7 +111,7 @@ class TestTheEmailCarriesNoCredential(TestCase):
 
     def setUp(self):
         self.client.force_login(make_receptionist())
-        self.client.post(reverse("reception_add_doctor"), FORM)
+        self.client.post(reverse("reception_add_doctor"), _form())
         self.message = mail.outbox[0]
 
     def test_it_contains_a_link(self):
@@ -136,7 +149,7 @@ class TestActivating(TestCase):
 
     def setUp(self):
         self.client.force_login(make_receptionist())
-        self.client.post(reverse("reception_add_doctor"), FORM)
+        self.client.post(reverse("reception_add_doctor"), _form())
         self.doctor = User.objects.get(email="vrushali@example.in")
         self.token = _token_from_email()
         self.client.logout()
@@ -225,7 +238,7 @@ class TestResending(TestCase):
     def setUp(self):
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
-        self.client.post(reverse("reception_add_doctor"), FORM)
+        self.client.post(reverse("reception_add_doctor"), _form())
         self.doctor = User.objects.get(email="vrushali@example.in")
         self.first_token = _token_from_email()
 
@@ -279,7 +292,7 @@ class TestPendingDoctorsAreNotSchedulable(TestCase):
     def setUp(self):
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
-        self.client.post(reverse("reception_add_doctor"), FORM)
+        self.client.post(reverse("reception_add_doctor"), _form())
         self.pending = User.objects.get(email="vrushali@example.in")
 
     def _give_hours(self, doctor):
@@ -390,7 +403,7 @@ class TestTheEmailReadsAsPlainText(TestCase):
 
     def setUp(self):
         self.client.force_login(make_receptionist())
-        self.client.post(reverse("reception_add_doctor"), FORM)
+        self.client.post(reverse("reception_add_doctor"), _form())
         self.message = mail.outbox[0]
 
     def test_no_html_entities_reach_the_reader(self):

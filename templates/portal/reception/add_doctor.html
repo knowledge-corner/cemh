@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Add a doctor — {{ clinic_name }}{% endblock %}
 
@@ -36,15 +37,34 @@
 
       <div class="form-grid">
         {% for field in form %}
-          <div class="field">
-            <label class="field__label" for="{{ field.id_for_label }}">
-              {{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}
-            </label>
-            {{ field }}
-            {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
-            {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
-          </div>
+          {% if field.name != "new_specialisation" %}
+            <div class="field">
+              <label class="field__label" for="{{ field.id_for_label }}">
+                {{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}
+              </label>
+              {{ field }}
+              {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+              {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+            </div>
+          {% endif %}
         {% endfor %}
+
+        {% comment %}
+        KAN-37: the dropdown carries "+ Add a new specialisation...", and this
+        box appears underneath when it is chosen. Hidden rather than styled
+        away, so a screen reader treats it as absent until it is real, and the
+        server decides whether it is required.
+        {% endcomment %}
+        <div class="field" id="new-specialisation-field" hidden>
+          <label class="field__label" for="{{ form.new_specialisation.id_for_label }}">
+            {{ form.new_specialisation.label }} <span aria-hidden="true">*</span>
+          </label>
+          {{ form.new_specialisation }}
+          <div class="field__help">{{ form.new_specialisation.help_text }}</div>
+          {% for e in form.new_specialisation.errors %}
+            <div class="field__error">{{ e }}</div>
+          {% endfor %}
+        </div>
       </div>
 
       <div class="form-actions">
@@ -54,4 +74,8 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/specialisation.js' %}" defer></script>
 {% endblock %}

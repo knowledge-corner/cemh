@@ -19,7 +19,7 @@
     <div class="card__body card__body--flush table-scroll">
       <table class="table table--middle">
         <thead>
-          <tr><th>Doctor</th><th>Email</th><th>Category</th>
+          <tr><th>Doctor</th><th>Email</th><th>Specialisation</th>
               <th>Registration</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
@@ -27,7 +27,19 @@
             <tr>
               <td class="strong">{{ doctor.display_name }}</td>
               <td class="mono">{{ doctor.email }}</td>
-              <td>{{ doctor.doctor_profile.get_category_display|default:"—" }}</td>
+              <td>
+                {% if doctor.doctor_profile.specialisation %}
+                  {{ doctor.doctor_profile.specialisation }}
+                {% else %}
+                  {% comment %}
+                  KAN-37 replaced KAN-21's Adult/Paediatric/Both with real
+                  specialisations, and those old values had no honest
+                  translation. Said out loud rather than shown as a dash, so it
+                  reads as something to finish rather than a blank.
+                  {% endcomment %}
+                  <span class="badge badge--warning">Not set</span>
+                {% endif %}
+              </td>
               <td class="mono faint">{{ doctor.doctor_profile.registration_number|default:"—" }}</td>
               <td>
                 {% comment %}

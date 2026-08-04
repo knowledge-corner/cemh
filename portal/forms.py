@@ -13,7 +13,7 @@ from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from accounts.models import (
-    DoctorCategory, DoctorProfile, Role, User, phone_validator,
+    DoctorProfile, Role, Specialisation, User, phone_validator,
 )
 from appointments import scheduling
 from appointments.models import Visit, VisitStatus
@@ -719,10 +719,23 @@ class DoctorForm(forms.Form):
         label="Contact number", max_length=15, required=False,
         widget=forms.TextInput(attrs=INPUT),
     )
-    category = forms.ChoiceField(
-        label="Doctor category",
-        choices=[("", "Select a category")] + list(DoctorCategory.choices),
-        widget=forms.Select(attrs=INPUT),
+    #: The sentinel the dropdown carries for "not on this list".
+    ADD_NEW = "__new__"
+
+    specialisation = forms.ChoiceField(
+        label="Specialisation",
+        widget=forms.Select(attrs={**INPUT, "id": "id_specialisation"}),
+    )
+    new_specialisation = forms.CharField(
+        label="New specialisation",
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            **INPUT, "id": "id_new_specialisation",
+            "placeholder": "e.g. Reproductive Endocrinology",
+        }),
+        help_text="Added to the list for everyone, so check it is not already "
+                  "there under another spelling.",
     )
     registration_number = forms.CharField(
         label="Medical council registration number", max_length=50, required=False,
@@ -733,6 +746,76 @@ class DoctorForm(forms.Form):
         label="Qualification", max_length=200, required=False,
         widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. MBBS, MD, DM"}),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Read at request time, not at import: a specialisation added a minute
+        # ago by the previous receptionist has to be in this list.
+        self.fields["specialisation"].choices = (
+            [("", "Select a specialisation")]
+            + [(str(s.pk), s.name)
+               for s in Specialisation.objects.filter(is_active=True)]
+            + [(self.ADD_NEW, "+ Add a new specialisation...")]
+        )
+
+    def clean_new_specialisation(self):
+        """
+        Collapse the whitespace before anything compares it.
+
+        Doing this only in ``Specialisation.save()`` was too late: "General
+        Medicine" typed with two spaces did not match the stored name, so the
+        duplicate check passed, a second row was attempted, and the unique
+        constraint turned a typo into a 500.
+        """
+        return " ".join((self.cleaned_data.get("new_specialisation") or "").split())
+
+    def clean(self):
+        cleaned = super().clean()
+        chosen = cleaned.get("specialisation")
+        typed = (cleaned.get("new_specialisation") or "").strip()
+
+        if chosen != self.ADD_NEW:
+            cleaned["new_specialisation"] = ""
+            return cleaned
+
+        if not typed:
+            self.add_error(
+                "new_specialisation",
+                "Type the specialisation you want to add, or choose one from "
+                "the list.",
+            )
+            return cleaned
+
+        # Already there under a different capitalisation or spacing — reuse it
+        # rather than making a second row that means the same thing.
+        existing = Specialisation.objects.filter(name__iexact=typed).first()
+        if existing:
+            if not existing.is_active:
+                self.add_error(
+                    "new_specialisation",
+                    f"'{existing.name}' already exists but has been retired. "
+                    f"Bring it back from the admin rather than adding it twice.",
+                )
+            else:
+                cleaned["specialisation"] = str(existing.pk)
+                cleaned["new_specialisation"] = ""
+
+        return cleaned
+
+    def _resolve_specialisation(self, by=None):
+        """The chosen row, creating it first when the user typed a new one."""
+        chosen = self.cleaned_data["specialisation"]
+        if chosen != self.ADD_NEW:
+            return Specialisation.objects.get(pk=chosen)
+
+        # get_or_create rather than create: two receptionists adding the same
+        # one at the same moment must not trip the unique constraint.
+        name = self.cleaned_data["new_specialisation"].strip()
+        existing = Specialisation.objects.filter(name__iexact=name).first()
+        if existing:
+            return existing
+        return Specialisation.objects.create(name=name, created_by=by)
 
     def clean_email(self):
         # FR-8 / AC-7. Checked here for a readable message; the column is
@@ -766,7 +849,7 @@ class DoctorForm(forms.Form):
         return candidate
 
     @transaction.atomic
-    def save(self):
+    def save(self, added_by=None):
         """Create the account and its profile, both pending activation."""
         name = self.cleaned_data["full_name"].strip()
         first, _, last = name.partition(" ")
@@ -787,7 +870,7 @@ class DoctorForm(forms.Form):
 
         DoctorProfile.objects.create(
             user=user,
-            category=self.cleaned_data["category"],
+            specialisation=self._resolve_specialisation(by=added_by),
             registration_number=self.cleaned_data.get("registration_number", ""),
             qualification=self.cleaned_data.get("qualification", ""),
         )

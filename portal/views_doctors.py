@@ -48,7 +48,7 @@ def add_doctor(request):
         form = clinic_forms.DoctorForm(request.POST)
         if form.is_valid():
             with transaction.atomic():
-                doctor = form.save()
+                doctor = form.save(added_by=request.user)
                 record(
                     request, AuditAction.CREATE, obj=doctor,
                     description=f"Doctor {doctor.display_name} added, pending activation",

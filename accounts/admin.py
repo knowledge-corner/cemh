@@ -9,7 +9,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 
-from .models import DoctorProfile, Role, User
+from .models import DoctorProfile, Role, Specialisation, User
 
 
 class ClinicUserCreationForm(UserCreationForm):
@@ -83,6 +83,26 @@ class UserAdmin(DjangoUserAdmin):
 
 @admin.register(DoctorProfile)
 class DoctorProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "qualification", "speciality", "registration_number")
+    list_display = ("user", "specialisation", "qualification", "registration_number")
     search_fields = ("user__first_name", "user__last_name", "registration_number")
     autocomplete_fields = ("user",)
+
+
+@admin.register(Specialisation)
+class SpecialisationAdmin(admin.ModelAdmin):
+    """
+    The list reception picks from, and adds to from the Add Doctor form.
+
+    Retiring one is the way to take it out of circulation: it is protected by
+    the doctors holding it, and deleting it would rewrite their records to
+    tidy a dropdown.
+    """
+
+    list_display = ("name", "is_active", "doctor_count", "created_at", "created_by")
+    list_filter = ("is_active",)
+    search_fields = ("name",)
+    readonly_fields = ("created_at", "created_by")
+
+    @admin.display(description="Doctors")
+    def doctor_count(self, obj):
+        return obj.doctors.count()
