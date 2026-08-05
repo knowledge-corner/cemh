@@ -190,3 +190,150 @@ class TestTheLauncherKeepsTheDatabaseInStep(SimpleTestCase):
         # A clinic that cannot open the system at all is worse off than one
         # running with a warning it can act on.
         self.assertIn("The system may still work", self.windows)
+
+
+class TestTheLauncherFetchesTheLatestVersion(SimpleTestCase):
+    """
+    The clinic's whole job is now: start Docker, double-click the launcher.
+
+    That only holds if the launcher fetches the code itself. A separate "git
+    pull" step to remember is a step that gets skipped, and the day it is
+    skipped is the day new code meets an old database.
+    """
+
+    def setUp(self):
+        self.windows = (REPO / "START-CLINIC.bat").read_text()
+        self.mac = (REPO / "START-CLINIC.command").read_text()
+
+    def test_both_launchers_pull(self):
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertIn("git pull --ff-only", body)
+
+    def test_the_pull_never_merges(self):
+        # This computer only ever receives changes. A pull that cannot simply
+        # move forward is a situation for a human, not something to resolve
+        # automatically at half past eight in the morning.
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertNotIn("git pull\n", body)
+                self.assertNotIn("git merge", body)
+                self.assertNotIn("git reset --hard", body)
+
+    def test_git_cannot_sit_waiting_for_a_password(self):
+        # Nobody is watching this window at 8am. A git that blocks on a
+        # credential prompt never opens the clinic at all.
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertIn("GIT_TERMINAL_PROMPT=0", body)
+
+    def test_a_stalled_network_gives_up_rather_than_hanging(self):
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertIn("GIT_HTTP_LOW_SPEED_TIME", body)
+
+    def test_a_failed_pull_does_not_stop_the_clinic_opening(self):
+        # Yesterday's code running is far better than no clinic system at all.
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertIn("carrying on with the version already", body)
+
+    def _pull_runs_at(self, body, mac):
+        """
+        Where the pull actually *happens*.
+
+        Not the position of the words "git pull" in both files. On the Mac the
+        pull lives inside update_to_latest(), which is defined near the top
+        whatever order things run in — so its text position proves nothing. It
+        has to be the call site. An earlier version of these tests got this
+        wrong and passed happily with the pull moved to after the build.
+        """
+        return body.index("  update_to_latest\n") if mac else body.index("git pull")
+
+    def test_the_mac_launcher_actually_calls_the_update(self):
+        # A function nobody calls does nothing, and every assertion about its
+        # contents would still pass.
+        self.assertIn("  update_to_latest\n", self.mac)
+
+    def test_it_pulls_before_it_builds(self):
+        # A pull that changes the Dockerfile or the requirements needs the
+        # image rebuilt. Pulling afterwards would run new code against the old
+        # dependencies.
+        for name, body, mac in (("Windows", self.windows, False),
+                                ("Mac", self.mac, True)):
+            with self.subTest(launcher=name):
+                self.assertLess(
+                    self._pull_runs_at(body, mac), body.index("compose up")
+                )
+
+    def test_it_pulls_before_it_migrates(self):
+        # The migration has to be the one the new code brought with it.
+        for name, body, mac in (("Windows", self.windows, False),
+                                ("Mac", self.mac, True)):
+            with self.subTest(launcher=name):
+                self.assertLess(
+                    self._pull_runs_at(body, mac), body.index("manage.py migrate")
+                )
+
+    def test_the_build_is_not_skipped(self):
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertIn("compose up -d --build", body)
+
+    def test_a_copy_that_is_not_a_checkout_still_starts(self):
+        # The repository can arrive as a zip or off a USB stick, with no .git
+        # and possibly no git installed. Neither is a reason not to open.
+        self.assertIn('if not exist ".git"', self.windows)
+        self.assertIn("[ -e .git ]", self.mac)
+        self.assertIn("where git", self.windows)
+        self.assertIn("command -v git", self.mac)
+
+
+class TestTheLaunchersSurviveUpdatingThemselves(SimpleTestCase):
+    """
+    A launcher that pulls can pull a change *to itself*, mid-run.
+
+    Both cmd.exe and sh read a script incrementally, keeping their place by
+    byte offset. Rewrite the file underneath a running one and it resumes at
+    the wrong spot and executes nonsense — on the clinic's machine, at opening
+    time, with no developer in the room. Each shell needs its own answer.
+    """
+
+    def setUp(self):
+        self.windows = (REPO / "START-CLINIC.bat").read_text()
+        self.mac = (REPO / "START-CLINIC.command").read_text()
+
+    def test_the_mac_launcher_reads_itself_fully_before_running(self):
+        # sh parses a function definition to its closing brace before executing
+        # anything, so wrapping the body means the whole file is in memory
+        # before the pull can touch it.
+        self.assertIn("main() {", self.mac)
+        self.assertIn('main "$@"', self.mac)
+
+    def test_nothing_of_substance_follows_the_call_on_the_mac(self):
+        # The guarantee only holds while `main "$@"` is last. A line added
+        # after it is a line read from disk *after* the pull has rewritten it.
+        after = self.mac.split('main "$@"')[-1]
+        remaining = [
+            line for line in after.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        self.assertEqual(remaining, [], f"code after main: {remaining}")
+
+    def test_the_windows_launcher_restarts_itself_when_it_changed(self):
+        # cmd.exe has no equivalent of the function trick, so it compares the
+        # commit before and after and starts again in a fresh window.
+        self.assertIn("git rev-parse HEAD", self.windows)
+        self.assertIn('start "" "%~f0"', self.windows)
+
+    def test_the_restart_cannot_loop_forever(self):
+        # The flag is an environment variable precisely so the new process
+        # inherits it; an argument would collide with /auto.
+        self.assertIn("if defined CLINIC_UPDATED", self.windows)
+        self.assertIn("set CLINIC_UPDATED=1", self.windows)
+
+    def test_the_restart_keeps_the_autostart_flag(self):
+        # Started from the Startup folder it is passed /auto, and a restart
+        # that dropped it would leave a window waiting for a keypress at login.
+        restart = self.windows.index('start "" "%~f0"')
+        self.assertIn("%*", self.windows[restart:restart + 40])

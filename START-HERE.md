@@ -130,17 +130,25 @@ involving a domain name, a certificate and India-resident hosting.
 
 ## Getting a new version
 
-```
-git pull
-```
+**There is nothing to do.** Start Docker Desktop and double-click
+**START-CLINIC.bat** (Windows) or **START-CLINIC.command** (Mac), exactly as
+every other morning. The launcher fetches the latest version itself, rebuilds if
+it needs to, and brings the database up to date before opening the browser.
 
-Then double-click **START-CLINIC.bat** (Windows) or **START-CLINIC.command**
-(Mac) as usual. That is the whole update.
+A few things worth knowing about that:
 
-The launcher brings the database up to date as part of starting, so a new
-version that adds a field works straight away. Skipping the launcher and simply
-leaving the system running will pick up the new code but *not* the database
-change, and pages that use the new field will show an error like
+* If the update changed the launcher itself, it starts again in a fresh window.
+  That is expected — let it.
+* If the internet is down, or the update cannot be fetched for any other reason,
+  it says so and **carries on with the version already on the computer**. The
+  clinic still opens. Yesterday's system running beats no system at all.
+* It never merges. If somebody has edited files on this computer, the update
+  stops rather than trying to combine the two, and says so. Send that window on
+  rather than trying to fix it during clinic hours.
+
+Skipping the launcher and simply leaving the system running will pick up neither
+the new code nor the database change, and pages that use a new field will show
+an error like
 
 ```
 column accounts_doctorprofile.category does not exist

@@ -16,6 +16,58 @@ echo      Starting the clinic system
 echo   ================================================
 echo.
 
+REM --- Get the latest version of the system ---------------------------
+REM  So that starting Docker and double-clicking this file is the whole
+REM  job: no separate "git pull" step to remember, and no chance of
+REM  running last month's code against this month's database.
+REM
+REM  Three environment variables make git fail fast instead of hanging.
+REM  Nobody is watching this window at 8am, and a git that sits waiting
+REM  for a password or a dead network never opens the clinic at all.
+set GIT_TERMINAL_PROMPT=0
+set GIT_HTTP_LOW_SPEED_LIMIT=1000
+set GIT_HTTP_LOW_SPEED_TIME=20
+
+if defined CLINIC_UPDATED goto afterupdate
+where git >nul 2>&1
+if errorlevel 1 goto afterupdate
+if not exist ".git" goto afterupdate
+
+echo   Checking for updates...
+set "BEFORE="
+set "AFTER="
+for /f "delims=" %%i in ('git rev-parse HEAD 2^>nul') do set "BEFORE=%%i"
+
+REM  --ff-only, never a merge. This computer only ever receives changes,
+REM  so a pull that cannot simply move forward is a situation for a human,
+REM  not something to resolve automatically at half past eight in the
+REM  morning. It refuses, says so, and the clinic still opens on the
+REM  version already here.
+git pull --ff-only
+if errorlevel 1 (
+  echo.
+  echo   Could not fetch updates - carrying on with the version already
+  echo   on this computer. The clinic system will still work. If this
+  echo   keeps happening, send this window to whoever supports it.
+  echo.
+)
+for /f "delims=" %%i in ('git rev-parse HEAD 2^>nul') do set "AFTER=%%i"
+
+REM  If the update changed this very file, cmd.exe is now reading a batch
+REM  script that has moved underneath it - it keeps its place by byte
+REM  offset, so every line after this point could be read from the wrong
+REM  spot and executed as nonsense. Starting again in a fresh window is
+REM  the only reliable fix. CLINIC_UPDATED is inherited by that new
+REM  process, so it pulls once and does not loop.
+if not "%BEFORE%"=="%AFTER%" (
+  echo.
+  echo   Updated. Starting again with the new version...
+  set CLINIC_UPDATED=1
+  start "" "%~f0" %*
+  exit /b 0
+)
+:afterupdate
+
 REM --- Is Docker installed? -------------------------------------------
 where docker >nul 2>&1
 if errorlevel 1 (
