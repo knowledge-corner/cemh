@@ -63,6 +63,11 @@ urlpatterns = [
     path("calendar/holidays/template.csv", views_calendar.holiday_template,
          name="reception_holiday_template"),
 
+    # ── Callback requests from the public website ────────────────────────
+    path("reception/callbacks/", views_calendar.callbacks, name="reception_callbacks"),
+    path("reception/callbacks/<int:pk>/close/", views_calendar.close_callback,
+         name="reception_close_callback"),
+
     path("reception/billing/<int:pk>/", views_reception.billing, name="reception_billing"),
     # Taking the fee in a pop-up on the board, rather than on the billing page.
     path("reception/billing/<int:pk>/receipt/", views_reception.generate_receipt,

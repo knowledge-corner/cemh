@@ -80,6 +80,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "config.context_processors.clinic_branding",
+                "config.context_processors.outstanding_callbacks",
             ],
         },
     },
@@ -138,7 +139,15 @@ USE_TZ = True
 # ── Static and media ──────────────────────────────────────────────────────────
 
 STATIC_URL = "/static/"
-STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+    # The clinic's own photographs, kept in a folder of their own rather than
+    # inside static/. Replacing a doctor's picture is then dropping a file into
+    # one obvious place, which is a thing the clinic can do; hunting for the
+    # right subdirectory of an application's assets is not. Served from
+    # /static/photos/<name>.
+    ("photos", BASE_DIR / "photos"),
+]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"

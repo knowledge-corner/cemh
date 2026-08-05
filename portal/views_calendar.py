@@ -31,6 +31,7 @@ from appointments.models import (
 )
 from audit.models import AuditAction
 from audit.services import record
+from website.models import CallbackRequest, CallbackStatus
 
 from . import forms as clinic_forms
 
@@ -422,3 +423,45 @@ def delete_calendar_entry(request, kind, pk):
             f"the weekly pattern is untouched.",
         )
     return _back(request)
+
+
+# ── Callback requests from the public page ───────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def callbacks(request):
+    """
+    People who asked, on the public website, to be rung back.
+
+    This screen is what makes the form on that page mean anything. A request
+    that lands in a table nobody opens is worse than no form at all: the
+    visitor has been told the clinic will call, and it will not.
+    """
+    outstanding = CallbackRequest.objects.filter(status=CallbackStatus.NEW)
+    return render(request, "portal/reception/callbacks.html", {
+        "outstanding": outstanding,
+        "handled": CallbackRequest.objects.exclude(
+            status=CallbackStatus.NEW
+        ).select_related("handled_by")[:50],
+        "nav_active": "callbacks",
+    })
+
+
+@role_required(Role.RECEPTIONIST)
+def close_callback(request, pk):
+    """Mark a callback dealt with, recording who did it and when."""
+    if request.method != "POST":
+        return redirect("reception_callbacks")
+
+    wanted = request.POST.get("status")
+    if wanted not in (CallbackStatus.DONE, CallbackStatus.IGNORED):
+        return redirect("reception_callbacks")
+
+    callback = get_object_or_404(CallbackRequest, pk=pk)
+    callback.close(wanted, by_user=request.user)
+    record(request, AuditAction.UPDATE, obj=callback,
+           description=f"Callback {callback.get_status_display().lower()}: {callback}")
+    messages.success(
+        request,
+        f"{callback.name} marked {callback.get_status_display().lower()}.",
+    )
+    return _back(request, "reception_callbacks")

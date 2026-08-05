@@ -54,6 +54,16 @@ beside it only crowded the row. Screen readers get it from aria-label.
     {% if nav_active == "bookings" or nav_active == "doctors" %}
       <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Calendar</a>
       <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor schedule</a>
+      {% comment %}
+      Only shown when somebody is actually waiting for a call. A permanently
+      visible zero is a link nobody clicks, and then the day it matters it
+      looks the same as it did yesterday.
+      {% endcomment %}
+      {% if outstanding_callbacks %}
+        <a class="btn btn--primary" href="{% url 'reception_callbacks' %}">
+          Callbacks ({{ outstanding_callbacks }})
+        </a>
+      {% endif %}
     {% endif %}
 
     {% if nav_active != "doctors" %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Callback requests — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+{% comment %}
+What the public page's callback form actually reaches.
+
+The form promises a phone call. Without a screen where somebody can see the
+outstanding requests and mark them done, that promise is made to a table nobody
+opens — which is worse than not offering the form at all.
+{% endcomment %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Callback requests</h1>
+    <p class="page-header__sub">
+      People who asked on the website to be rung back.
+    </p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Back to bookings</a>
+</div>
+
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">To call</h2>
+    <span class="badge {% if outstanding %}badge--warning{% else %}badge--grey{% endif %}">
+      {{ outstanding|length }}
+    </span>
+  </div>
+  <div class="card__body">
+    {% if outstanding %}
+      <div class="table-scroll">
+        <table class="table table--middle">
+          <thead>
+            <tr><th>Asked</th><th>Name</th><th>Phone</th><th>Doctor</th>
+                <th>Concern</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for request_row in outstanding %}
+              <tr>
+                <td class="faint">{{ request_row.created_at|date:"j M, H:i" }}</td>
+                <td class="strong">{{ request_row.name }}</td>
+                <td class="mono">
+                  <a href="tel:{{ request_row.phone }}">{{ request_row.phone }}</a>
+                </td>
+                <td class="faint">{{ request_row.preferred_doctor|default:"No preference" }}</td>
+                <td>{{ request_row.concern|default:"—" }}</td>
+                <td class="row-actions">
+                  <form method="post"
+                        action="{% url 'reception_close_callback' request_row.pk %}"
+                        style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="DONE">
+                    <button class="btn btn--primary" type="submit">Called back</button>
+                  </form>
+                  <form method="post"
+                        action="{% url 'reception_close_callback' request_row.pk %}"
+                        style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="IGNORED">
+                    <button class="btn btn--secondary" type="submit">No action</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty">Nobody is waiting for a call.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if handled %}
+  <div class="card">
+    <div class="card__header">
+      <h2 class="card__title">Already dealt with</h2>
+    </div>
+    <div class="card__body">
+      <div class="table-scroll">
+        <table class="table table--middle">
+          <thead>
+            <tr><th>Asked</th><th>Name</th><th>Phone</th><th>Outcome</th><th>By</th></tr>
+          </thead>
+          <tbody>
+            {% for request_row in handled %}
+              <tr>
+                <td class="faint">{{ request_row.created_at|date:"j M, H:i" }}</td>
+                <td>{{ request_row.name }}</td>
+                <td class="mono">{{ request_row.phone }}</td>
+                <td>
+                  <span class="badge badge--grey">{{ request_row.get_status_display }}</span>
+                  <span class="faint">{{ request_row.handled_at|date:"j M, H:i" }}</span>
+                </td>
+                <td class="faint">
+                  {{ request_row.handled_by.display_name|default:"—" }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

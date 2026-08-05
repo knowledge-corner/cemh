@@ -14,144 +14,399 @@
         content="{{ clinic_tagline }} in Borivali West, Mumbai. Diabetes, thyroid, growth and
                  hormone disorders in adults and children. Call {{ clinic_phone }} to book.">
 
-  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
   <link rel="stylesheet" href="{% static 'css/website.css' %}">
 </head>
 <body>
 
-<header class="site-head">
-  <div class="wrap site-head__inner">
-    <a class="site-brand" href="#top">
-      {% include "branding/logo.html" with css_class="site-brand__logo" %}
-      <span>
-        <span class="site-brand__name">{{ clinic_name }}</span>
-        <span class="site-brand__tag">{{ clinic_tagline }}</span>
+<a class="wf-skip" href="#top">Skip to content</a>
+
+{# ── Header ─────────────────────────────────────────────────────────────── #}
+<header class="wf-head">
+  <div class="wf-head__inner">
+    <a class="wf-brand" href="#top">
+      {% include "branding/logo.html" with css_class="wf-brand__logo" %}
+      <span class="wf-brand__text">
+        <span>Centre for Endocrine</span>
+        <span>&amp; Metabolic Health</span>
       </span>
     </a>
-    <div class="site-head__actions">
-      <a class="btn-call" href="tel:{{ clinic_phone }}">Call {{ clinic_phone }}</a>
-      {% if whatsapp_url %}
-        <a class="btn-wa" href="{{ whatsapp_url }}" target="_blank" rel="noopener">WhatsApp</a>
-      {% endif %}
+
+    <nav class="wf-nav" aria-label="Main">
+      <a href="#about">About</a>
+      <a href="#doctors">Our Doctors</a>
+      <a href="#services">Services</a>
+      <a href="#faqs">FAQs</a>
+      <a href="#contact">Contact</a>
+    </nav>
+
+    <div class="wf-head__cta">
+      <a class="wf-btn wf-btn--primary" href="tel:{{ clinic_phone }}">Call to Book</a>
     </div>
+
+    {% comment %}
+    A real <button>, not a styled div: it has to be reachable by keyboard and
+    announced as a control, and aria-expanded has to say which way it is.
+    {% endcomment %}
+    <button class="wf-burger" type="button" aria-expanded="false"
+            aria-controls="wf-mobile-nav" aria-label="Open the menu">
+      <span aria-hidden="true">☰</span>
+    </button>
   </div>
+
+  <nav class="wf-mobile-nav" id="wf-mobile-nav" aria-label="Main" hidden>
+    <a href="#about">About</a>
+    <a href="#doctors">Our Doctors</a>
+    <a href="#services">Services</a>
+    <a href="#faqs">FAQs</a>
+    <a href="#contact">Contact</a>
+    <a class="wf-mobile-nav__call" href="tel:{{ clinic_phone }}">Call {{ clinic_phone }}</a>
+  </nav>
 </header>
 
 <main id="top">
 
-  {# ── Who we are ─────────────────────────────────────────────────────── #}
-  <section class="hero">
-    <div class="wrap">
-      <h1>{{ clinic_tagline }} in&nbsp;Borivali&nbsp;West</h1>
-      <p class="hero__lede">
-        Specialist care for diabetes, thyroid, growth and hormone disorders — for
-        adults and for children.
+{# ── Hero ───────────────────────────────────────────────────────────────── #}
+<section class="wf-hero">
+  <div class="wf-hero__grid">
+    <div>
+      <p class="wf-pill">Endocrinology care for children &amp; adults</p>
+      <h1 class="wf-hero__title">Specialist hormone &amp; metabolic care, for every age.</h1>
+      <p class="wf-hero__lede">
+        {{ clinic_short_name }} brings together adult and paediatric endocrinology
+        under one clinic — diabetes, thyroid, growth, puberty, obesity and bone
+        health — with fellowship-trained specialists and coordinated, long-term care.
       </p>
-      <div class="hero__actions">
-        <a class="btn-call btn-call--big" href="tel:{{ clinic_phone }}">
-          Call {{ clinic_phone }} to book
-        </a>
-        {% if whatsapp_url %}
-          <a class="btn-wa btn-wa--big" href="{{ whatsapp_url }}" target="_blank" rel="noopener">
-            Book on WhatsApp
-          </a>
-        {% endif %}
+      <div class="wf-hero__actions">
+        <a class="wf-btn wf-btn--primary wf-btn--big" href="#contact">Book an Appointment</a>
+        <a class="wf-btn wf-btn--ghost wf-btn--big" href="#doctors">Meet the Doctors</a>
       </div>
-      <p class="hero__hours">
-        {{ working_days }} &nbsp;·&nbsp; {{ consulting_hours }}
-      </p>
+      <p class="wf-hero__hours">{{ working_days }} &middot; {{ consulting_hours }}</p>
     </div>
-  </section>
 
-  {# ── The doctors ────────────────────────────────────────────────────── #}
-  {% if doctors %}
-    <section class="band">
-      <div class="wrap">
-        <h2 class="band__title">Our consultants</h2>
-        <div class="doctors">
-          {% for doctor in doctors %}
-            <article class="doctor">
-              <h3 class="doctor__name">Dr. {{ doctor.display_name }}</h3>
-              {% if doctor.doctor_profile.speciality %}
-                <p class="doctor__role">{{ doctor.doctor_profile.speciality }}</p>
-              {% endif %}
-              {% if doctor.doctor_profile.qualification %}
-                <p class="doctor__quals">{{ doctor.doctor_profile.qualification }}</p>
-              {% endif %}
-            </article>
-          {% endfor %}
+    {% comment %}
+    Decorative only, so it is hidden from screen readers rather than described.
+    The rotation is switched off under prefers-reduced-motion in the stylesheet —
+    something turning slowly at the edge of vision is a real problem for some
+    people, and this one carries no information to lose.
+    {% endcomment %}
+    <div class="wf-hero__visual" aria-hidden="true">
+      <svg viewBox="0 0 440 420" width="320" height="305" fill="none" focusable="false">
+        <g class="wf-orbit">
+          <ellipse cx="220" cy="210" rx="170" ry="80" fill="none"
+                   stroke="var(--wf-primary)" stroke-width="1.4" opacity=".4"
+                   transform="rotate(-18 220 210)"></ellipse>
+        </g>
+        <g class="wf-orbit wf-orbit--rev">
+          <ellipse cx="220" cy="210" rx="170" ry="80" fill="none"
+                   stroke="var(--wf-accent)" stroke-width="1.4" opacity=".45"
+                   transform="rotate(32 220 210)"></ellipse>
+        </g>
+        <circle cx="220" cy="210" r="58" fill="#fff" stroke="var(--wf-line-teal)" stroke-width="1.5"></circle>
+        <circle cx="220" cy="210" r="30" fill="var(--wf-primary)"></circle>
+        <circle cx="220" cy="210" r="12" fill="var(--wf-tint)"></circle>
+        <circle cx="70"  cy="150" r="15" fill="var(--wf-primary-dark)"></circle>
+        <circle cx="368" cy="270" r="12" fill="var(--wf-accent)"></circle>
+        <circle cx="340" cy="100" r="9"  fill="var(--wf-sun)"></circle>
+        <circle cx="96"  cy="308" r="10" fill="var(--wf-primary)"></circle>
+      </svg>
+    </div>
+  </div>
+</section>
+
+{# ── About ──────────────────────────────────────────────────────────────── #}
+<section class="wf-section" id="about">
+  <div class="wf-about__grid">
+    <div>
+      <p class="wf-eyebrow">About {{ clinic_short_name }}</p>
+      <h2 class="wf-h2">Focused, coordinated hormone care — for children and adults alike.</h2>
+    </div>
+    <div>
+      <p class="wf-body">
+        The {{ clinic_name }} ({{ clinic_short_name }}) is a dedicated
+        endocrinology clinic located on the 2nd floor of Seatherny Hospital,
+        Borivali West, Mumbai. We see patients across the full spectrum of
+        hormonal and metabolic conditions — from diabetes and thyroid disease in
+        adults to growth, puberty and paediatric diabetes in children.
+      </p>
+      <p class="wf-body">
+        Paediatric endocrinology is a rare specialty, and having it alongside
+        adult endocrinology care means families get consistent, expert guidance at
+        every life stage — all within the diagnostic and hospital infrastructure
+        of Seatherny Hospital.
+      </p>
+      <div class="wf-about__cards">
+        <div class="wf-minicard">
+          <p class="wf-minicard__title">Adult Endocrinology</p>
+          <p class="wf-minicard__body">Diabetes, thyroid, obesity, bone &amp; hormone health</p>
+        </div>
+        <div class="wf-minicard">
+          <p class="wf-minicard__title">Paediatric Endocrinology</p>
+          <p class="wf-minicard__body">Growth, puberty, childhood diabetes &amp; thyroid care</p>
         </div>
       </div>
-    </section>
-  {% endif %}
+    </div>
+  </div>
+</section>
 
-  {# ── What we treat ──────────────────────────────────────────────────── #}
-  <section class="band band--tint">
-    <div class="wrap">
-      <h2 class="band__title">What we treat</h2>
-      <div class="services">
-        {% for area, conditions in services.items %}
-          <div class="service">
-            <h3 class="service__title">{{ area }}</h3>
-            <ul class="service__list">
-              {% for condition in conditions %}<li>{{ condition }}</li>{% endfor %}
-            </ul>
+{# ── Doctors ────────────────────────────────────────────────────────────── #}
+<section class="wf-section wf-doctors" id="doctors">
+  <div class="wf-section__head">
+    <p class="wf-eyebrow">Know Your Doctor</p>
+    <h2 class="wf-h2">Meet our specialists</h2>
+  </div>
+
+  {% if doctors %}
+    <div class="wf-doctors__list">
+      {% for entry in doctors %}
+        <article class="wf-doctor">
+          <div class="wf-doctor__row">
+            {% comment %}
+            A photograph when the clinic has put one in the photos folder, and
+            initials when it has not. Never a broken image: a missing picture on
+            a clinic's front page reads as a broken clinic.
+            {% endcomment %}
+            {% if entry.photo_url %}
+              <img class="wf-doctor__photo" src="{{ entry.photo_url }}"
+                   alt="Dr. {{ entry.doctor.display_name }}"
+                   loading="lazy" decoding="async">
+            {% else %}
+              <p class="wf-doctor__photo wf-doctor__photo--none" aria-hidden="true">
+                {{ entry.initials }}
+              </p>
+            {% endif %}
+
+            <div class="wf-doctor__id">
+              <h3 class="wf-doctor__name">Dr. {{ entry.doctor.display_name }}</h3>
+              {% if entry.profile.specialisation %}
+                <p class="wf-doctor__role">{{ entry.profile.specialisation.name }} Consultant</p>
+              {% elif entry.profile.speciality %}
+                <p class="wf-doctor__role">{{ entry.profile.speciality }}</p>
+              {% endif %}
+              {% if entry.profile.qualification %}
+                <p class="wf-doctor__quals">{{ entry.profile.qualification }}</p>
+              {% endif %}
+
+              <div class="wf-doctor__contact">
+                {% if entry.doctor.phone %}
+                  <a href="tel:{{ entry.doctor.phone }}">
+                    <span aria-hidden="true">☎</span>
+                    <span class="wf-sr">Telephone </span>{{ entry.doctor.phone }}
+                  </a>
+                {% endif %}
+                {% if entry.doctor.email %}
+                  <a href="mailto:{{ entry.doctor.email }}">
+                    <span aria-hidden="true">✉</span>
+                    <span class="wf-sr">Email </span>{{ entry.doctor.email }}
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          {% for paragraph in entry.paragraphs %}
+            <p class="wf-body">{{ paragraph }}</p>
+          {% endfor %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="wf-empty">
+      Our consultants are listed here shortly. Please telephone
+      <a href="tel:{{ clinic_phone }}">{{ clinic_phone }}</a> in the meantime.
+    </p>
+  {% endif %}
+</section>
+
+{# ── Services ───────────────────────────────────────────────────────────── #}
+<section class="wf-section" id="services">
+  <div class="wf-section__head">
+    <p class="wf-eyebrow">Our Services</p>
+    <h2 class="wf-h2">Conditions we treat</h2>
+  </div>
+
+  {% comment %}
+  Real tabs — a tablist with roles, arrow-key movement and one stop in the tab
+  order — rather than two buttons that swap a div. Both panels are in the markup,
+  so without JavaScript a visitor sees every condition the clinic treats instead
+  of half of them.
+  {% endcomment %}
+  <div class="wf-tabs" role="tablist" aria-label="Which practice">
+    <button class="wf-tab is-active" type="button" role="tab" id="wf-tab-adult"
+            aria-selected="true" aria-controls="wf-panel-adult">
+      Adult Endocrinology
+    </button>
+    <button class="wf-tab" type="button" role="tab" id="wf-tab-paed"
+            aria-selected="false" aria-controls="wf-panel-paed" tabindex="-1">
+      Paediatric Endocrinology
+    </button>
+  </div>
+
+  <div class="wf-panel" id="wf-panel-adult" role="tabpanel"
+       aria-labelledby="wf-tab-adult" tabindex="0">
+    <h3 class="wf-sr">Adult endocrinology</h3>
+    <ul class="wf-chips">
+      {% for service in adult_services %}<li>{{ service }}</li>{% endfor %}
+    </ul>
+  </div>
+
+  <div class="wf-panel" id="wf-panel-paed" role="tabpanel"
+       aria-labelledby="wf-tab-paed" tabindex="0">
+    <h3 class="wf-sr">Paediatric endocrinology</h3>
+    <ul class="wf-chips">
+      {% for service in paediatric_services %}<li>{{ service }}</li>{% endfor %}
+    </ul>
+  </div>
+</section>
+
+{# ── Why us ─────────────────────────────────────────────────────────────── #}
+<section class="wf-why">
+  <div class="wf-why__grid">
+    <div>
+      <h3>Fellowship-Trained Care</h3>
+      <p>International fellowship training in paediatric endocrinology brings
+         globally-informed protocols to every consult.</p>
+    </div>
+    <div>
+      <h3>Care Across Every Age</h3>
+      <p>Adult and paediatric endocrinology together, so families don't need to
+         search elsewhere as needs change.</p>
+    </div>
+    <div>
+      <h3>Hospital-Backed Diagnostics</h3>
+      <p>Located within Seatherny Hospital, giving quick access to labs and
+         imaging alongside your consultation.</p>
+    </div>
+  </div>
+</section>
+
+{# ── FAQs ───────────────────────────────────────────────────────────────── #}
+<section class="wf-section wf-faqs" id="faqs">
+  <div class="wf-section__head">
+    <p class="wf-eyebrow">FAQs</p>
+    <h2 class="wf-h2">Common questions</h2>
+  </div>
+
+  {% comment %}
+  <details>, not a JavaScript accordion. It opens without scripting, it is
+  keyboard operable and announced correctly for free, and find-in-page can search
+  inside a closed one — which a div set to display:none cannot.
+  {% endcomment %}
+  <div class="wf-faq-list">
+    {% for question, answer in faqs %}
+      <details class="wf-faq"{% if forloop.first %} open{% endif %}>
+        <summary><span>{{ question }}</span></summary>
+        <p>{{ answer }}</p>
+      </details>
+    {% endfor %}
+  </div>
+</section>
+
+{# ── Contact ────────────────────────────────────────────────────────────── #}
+<section class="wf-section wf-contact" id="contact">
+  <div class="wf-section__head">
+    <p class="wf-eyebrow">Get In Touch</p>
+    <h2 class="wf-h2">Visit or book an appointment</h2>
+  </div>
+
+  <div class="wf-contact__grid">
+    <div>
+      <div class="wf-card">
+        <h3 class="wf-card__title">Clinic Address</h3>
+        <p class="wf-body">{{ clinic_address }}</p>
+
+        <h3 class="wf-card__title">Phone</h3>
+        <p class="wf-body">
+          Clinic: <a href="tel:{{ clinic_phone }}">{{ clinic_phone }}</a>
+          {% for entry in doctors %}{% if entry.doctor.phone %}
+            <br>Dr. {{ entry.doctor.display_name }}:
+            <a href="tel:{{ entry.doctor.phone }}">{{ entry.doctor.phone }}</a>
+          {% endif %}{% endfor %}
+        </p>
+
+        <h3 class="wf-card__title">Hours</h3>
+        <p class="wf-body">{{ working_days }}<br>{{ consulting_hours }}</p>
+
+        {% if whatsapp_url %}
+          <p>
+            <a class="wf-btn wf-btn--wa" href="{{ whatsapp_url }}"
+               target="_blank" rel="noopener">Message us on WhatsApp</a>
+          </p>
+        {% endif %}
+      </div>
+
+      <a class="wf-map" href="{{ maps_url }}" target="_blank" rel="noopener">
+        <span class="wf-map__pin" aria-hidden="true">📍</span>
+        <span class="wf-map__name">Seatherny Hospital, Borivali West</span>
+        <span class="wf-map__link">Open in Google Maps</span>
+      </a>
+    </div>
+
+    <div class="wf-card wf-card--form">
+      <h3 class="wf-card__title">Request a callback</h3>
+      <p class="wf-card__sub">
+        Share a few details and our team will call you back to schedule a visit.
+      </p>
+
+      {% comment %}
+      Read from the messages framework rather than a flag on the context: a
+      successful submission redirects, so there is no bound form left to carry
+      the news.
+      {% endcomment %}
+      {% for message in messages %}
+        <p class="wf-note wf-note--{{ message.tags|default:'info' }}" role="status">{{ message }}</p>
+      {% endfor %}
+
+      <form method="post" action="{% url 'website_home' %}#contact" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <p class="wf-note wf-note--error" role="alert">{{ form.non_field_errors|first }}</p>
+        {% endif %}
+
+        {% for field in form %}
+          <div class="wf-field">
+            <label class="wf-label" for="{{ field.id_for_label }}">
+              {{ field.label }}{% if field.field.required %}<span class="wf-req" aria-hidden="true">*</span><span class="wf-sr"> (required)</span>{% endif %}
+            </label>
+            {{ field }}
+            {% if field.errors %}
+              <p class="wf-field__error" role="alert">{{ field.errors|first }}</p>
+            {% endif %}
           </div>
         {% endfor %}
-      </div>
-    </div>
-  </section>
 
-  {# ── Where we are ───────────────────────────────────────────────────── #}
-  <section class="band">
-    <div class="wrap">
-      <h2 class="band__title">Visiting us</h2>
-      <div class="visit">
-        <div class="visit__block">
-          <p class="visit__label">Address</p>
-          <p class="visit__value">{{ clinic_address }}</p>
-        </div>
-        <div class="visit__block">
-          <p class="visit__label">Consulting hours</p>
-          <p class="visit__value">{{ working_days }}<br>{{ consulting_hours }}</p>
-        </div>
-        <div class="visit__block">
-          <p class="visit__label">Appointments</p>
-          <p class="visit__value">
-            <a href="tel:{{ clinic_phone }}">{{ clinic_phone }}</a>
-          </p>
-          <p class="visit__note">By telephone or WhatsApp — we do not take online bookings.</p>
-        </div>
-      </div>
+        <button class="wf-btn wf-btn--primary wf-btn--block" type="submit">Request Callback</button>
+        <p class="wf-card__sub wf-card__sub--fine">
+          We use your number only to arrange this appointment.
+        </p>
+      </form>
     </div>
-  </section>
-
-  {# ── Book ───────────────────────────────────────────────────────────── #}
-  <section class="cta">
-    <div class="wrap">
-      <h2>Book an appointment</h2>
-      <p>Speak to our reception and we will find you a time.</p>
-      <div class="cta__actions">
-        <a class="btn-call btn-call--big" href="tel:{{ clinic_phone }}">
-          Call {{ clinic_phone }}
-        </a>
-        {% if whatsapp_url %}
-          <a class="btn-wa btn-wa--big" href="{{ whatsapp_url }}" target="_blank" rel="noopener">
-            Message on WhatsApp
-          </a>
-        {% endif %}
-      </div>
-    </div>
-  </section>
+  </div>
+</section>
 
 </main>
 
-<footer class="site-foot">
-  <div class="wrap site-foot__inner">
-    <p>{{ clinic_name }} · {{ clinic_address }}</p>
-    <p><a href="{% url 'login' %}">Staff sign in</a></p>
+{# ── Footer ─────────────────────────────────────────────────────────────── #}
+<footer class="wf-foot">
+  <div class="wf-foot__inner">
+    <div>
+      <p class="wf-foot__name">{{ clinic_name }}</p>
+      <p>{{ clinic_address }}</p>
+    </div>
+    <nav class="wf-foot__nav" aria-label="Footer">
+      <a href="#about">About</a>
+      <a href="#doctors">Doctors</a>
+      <a href="#services">Services</a>
+      <a href="#contact">Contact</a>
+      <a href="{% url 'login' %}">Staff sign in</a>
+    </nav>
   </div>
+  <p class="wf-foot__fine">
+    &copy; {% now "Y" %} {{ clinic_name }}. All information is for reference only
+    — please consult the clinic for medical advice.
+  </p>
 </footer>
 
+<script src="{% static 'js/website.js' %}" defer></script>
 </body>
 </html>

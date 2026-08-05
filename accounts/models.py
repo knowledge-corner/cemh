@@ -152,6 +152,18 @@ class DoctorProfile(models.Model):
     )
     speciality = models.CharField(max_length=200, blank=True)
 
+    #: The doctor's introduction on the public website.
+    #:
+    #: A field rather than paragraphs typed into the template, because a doctor
+    #: joining or leaving should not need a developer — and a template cannot be
+    #: right about a doctor it has never heard of. Blank means the paragraphs
+    #: are simply not rendered.
+    bio = models.TextField(
+        blank=True,
+        help_text="Shown on the public website. Leave a blank line between "
+                  "paragraphs.",
+    )
+
     #: What the calendar filters on (KAN-21 FR-9, as revised by KAN-37).
     #:
     #: PROTECT, so a specialisation cannot be deleted out from under the

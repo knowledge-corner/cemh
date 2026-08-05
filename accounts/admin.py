@@ -83,9 +83,15 @@ class UserAdmin(DjangoUserAdmin):
 
 @admin.register(DoctorProfile)
 class DoctorProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "specialisation", "qualification", "registration_number")
+    list_display = ("user", "specialisation", "qualification", "registration_number",
+                    "has_bio")
     search_fields = ("user__first_name", "user__last_name", "registration_number")
     autocomplete_fields = ("user",)
+
+    @admin.display(boolean=True, description="Website bio")
+    def has_bio(self, obj):
+        """Which doctors are still a blank space on the public page."""
+        return bool(obj.bio)
 
 
 @admin.register(Specialisation)
