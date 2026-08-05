@@ -1,0 +1,581 @@
+/*
+ * The public website.
+ *
+ * Self-contained: it does not load theme.css, because the clinic's inside-the-
+ * application palette is a working tool — dense, high-contrast, built for a
+ * receptionist looking at it all day — and a shopfront is not. Sharing the two
+ * left the marketing page inheriting table and toolbar rules it never used.
+ *
+ * Colours are plain hex rather than oklch(). The design was drawn in oklch,
+ * which is the better space to think in, but Safari before 15.4 and the WebView
+ * on an older Android phone render an unknown colour function as nothing at all
+ * — and "nothing at all" here is invisible text on a clinic's front page. These
+ * are the same colours, converted.
+ *
+ * Two system typefaces, no webfont. A clinic page opened on mobile data should
+ * not wait on 300KB of Lora to say where the clinic is.
+ */
+
+:root {
+  --wf-bg:            #fbfaf7;   /* warm off-white page                     */
+  --wf-surface:       #fefdfb;   /* cards, header                           */
+  --wf-tint:          #e8f4f1;   /* pale teal panels                        */
+  --wf-tint-strong:   #d5ebe6;   /* hero wash                               */
+
+  --wf-primary:       #2f7d72;   /* the clinic's teal                       */
+  --wf-primary-dark:  #1f5a52;   /* eyebrow text, dark bands                */
+  --wf-accent:        #d4674f;   /* terracotta                              */
+  --wf-sun:           #d9a441;
+
+  --wf-ink:           #16262b;
+  --wf-ink-soft:      #3f5459;
+  --wf-ink-faint:     #6b8189;
+
+  --wf-line:          #e2e6e8;
+  --wf-line-teal:     #cfe4df;
+
+  --wf-danger:        #b3261e;
+  --wf-danger-bg:     #fdecea;
+  --wf-success:       #14634a;
+  --wf-success-bg:    #e5f5ee;
+
+  --wf-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+              "Times New Roman", serif;
+  --wf-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+             "Helvetica Neue", Arial, sans-serif;
+
+  --wf-radius: 8px;
+  --wf-wrap: 1240px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+/* The sticky header would otherwise cover whatever a #anchor jumped to. */
+section[id], :target { scroll-margin-top: 90px; }
+
+body {
+  margin: 0;
+  background: var(--wf-bg);
+  color: var(--wf-ink);
+  font-family: var(--wf-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--wf-primary); text-decoration: none; }
+a:hover { color: var(--wf-primary-dark); text-decoration: underline; }
+
+img { max-width: 100%; }
+
+.wf-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--wf-primary);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.wf-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--wf-primary);
+  color: #fff;
+  padding: 10px 18px;
+  z-index: 200;
+}
+.wf-skip:focus { left: 8px; top: 8px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+
+.wf-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+}
+.wf-btn:hover { text-decoration: none; }
+
+.wf-btn--primary { background: var(--wf-primary); color: #fff; }
+.wf-btn--primary:hover { background: var(--wf-primary-dark); color: #fff; }
+
+.wf-btn--ghost {
+  background: transparent;
+  border-color: rgba(22, 38, 43, .25);
+  color: var(--wf-ink);
+}
+.wf-btn--ghost:hover { border-color: var(--wf-ink); color: var(--wf-ink); }
+
+.wf-btn--wa { background: #1f8a4c; color: #fff; }
+.wf-btn--wa:hover { background: #196f3d; color: #fff; }
+
+.wf-btn--big { padding: 14px 28px; font-size: 15px; }
+.wf-btn--block { display: block; width: 100%; padding: 13px; font-size: 15px; }
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+
+.wf-head {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(254, 253, 251, .94);
+  border-bottom: 1px solid var(--wf-line);
+}
+@supports (backdrop-filter: blur(8px)) {
+  .wf-head { background: rgba(254, 253, 251, .86); backdrop-filter: blur(8px); }
+}
+
+.wf-head__inner {
+  max-width: var(--wf-wrap);
+  margin: 0 auto;
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.wf-brand { display: flex; align-items: center; gap: 12px; color: inherit; min-width: 0; }
+.wf-brand:hover { text-decoration: none; }
+.wf-brand__logo { width: 40px; height: 40px; flex-shrink: 0; color: var(--wf-primary); }
+.wf-brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  font-family: var(--wf-serif);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--wf-ink);
+}
+
+.wf-nav { display: flex; align-items: center; gap: 32px; font-size: 15px; font-weight: 500; }
+.wf-nav a { color: var(--wf-ink-soft); }
+.wf-nav a:hover { color: var(--wf-primary-dark); }
+
+.wf-head__cta { display: flex; align-items: center; gap: 14px; }
+
+.wf-burger {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--wf-ink);
+  padding: 4px 8px;
+}
+
+.wf-mobile-nav { display: none; flex-direction: column; border-top: 1px solid var(--wf-line); }
+.wf-mobile-nav a {
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--wf-line);
+  font-weight: 500;
+  color: var(--wf-ink);
+}
+.wf-mobile-nav a:last-child { border-bottom: none; }
+.wf-mobile-nav__call { color: var(--wf-primary); font-weight: 600; }
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+
+.wf-section {
+  max-width: var(--wf-wrap);
+  margin: 0 auto;
+  padding: 88px 28px;
+}
+
+.wf-section__head { text-align: center; max-width: 640px; margin: 0 auto 48px; }
+
+.wf-eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--wf-primary-dark);
+  margin: 0 0 12px;
+}
+
+.wf-pill {
+  display: inline-block;
+  background: var(--wf-surface);
+  border: 1px solid var(--wf-line-teal);
+  color: var(--wf-primary-dark);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 100px;
+  margin: 0 0 20px;
+}
+
+.wf-h2 {
+  font-family: var(--wf-serif);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--wf-ink);
+}
+
+.wf-body { font-size: 16px; line-height: 1.75; color: var(--wf-ink-soft); margin: 0 0 20px; }
+.wf-body:last-child { margin-bottom: 0; }
+
+.wf-empty { text-align: center; color: var(--wf-ink-faint); }
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+
+.wf-hero {
+  background: linear-gradient(180deg, var(--wf-tint-strong) 0%, var(--wf-bg) 70%);
+  padding: 72px 28px 56px;
+}
+.wf-hero__grid {
+  max-width: var(--wf-wrap);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap: 48px;
+  align-items: center;
+}
+.wf-hero__title {
+  font-family: var(--wf-serif);
+  font-size: 44px;
+  line-height: 1.15;
+  font-weight: 700;
+  margin: 0 0 20px;
+  color: var(--wf-ink);
+}
+.wf-hero__lede {
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--wf-ink-soft);
+  margin: 0 0 32px;
+  max-width: 520px;
+}
+.wf-hero__actions { display: flex; gap: 14px; flex-wrap: wrap; }
+.wf-hero__hours { margin: 24px 0 0; font-size: 14px; color: var(--wf-ink-faint); }
+.wf-hero__visual { display: flex; justify-content: center; }
+
+.wf-orbit { animation: wf-spin 46s linear infinite; transform-origin: 220px 210px; }
+.wf-orbit--rev { animation: wf-spin 60s linear infinite reverse; }
+@keyframes wf-spin { to { transform: rotate(360deg); } }
+
+/* ── About ────────────────────────────────────────────────────────────── */
+
+.wf-about__grid { display: grid; grid-template-columns: .4fr .6fr; gap: 56px; align-items: start; }
+.wf-about__cards { display: flex; gap: 16px; margin-top: 28px; flex-wrap: wrap; }
+.wf-minicard { background: var(--wf-tint); padding: 16px 20px; border-radius: 6px; flex: 1; min-width: 200px; }
+.wf-minicard__title { font-weight: 600; font-size: 15px; color: var(--wf-ink); margin: 0 0 4px; }
+.wf-minicard__body { font-size: 14px; color: var(--wf-ink-faint); margin: 0; }
+
+/* ── Doctors ──────────────────────────────────────────────────────────── */
+
+.wf-doctors {
+  background: var(--wf-surface);
+  border-top: 1px solid var(--wf-line);
+  border-bottom: 1px solid var(--wf-line);
+  max-width: none;
+}
+.wf-doctors > * { max-width: var(--wf-wrap); margin-left: auto; margin-right: auto; }
+.wf-doctors__list { display: grid; gap: 56px; }
+
+/* stretch, so the portrait runs the height of the name-and-contact block beside
+   it. Fixed at 160px it sat short against four lines of text and read as a
+   thumbnail somebody had forgotten to replace. */
+.wf-doctor__row { display: flex; gap: 20px; align-items: stretch; margin-bottom: 20px; }
+
+.wf-doctor__photo {
+  width: 120px;
+  min-height: 165px;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: var(--wf-radius);
+  flex-shrink: 0;
+  background: var(--wf-tint);
+}
+.wf-doctor__photo--none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-family: var(--wf-serif);
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--wf-primary);
+}
+
+.wf-doctor__id { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.wf-doctor__name { font-family: var(--wf-serif); font-size: 24px; font-weight: 700; margin: 0 0 4px; }
+.wf-doctor__role { font-weight: 600; color: var(--wf-primary-dark); font-size: 15px; margin: 0 0 8px; }
+.wf-doctor__quals { font-size: 14px; color: var(--wf-ink-faint); margin: 0 0 10px; }
+.wf-doctor__contact { display: flex; flex-direction: column; gap: 4px; }
+.wf-doctor__contact a { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--wf-ink-soft); overflow-wrap: anywhere; }
+.wf-doctor__contact a:hover { color: var(--wf-primary-dark); }
+
+/* ── Services ─────────────────────────────────────────────────────────── */
+
+/* Tabs mean nothing until the script that drives them has run, so they are
+   revealed by it. Without JavaScript both panels stay open under their own
+   headings, which is more of the clinic's information rather than less. */
+.wf-tabs { display: none; justify-content: center; gap: 10px; margin-bottom: 36px; flex-wrap: wrap; }
+.wf-js .wf-tabs { display: flex; }
+
+.wf-tab {
+  padding: 10px 24px;
+  border-radius: 100px;
+  font-weight: 600;
+  font-size: 14.5px;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1.5px solid var(--wf-line-teal);
+  background: transparent;
+  color: var(--wf-primary-dark);
+}
+.wf-tab:hover { border-color: var(--wf-primary); }
+.wf-tab.is-active { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+
+.wf-panel { outline-offset: 4px; }
+.wf-panel[hidden] { display: none; }
+.wf-panel + .wf-panel { margin-top: 40px; }
+.wf-js .wf-panel + .wf-panel { margin-top: 0; }
+
+/* The panel headings are visible when there are no tabs to name the panels,
+   and hidden once the tabs appear and do that job. */
+.wf-panel > .wf-sr {
+  position: static;
+  width: auto; height: auto;
+  clip: auto;
+  margin: 0 0 16px;
+  font-family: var(--wf-serif);
+  font-size: 20px;
+  white-space: normal;
+}
+.wf-js .wf-panel > .wf-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  margin: -1px;
+}
+
+.wf-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.wf-chips li {
+  background: var(--wf-surface);
+  border: 1px solid var(--wf-line);
+  border-radius: var(--wf-radius);
+  padding: 20px 22px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--wf-ink);
+}
+
+/* ── Why us ───────────────────────────────────────────────────────────── */
+
+.wf-why { background: var(--wf-primary-dark); padding: 64px 28px; }
+.wf-why__grid {
+  max-width: var(--wf-wrap);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  text-align: center;
+}
+.wf-why h3 { font-family: var(--wf-serif); color: #fff; font-size: 19px; margin: 0 0 10px; }
+.wf-why p { color: #dceeea; font-size: 14.5px; line-height: 1.65; margin: 0; }
+
+/* ── FAQs ─────────────────────────────────────────────────────────────── */
+
+.wf-faqs { max-width: 900px; }
+.wf-faq-list { display: flex; flex-direction: column; gap: 12px; }
+
+.wf-faq {
+  border: 1px solid var(--wf-line);
+  border-radius: var(--wf-radius);
+  background: var(--wf-surface);
+  overflow: hidden;
+}
+.wf-faq summary {
+  padding: 18px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--wf-ink);
+  list-style: none;
+}
+.wf-faq summary::-webkit-details-marker { display: none; }
+.wf-faq summary::after {
+  content: "+";
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--wf-primary);
+  flex-shrink: 0;
+}
+.wf-faq[open] summary::after { content: "\2212"; }
+.wf-faq p { padding: 0 22px 20px; margin: 0; font-size: 15px; line-height: 1.7; color: var(--wf-ink-soft); }
+
+/* ── Contact ──────────────────────────────────────────────────────────── */
+
+.wf-contact { background: var(--wf-tint); max-width: none; }
+.wf-contact > * { max-width: var(--wf-wrap); margin-left: auto; margin-right: auto; }
+.wf-contact__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+
+.wf-card { background: var(--wf-surface); border-radius: var(--wf-radius); padding: 28px; }
+.wf-card--form { padding: 32px; }
+.wf-card__title { font-family: var(--wf-serif); font-size: 18px; margin: 0 0 12px; color: var(--wf-ink); }
+.wf-card__title ~ .wf-card__title { margin-top: 20px; }
+.wf-card__sub { font-size: 14.5px; color: var(--wf-ink-faint); margin: 0 0 22px; }
+.wf-card__sub--fine { margin: 12px 0 0; font-size: 13px; }
+
+.wf-map {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--wf-radius);
+  min-height: 200px;
+  margin-top: 20px;
+  border: 1px solid var(--wf-line-teal);
+  background: var(--wf-tint-strong);
+  color: var(--wf-primary-dark);
+  text-align: center;
+  padding: 24px;
+}
+.wf-map:hover { text-decoration: none; background: #c8e4dd; }
+.wf-map__pin { font-size: 28px; }
+.wf-map__name { font-weight: 600; font-size: 15px; }
+.wf-map__link { font-size: 13px; text-decoration: underline; }
+
+/* ── Form ─────────────────────────────────────────────────────────────── */
+
+.wf-field { margin-bottom: 14px; }
+.wf-label { display: block; font-size: 13.5px; font-weight: 600; color: var(--wf-ink-soft); margin-bottom: 5px; }
+.wf-req { color: var(--wf-danger); margin-left: 2px; }
+
+.wf__input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d5dbdd;
+  border-radius: 5px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--wf-ink);
+  background: #fff;
+}
+.wf__input:focus { border-color: var(--wf-primary); }
+textarea.wf__input { resize: vertical; }
+
+.wf-field__error { color: var(--wf-danger); font-size: 13.5px; margin: 5px 0 0; }
+
+.wf-note { border-radius: 5px; padding: 12px 14px; font-size: 14.5px; margin: 0 0 16px; }
+.wf-note--success { background: var(--wf-success-bg); color: var(--wf-success); }
+.wf-note--error   { background: var(--wf-danger-bg);  color: var(--wf-danger); }
+.wf-note--info    { background: var(--wf-tint);       color: var(--wf-primary-dark); }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+
+.wf-foot { background: #14232a; padding: 44px 28px 28px; color: #c3ced2; font-size: 14px; }
+.wf-foot__inner {
+  max-width: var(--wf-wrap);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 24px;
+}
+.wf-foot p { margin: 0; }
+.wf-foot__name { font-family: var(--wf-serif); font-weight: 700; font-size: 16px; color: #fff; margin-bottom: 6px; }
+.wf-foot__nav { display: flex; gap: 28px; flex-wrap: wrap; }
+.wf-foot a { color: #c3ced2; }
+.wf-foot a:hover { color: #fff; }
+.wf-foot__fine {
+  max-width: var(--wf-wrap);
+  margin: 24px auto 0;
+  padding-top: 20px;
+  border-top: 1px solid #2b3a41;
+  color: #8b9ba1;
+  font-size: 12.5px;
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .wf-nav, .wf-head__cta { display: none; }
+  .wf-burger { display: block; }
+  .wf-mobile-nav { display: flex; }
+  .wf-mobile-nav[hidden] { display: none; }
+
+  .wf-hero__grid { grid-template-columns: 1fr; text-align: center; }
+  .wf-hero__actions { justify-content: center; }
+  .wf-hero__lede { margin-left: auto; margin-right: auto; }
+  .wf-hero__visual { order: -1; }
+  .wf-hero__title { font-size: 32px; }
+
+  .wf-about__grid { grid-template-columns: 1fr; gap: 28px; }
+  .wf-chips { grid-template-columns: repeat(2, 1fr); }
+  .wf-why__grid { grid-template-columns: 1fr; gap: 28px; }
+  .wf-contact__grid { grid-template-columns: 1fr; }
+  .wf-section { padding: 56px 20px; }
+  .wf-head__inner { padding: 12px 20px; }
+  .wf-hero { padding: 48px 20px 40px; }
+}
+
+@media (max-width: 560px) {
+  .wf-chips { grid-template-columns: 1fr; }
+  .wf-h2 { font-size: 26px; }
+  .wf-hero__title { font-size: 28px; }
+
+  /* Stacked, with the photograph full width. Beside a hundred pixels of text a
+     120px portrait is neither a picture nor a thumbnail. */
+  .wf-doctor__row { flex-direction: column; align-items: stretch; }
+  .wf-doctor__photo { width: 100%; height: 280px; min-height: 0; object-position: center 20%; }
+  .wf-doctor__photo--none { height: 120px; }
+
+  .wf-card, .wf-card--form { padding: 22px; }
+  .wf-brand__text { font-size: 15px; }
+  .wf-hero__visual svg { width: 240px; height: 230px; }
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .wf-orbit, .wf-orbit--rev { animation: none; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
