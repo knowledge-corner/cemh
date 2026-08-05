@@ -1,0 +1,142 @@
+{% comment %}
+One date, one column per cabin (FR-4).
+
+Cabin-oriented because "which room is free at three" is the question this view
+exists to answer, and it cannot be read off a list ordered by doctor.
+
+Hours with no cabin get their own column rather than being hidden. A doctor with
+no schedule rows at all still works the clinic's default hours and can still be
+booked, so leaving them off would make the calendar disagree with the booking
+form — quietly, and in the direction that puts a patient in front of nobody.
+{% endcomment %}
+
+{% if holiday %}
+  <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">Clinic closed — {{ holiday.name }}</span><br>
+      Nobody works today, so no hours are shown and nothing can be booked.
+      {% if holiday.note %}{{ holiday.note }}{% endif %}
+    </div>
+    {% if not is_doctor_view %}
+      <form method="post" action="{% url 'reception_delete_calendar_entry' 'holiday' holiday.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn--secondary" type="submit">Remove holiday</button>
+      </form>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% if leave %}
+  <div class="alert-strip" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">Away today</span><br>
+      {% for absence in leave %}
+        {{ absence.doctor.display_name }}
+        ({% if absence.whole_day %}all day{% else %}{{ absence.start_time|time:"H:i" }}–{{ absence.end_time|time:"H:i" }}{% endif %}){% if not forloop.last %}, {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if not columns %}
+  <div class="card">
+    <div class="card__body empty">
+      {% if holiday %}
+        The clinic is closed.
+      {% elif not cabins %}
+        No cabins yet. Add one below, then give a doctor hours in it.
+      {% else %}
+        Nobody is down to work on {{ anchor|date:"j F" }}.
+        {% if not is_doctor_view %}
+          <button class="btn btn--primary" type="button"
+                  data-add-event data-date="{{ anchor|date:'Y-m-d' }}">Add working hours</button>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="table-scroll">
+    <table class="table calendar-day">
+      <thead>
+        <tr>
+          {% for column in columns %}
+            <th scope="col"{% if not column.cabin %} class="is-unassigned"{% endif %}>
+              <span title="{{ column.name }}">{{ column.name }}</span>
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for column in columns %}
+            <td class="calendar-day__cell{% if not column.cabin %} is-unassigned{% endif %}">
+              {% if not column.entries %}
+                <p class="faint">Free all day</p>
+              {% endif %}
+
+              {% for entry in column.entries %}
+                <div class="sitting{% if entry.away %} sitting--away{% endif %}">
+                  <p class="sitting__time mono">{{ entry.label }}</p>
+                  <p class="sitting__doctor">{{ entry.doctor.display_name }}</p>
+                  <p class="sitting__meta faint">
+                    {% if entry.is_recurring %}
+                      Every {{ anchor|date:"l" }}
+                    {% elif entry.is_editable %}
+                      This date only
+                    {% else %}
+                      Clinic default hours &mdash; no cabin set
+                    {% endif %}
+                  </p>
+                  {% if entry.note %}<p class="sitting__meta">{{ entry.note }}</p>{% endif %}
+                  {% if entry.away %}
+                    <p class="badge badge--warning">Away — recorded as leave</p>
+                  {% endif %}
+
+                  {% if not is_doctor_view and entry.is_editable %}
+                    <div class="sitting__actions">
+                      {% if entry.is_recurring %}
+                        {% comment %}
+                        FR-16 / AC-14. A weekly pattern cannot lose one date by
+                        deleting the row — the row is every other week too — so
+                        the two are separate buttons with separate wording
+                        rather than one button and a hope.
+                        {% endcomment %}
+                        <form method="post"
+                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                          <input type="hidden" name="scope" value="occurrence">
+                          <input type="hidden" name="date" value="{{ anchor|date:'Y-m-d' }}">
+                          <button class="btn btn--secondary" type="submit">
+                            Off this {{ anchor|date:"l" }}
+                          </button>
+                        </form>
+                        <form method="post"
+                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
+                              onsubmit="return confirm('Remove {{ entry.doctor.display_name|escapejs }} from every {{ anchor|date:'l'|escapejs }}? This removes the whole weekly pattern, not just {{ anchor|date:'j M'|escapejs }}.');">
+                          {% csrf_token %}
+                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                          <input type="hidden" name="scope" value="series">
+                          <button class="btn btn--secondary" type="submit">Remove every week</button>
+                        </form>
+                      {% else %}
+                        <form method="post"
+                              action="{% url 'reception_delete_calendar_entry' 'override' entry.pk %}"
+                              onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
+                          {% csrf_token %}
+                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                          <button class="btn btn--secondary" type="submit">Remove</button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+{% endif %}

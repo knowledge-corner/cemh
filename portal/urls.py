@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_doctors, views_reception
+from . import views_calendar, views_doctors, views_reception
 
 urlpatterns = [
     # ── Reception ────────────────────────────────────────────────────────
@@ -45,6 +45,23 @@ urlpatterns = [
          name="reception_add_availability"),
     path("reception/availability/<str:kind>/<int:pk>/remove/",
          views_reception.remove_availability, name="reception_remove_availability"),
+
+    # ── The availability calendar (KAN-22) ───────────────────────────────
+    # Doctors reach this too, scoped to themselves inside the view.
+    path("calendar/", views_calendar.calendar_view, name="reception_calendar"),
+    path("calendar/cabins/add/", views_calendar.add_cabin, name="reception_add_cabin"),
+    path("calendar/cabins/<int:pk>/retire/", views_calendar.retire_cabin,
+         name="reception_retire_cabin"),
+    path("calendar/event/add/", views_calendar.add_calendar_event,
+         name="reception_add_calendar_event"),
+    path("calendar/<str:kind>/<int:pk>/delete/", views_calendar.delete_calendar_entry,
+         name="reception_delete_calendar_entry"),
+
+    # ── Clinic holidays from a spreadsheet (KAN-24) ──────────────────────
+    path("calendar/holidays/import/", views_calendar.import_holidays,
+         name="reception_import_holidays"),
+    path("calendar/holidays/template.csv", views_calendar.holiday_template,
+         name="reception_holiday_template"),
 
     path("reception/billing/<int:pk>/", views_reception.billing, name="reception_billing"),
     # Taking the fee in a pop-up on the board, rather than on the billing page.

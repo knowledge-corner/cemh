@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Availability calendar — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+{% comment %}
+KAN-22. Two views of one set of facts: a month for "who is in next Thursday",
+and a cabin-oriented day for "which room is free at three". The day view is
+cabin-first on purpose — that question cannot be read off a list ordered by
+doctor, which is what the old availability screen gave.
+
+A doctor reaching this page sees the same screen scoped to themselves. The
+scoping is done in the view from request.user; nothing here is load-bearing for
+it.
+{% endcomment %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Availability calendar</h1>
+    <p class="page-header__sub">
+      {% if is_doctor_view %}
+        Your working hours and cabins. Reception maintains these.
+      {% else %}
+        Working hours, cabins and holidays. Click a day to add something.
+      {% endif %}
+    </p>
+  </div>
+  <div class="row-actions">
+    <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>
+    {% if not is_doctor_view %}
+      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor schedule</a>
+    {% endif %}
+  </div>
+</div>
+
+<nav class="toolbar" aria-label="Calendar">
+  <form method="get" class="toolbar__filter">
+    <input type="hidden" name="date" value="{{ anchor|date:'Y-m-d' }}">
+    <input type="hidden" name="view" value="{{ view }}">
+
+    {% if not is_doctor_view %}
+      <select class="input" name="doctor" aria-label="Filter the calendar by doctor"
+              onchange="this.form.submit()">
+        <option value="">All doctors</option>
+        {% for d in doctors %}
+          <option value="{{ d.pk }}"{% if chosen_doctor and chosen_doctor.pk == d.pk %} selected{% endif %}>
+            {{ d.display_name }}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
+
+    <select class="input" name="specialisation"
+            aria-label="Filter the calendar by specialisation"
+            onchange="this.form.submit()">
+      <option value="">All specialisations</option>
+      {% for s in specialisations %}
+        <option value="{{ s.pk }}"{% if chosen_specialisation and chosen_specialisation.pk == s.pk %} selected{% endif %}>
+          {{ s.name }}
+        </option>
+      {% endfor %}
+    </select>
+    <noscript><button class="btn btn--secondary" type="submit">Filter</button></noscript>
+  </form>
+
+  <div class="toolbar__actions">
+    {% comment %}
+    Every navigation link carries the filters through, so moving from August to
+    September does not silently drop "Endocrinology" (AC-9).
+    {% endcomment %}
+    <a class="btn btn--secondary" rel="prev"
+       href="?date={{ previous|date:'Y-m-d' }}{{ filter_query }}"
+       aria-label="{% if view == 'day' %}Previous day{% else %}Previous month{% endif %}">&larr;</a>
+    <a class="btn btn--secondary" href="?date={{ today|date:'Y-m-d' }}{{ filter_query }}">Today</a>
+    <a class="btn btn--secondary" rel="next"
+       href="?date={{ next|date:'Y-m-d' }}{{ filter_query }}"
+       aria-label="{% if view == 'day' %}Next day{% else %}Next month{% endif %}">&rarr;</a>
+
+    <div class="viewtoggle" role="group" aria-label="Calendar view">
+      <a class="viewtoggle__option{% if view == 'month' %} is-active{% endif %}"
+         {% if view == 'month' %}aria-current="true"{% endif %}
+         href="?view=month&amp;date={{ anchor|date:'Y-m-d' }}{% if chosen_doctor %}&amp;doctor={{ chosen_doctor.pk }}{% endif %}{% if chosen_specialisation %}&amp;specialisation={{ chosen_specialisation.pk }}{% endif %}">Month</a>
+      <a class="viewtoggle__option{% if view == 'day' %} is-active{% endif %}"
+         {% if view == 'day' %}aria-current="true"{% endif %}
+         href="?view=day&amp;date={{ anchor|date:'Y-m-d' }}{% if chosen_doctor %}&amp;doctor={{ chosen_doctor.pk }}{% endif %}{% if chosen_specialisation %}&amp;specialisation={{ chosen_specialisation.pk }}{% endif %}">Day</a>
+    </div>
+
+    {% if not is_doctor_view %}
+      <button class="btn btn--primary" type="button"
+              data-add-event data-date="{{ anchor|date:'Y-m-d' }}">Add event</button>
+    {% endif %}
+  </div>
+</nav>
+
+<h2 class="calendar__caption">
+  {% if view == 'day' %}{{ anchor|date:"l j F Y" }}{% else %}{{ anchor|date:"F Y" }}{% endif %}
+</h2>
+
+{% if not has_doctors %}
+  <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">No doctors to show</span><br>
+      {% if chosen_doctor or chosen_specialisation %}
+        Nothing matches the filters above.
+      {% else %}
+        No doctor has finished setting up their account yet.
+        <a href="{% url 'reception_doctors' %}">Add a doctor</a> first.
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{% if view == 'day' %}
+  {% include "portal/reception/_calendar_day.html" %}
+{% else %}
+  {% include "portal/reception/_calendar_month.html" %}
+{% endif %}
+
+{% if not is_doctor_view %}
+  {% include "portal/reception/_cabins.html" %}
+  {% include "portal/reception/_calendar_event_modal.html" %}
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'js/calendar.js' %}" defer></script>
+{% endblock %}

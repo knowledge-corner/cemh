@@ -1,0 +1,72 @@
+{% comment %}
+Cabin master data (FR-1, FR-2).
+
+On the calendar rather than a screen of its own: a cabin exists to be a column
+in the day view, and the moment somebody needs a new one is the moment they are
+looking at the day view and cannot find it.
+
+Retiring rather than deleting is offered first. A cabin already on somebody's
+working hours cannot be deleted — the database refuses, and it is right to,
+because a room's history should not disappear to tidy a dropdown.
+{% endcomment %}
+
+<div class="card" style="margin-top:1.5rem">
+  <div class="card__header">
+    <h2 class="card__title">Cabins</h2>
+  </div>
+  <div class="card__body">
+
+    <form method="post" action="{% url 'reception_add_cabin' %}"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      {% for field in cabin_form %}
+        <div class="field" style="margin:0">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+      <button class="btn btn--primary" type="submit">Add cabin</button>
+    </form>
+
+    {% if all_cabins %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr><th>Cabin</th><th>Note</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for cabin in all_cabins %}
+              <tr>
+                <td class="strong">{{ cabin.name }}</td>
+                <td class="faint">{{ cabin.note|default:"—" }}</td>
+                <td>
+                  {% if cabin.is_active %}
+                    <span class="badge badge--success">In use</span>
+                  {% else %}
+                    <span class="badge badge--warning">Retired</span>
+                  {% endif %}
+                </td>
+                <td class="row-actions">
+                  <form method="post" action="{% url 'reception_retire_cabin' cabin.pk %}"
+                        style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn--secondary" type="submit">
+                      {% if cabin.is_active %}Retire{% else %}Bring back{% endif %}
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty">
+        No cabins yet. The day view has a column per cabin, so add the clinic's
+        consulting rooms here first.
+      </p>
+    {% endif %}
+  </div>
+</div>

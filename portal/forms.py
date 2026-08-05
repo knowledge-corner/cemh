@@ -6,6 +6,8 @@ Every form here follows the same shape so the generic edit view in
 form class plus a registry entry rather than a new view.
 """
 
+from datetime import timedelta
+
 from django import forms
 from django.db import transaction
 from django.utils.text import slugify
@@ -585,17 +587,182 @@ class RescheduleForm(forms.Form):
 
 # ── Doctor availability ───────────────────────────────────────────────────────
 
-class DoctorScheduleForm(forms.ModelForm):
-    """One sitting in a doctor's ordinary week."""
+def _all_doctors():
+    return User.objects.filter(role=Role.DOCTOR, is_active=True)
+
+
+def _schedulable_doctors():
+    """
+    Doctors who may be given hours.
+
+    A doctor who has not set their password cannot sign in, so hours for them
+    would put a patient in front of an empty cabin (KAN-21 FR-7).
+
+    Both halves of the exclusion matter. A doctor with *no* profile row at all
+    predates invitations and is perfectly schedulable; excluding on
+    ``activated_at__isnull`` alone would sweep them up too, because a missing
+    row reads as a null column.
+    """
+    return _all_doctors().exclude(
+        doctor_profile__isnull=False, doctor_profile__activated_at__isnull=True
+    )
+
+
+class _SchedulableIterator(forms.models.ModelChoiceIterator):
+    """Offers only the doctors who can actually be given hours."""
+
+    def __iter__(self):
+        if self.field.empty_label is not None:
+            yield ("", self.field.empty_label)
+        for obj in self.queryset.exclude(
+            doctor_profile__isnull=False, doctor_profile__activated_at__isnull=True
+        ):
+            yield self.choice(obj)
+
+
+class DoctorChoiceField(forms.ModelChoiceField):
+    """
+    A doctor picker that leaves out the ones who cannot sign in — but can still
+    *resolve* them if one is submitted anyway.
+
+    The distinction earns its keep in the error message. Narrowing the queryset
+    would also work, and the guard would still hold, but the receptionist would
+    be told "Select a valid choice. That choice is not one of the available
+    choices" — which is true, useless, and gives her nothing to act on. Keeping
+    the doctor resolvable lets :meth:`clean` say that they have not set their
+    password yet and where to re-send the invitation.
+    """
+
+    iterator = _SchedulableIterator
+
+    def label_from_instance(self, obj):
+        # User.__str__ appends the role, which in a field already labelled
+        # "Doctor" reads as "Asha Rao (Doctor)" on every single option.
+        return obj.display_name
+
+    def clean(self, value):
+        doctor = super().clean(value)
+        if doctor is None:
+            return doctor
+        profile = getattr(doctor, "doctor_profile", None)
+        if profile is not None and profile.is_pending:
+            raise forms.ValidationError(
+                f"{doctor.display_name} has not set their password yet, so they "
+                f"cannot be given hours. Re-send their invitation from the "
+                f"Doctors screen."
+            )
+        return doctor
+
+
+class CabinForm(forms.ModelForm):
+    """A consulting room (KAN-22 FR-1, FR-2)."""
+
+    class Meta:
+        from appointments.models import Cabin as _Cabin
+
+        model = _Cabin
+        fields = ["name", "note"]
+        widgets = {
+            "name": forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Cabin 1"}),
+            "note": forms.TextInput(attrs={**INPUT, "placeholder": "Optional"}),
+        }
+
+    def clean_name(self):
+        """
+        Refuse a duplicate here rather than letting the constraint do it.
+
+        The database already stops two cabins sharing a name, but it does so
+        with a 500 — and reception typing a name that already exists deserves
+        the sentence, not the error page (AC-4).
+        """
+        from appointments.models import Cabin
+
+        name = " ".join((self.cleaned_data.get("name") or "").split())
+        clash = Cabin.objects.filter(name__iexact=name)
+        if self.instance.pk:
+            clash = clash.exclude(pk=self.instance.pk)
+        existing = clash.first()
+        if existing is not None:
+            raise forms.ValidationError(
+                f"There is already a cabin called {existing.name}."
+                + ("" if existing.is_active else
+                   " It has been retired — bring it back rather than adding a second.")
+            )
+        return name
+
+
+class ConflictCheckedScheduleForm(forms.ModelForm):
+    """
+    Shared conflict checking for the two kinds of working-hours row.
+
+    Both ask the same question of :mod:`appointments.calendar` — would this put
+    two doctors in one cabin, or one doctor in two — and both must ask it before
+    the row is committed rather than after (KAN-22 UI-14).
+    """
+
+    #: "schedule" for the weekly pattern, "override" for a single date.
+    conflict_kind = None
+
+    def _conflict_window(self):
+        """``(date, weekday)`` — exactly one of which is set."""
+        raise NotImplementedError
+
+    def clean(self):
+        cleaned = super().clean()
+
+        doctor = cleaned.get("doctor")
+        start = cleaned.get("start_time")
+        end = cleaned.get("end_time")
+
+        if start and end and end <= start:
+            self.add_error("end_time", "The end time must be after the start time.")
+            return cleaned
+        if not (doctor and start and end):
+            return cleaned
+
+        from appointments import calendar as clinic_calendar
+
+        date, weekday = self._conflict_window()
+        if date is None and weekday is None:
+            return cleaned
+
+        conflicts = clinic_calendar.find_conflicts(
+            kind=self.conflict_kind,
+            doctor=doctor,
+            cabin=cleaned.get("cabin"),
+            start=start,
+            end=end,
+            date=date,
+            weekday=weekday,
+            exclude_pk=self.instance.pk,
+        )
+        for conflict in conflicts[:5]:
+            self.add_error(None, str(conflict))
+        if len(conflicts) > 5:
+            self.add_error(
+                None, f"…and {len(conflicts) - 5} more dates with the same clash."
+            )
+        return cleaned
+
+
+class DoctorScheduleForm(ConflictCheckedScheduleForm):
+    """One sitting in a doctor's ordinary week — the weekly repeat (FR-20)."""
+
+    conflict_kind = "schedule"
+
+    doctor = DoctorChoiceField(
+        queryset=User.objects.none(), widget=forms.Select(attrs=INPUT),
+    )
 
     class Meta:
         from appointments.models import DoctorSchedule as _DoctorSchedule
 
         model = _DoctorSchedule
-        fields = ["doctor", "weekday", "start_time", "end_time", "slot_minutes"]
+        fields = ["doctor", "weekday", "cabin", "start_time", "end_time", "slot_minutes"]
         widgets = {
             "doctor": forms.Select(attrs=INPUT),
             "weekday": forms.Select(attrs=INPUT),
+            "cabin": forms.Select(attrs=INPUT),
             "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
             "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
             "slot_minutes": forms.NumberInput(attrs={**INPUT, "placeholder": "Clinic default"}),
@@ -603,24 +770,36 @@ class DoctorScheduleForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from accounts.models import Role, User
+        from appointments.models import Cabin
 
-        self.fields["doctor"].queryset = User.objects.filter(
-            role=Role.DOCTOR, is_active=True
-        )
+        self.fields["doctor"].queryset = _all_doctors()
+        self.fields["cabin"].queryset = Cabin.objects.filter(is_active=True)
+        self.fields["cabin"].empty_label = "No cabin set"
+
+    def _conflict_window(self):
+        weekday = self.cleaned_data.get("weekday")
+        return None, (None if weekday in (None, "") else int(weekday))
 
 
-class ScheduleOverrideForm(forms.ModelForm):
+class ScheduleOverrideForm(ConflictCheckedScheduleForm):
     """Different hours for one doctor on one date."""
+
+    conflict_kind = "override"
+
+    doctor = DoctorChoiceField(
+        queryset=User.objects.none(), widget=forms.Select(attrs=INPUT),
+    )
 
     class Meta:
         from appointments.models import ScheduleOverride as _ScheduleOverride
 
         model = _ScheduleOverride
-        fields = ["doctor", "date", "start_time", "end_time", "slot_minutes", "note"]
+        fields = ["doctor", "date", "cabin", "start_time", "end_time",
+                  "slot_minutes", "note"]
         widgets = {
             "doctor": forms.Select(attrs=INPUT),
             "date": forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+            "cabin": forms.Select(attrs=INPUT),
             "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
             "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
             "slot_minutes": forms.NumberInput(attrs={**INPUT, "placeholder": "Clinic default"}),
@@ -629,17 +808,20 @@ class ScheduleOverrideForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from accounts.models import Role, User
+        from appointments.models import Cabin
 
-        self.fields["doctor"].queryset = User.objects.filter(
-            role=Role.DOCTOR, is_active=True
-        )
+        self.fields["doctor"].queryset = _all_doctors()
+        self.fields["cabin"].queryset = Cabin.objects.filter(is_active=True)
+        self.fields["cabin"].empty_label = "No cabin set"
 
     def clean_date(self):
         day = self.cleaned_data["date"]
         if day < timezone.localdate():
             raise forms.ValidationError("That date has passed.")
         return day
+
+    def _conflict_window(self):
+        return self.cleaned_data.get("date"), None
 
 
 class ClinicHolidayForm(forms.ModelForm):
@@ -691,6 +873,241 @@ class DoctorLeaveForm(forms.ModelForm):
         )
         self.fields["start_time"].required = False
         self.fields["end_time"].required = False
+
+
+#: A date range creating more rows than this is a mis-keyed year, not an
+#: intention. 400 lets a full year plus a margin through and stops 2026 being
+#: typed as 2260.
+MAX_RANGE_DAYS = 400
+
+
+class CalendarEventForm(forms.Form):
+    """
+    The calendar's add-event pop-up (KAN-22 FR-8, FR-9).
+
+    One form whose shape follows the event type, rather than a separate pop-up
+    per type. Reception opens it by clicking a day; what they are adding is a
+    choice they make inside it, and making that choice before the pop-up opens
+    would mean knowing the answer to get to the question.
+
+    Working hours land in the same two tables the availability screen already
+    writes — a weekly repeat is a :class:`DoctorSchedule` row, a one-off is a
+    :class:`ScheduleOverride` — so there is one answer to "when does this doctor
+    work" rather than a calendar's answer and a booking form's answer.
+    """
+
+    HOURS = "hours"
+    HOLIDAY = "holiday"
+    EVENT_TYPES = [
+        (HOURS, "Doctor working hours"),
+        (HOLIDAY, "Clinic holiday"),
+    ]
+
+    ONCE = "once"
+    WEEKLY = "weekly"
+    REPEATS = [
+        (ONCE, "Does not repeat"),
+        (WEEKLY, "Every week, until removed"),
+    ]
+
+    event_type = forms.ChoiceField(
+        label="Event type", choices=EVENT_TYPES,
+        widget=forms.Select(attrs={**INPUT, "id": "id_event_type"}),
+    )
+
+    date = forms.DateField(
+        label="Date",
+        widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+    )
+    until = forms.DateField(
+        label="Repeat daily until", required=False,
+        help_text="Leave empty for a single day.",
+        widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+    )
+
+    # Working hours
+    doctor = DoctorChoiceField(
+        label="Doctor", queryset=User.objects.none(), required=False,
+        widget=forms.Select(attrs=INPUT),
+    )
+    cabin = forms.ModelChoiceField(
+        label="Cabin", queryset=None, required=False,
+        widget=forms.Select(attrs=INPUT),
+    )
+    start_time = forms.TimeField(
+        label="From", required=False,
+        widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+    )
+    end_time = forms.TimeField(
+        label="To", required=False,
+        widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+    )
+    repeat = forms.ChoiceField(
+        label="Repeat", choices=REPEATS, initial=ONCE, required=False,
+        widget=forms.Select(attrs=INPUT),
+    )
+
+    # Holiday
+    name = forms.CharField(
+        label="Holiday name", max_length=120, required=False,
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Diwali"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from appointments.models import Cabin
+
+        self.fields["doctor"].queryset = _all_doctors()
+        self.fields["cabin"].queryset = Cabin.objects.filter(is_active=True)
+
+        # Both fields are required for working hours, so neither empty option
+        # may read as a choice. Django's "---------" is noise, and offering
+        # "No cabin set" — which the schedule screen does, because a cabin is
+        # optional there — would be offering an answer that is then refused.
+        self.fields["doctor"].empty_label = "Select a doctor"
+        self.fields["cabin"].empty_label = "Select a cabin"
+
+    # ── Validation ───────────────────────────────────────────────────────────
+
+    def clean(self):
+        cleaned = super().clean()
+        event_type = cleaned.get("event_type")
+
+        if event_type == self.HOURS:
+            self._clean_hours(cleaned)
+        elif event_type == self.HOLIDAY:
+            self._clean_holiday(cleaned)
+        return cleaned
+
+    def _dates(self, cleaned):
+        """Every date the event covers, or ``None`` when the range is unusable."""
+        start = cleaned.get("date")
+        if start is None:
+            return None
+        until = cleaned.get("until") or start
+        if until < start:
+            self.add_error("until", "The last day cannot be before the first.")
+            return None
+        span = (until - start).days + 1
+        if span > MAX_RANGE_DAYS:
+            self.add_error(
+                "until",
+                f"That is {span} days. Check the year — the most that can be "
+                f"added at once is {MAX_RANGE_DAYS}.",
+            )
+            return None
+        return [start + timedelta(days=offset) for offset in range(span)]
+
+    def _clean_hours(self, cleaned):
+        for field in ("doctor", "cabin", "start_time", "end_time"):
+            if not cleaned.get(field):
+                self.add_error(field, "Required for working hours.")
+
+        start, end = cleaned.get("start_time"), cleaned.get("end_time")
+        if start and end and end <= start:
+            self.add_error("end_time", "The end time must be after the start time.")
+        if start and end and start == end:
+            self.add_error("end_time", "An entry with no length is not working hours.")
+
+        weekly = cleaned.get("repeat") == self.WEEKLY
+        if weekly and cleaned.get("until"):
+            # A weekly pattern has no end date in the model, and pretending it
+            # honours one would quietly create hours that never stop.
+            self.add_error(
+                "until",
+                "A weekly pattern runs until it is removed. Leave the end date "
+                "empty, or choose 'Does not repeat' to add a fixed range.",
+            )
+
+        dates = self._dates(cleaned)
+        if self.errors or dates is None:
+            return
+
+        from appointments import calendar as clinic_calendar
+
+        if weekly:
+            conflicts = clinic_calendar.find_conflicts(
+                kind="schedule", doctor=cleaned["doctor"], cabin=cleaned["cabin"],
+                start=start, end=end, weekday=dates[0].weekday(),
+            )
+        else:
+            conflicts = []
+            for day in dates:
+                conflicts.extend(clinic_calendar.find_conflicts(
+                    kind="override", doctor=cleaned["doctor"], cabin=cleaned["cabin"],
+                    start=start, end=end, date=day,
+                ))
+
+        for conflict in conflicts[:5]:
+            self.add_error(None, str(conflict))
+        if len(conflicts) > 5:
+            self.add_error(
+                None, f"…and {len(conflicts) - 5} more dates with the same clash."
+            )
+
+    def _clean_holiday(self, cleaned):
+        from appointments.models import ClinicHoliday
+
+        if not cleaned.get("name"):
+            self.add_error("name", "Give the holiday a name.")
+
+        dates = self._dates(cleaned)
+        if dates is None:
+            return
+
+        taken = set(
+            ClinicHoliday.objects.filter(date__in=dates).values_list("date", flat=True)
+        )
+        if taken and len(taken) == len(dates):
+            self.add_error(
+                "date",
+                "Already recorded as a holiday: "
+                + ", ".join(f"{d:%d %b %Y}" for d in sorted(taken)) + ".",
+            )
+        self._existing_holidays = taken
+
+    # ── Saving ───────────────────────────────────────────────────────────────
+
+    def save(self, created_by=None):
+        """Create the rows and return them, newest question first."""
+        from appointments.models import (
+            ClinicHoliday, DoctorSchedule, ScheduleOverride,
+        )
+
+        cleaned = self.cleaned_data
+        dates = self._dates(cleaned)
+        created = []
+
+        if cleaned["event_type"] == self.HOLIDAY:
+            skipped = getattr(self, "_existing_holidays", set())
+            for day in dates:
+                if day in skipped:
+                    continue
+                created.append(ClinicHoliday.objects.create(
+                    date=day, name=cleaned["name"],
+                ))
+            return created
+
+        if cleaned.get("repeat") == self.WEEKLY:
+            created.append(DoctorSchedule.objects.create(
+                doctor=cleaned["doctor"],
+                weekday=dates[0].weekday(),
+                cabin=cleaned["cabin"],
+                start_time=cleaned["start_time"],
+                end_time=cleaned["end_time"],
+            ))
+            return created
+
+        for day in dates:
+            created.append(ScheduleOverride.objects.create(
+                doctor=cleaned["doctor"],
+                date=day,
+                cabin=cleaned["cabin"],
+                start_time=cleaned["start_time"],
+                end_time=cleaned["end_time"],
+                created_by=created_by,
+            ))
+        return created
 
 
 class DoctorForm(forms.Form):

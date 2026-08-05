@@ -17,6 +17,7 @@ from django.contrib.postgres.fields import RangeBoundary, RangeOperators
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Func, Q
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 from patients.models import Patient
@@ -437,6 +438,52 @@ WEEKDAYS = [
 ]
 
 
+class Cabin(models.Model):
+    """
+    A consulting room (KAN-22).
+
+    Clinic-wide rather than belonging to a doctor: the whole point of the daily
+    view is that a room is a shared resource two doctors can be double-booked
+    into, which is only a question worth asking if the room exists once.
+
+    Retired rather than deleted, for the same reason as a specialisation — a
+    cabin that has been used is part of the clinic's history, and tidying a
+    dropdown must not rewrite it. The foreign keys below are PROTECT, so the
+    database refuses the alternative anyway.
+    """
+
+    name = models.CharField(max_length=60)
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Unticked, this stays on existing entries but is not offered "
+                  "for new ones.",
+    )
+    note = models.CharField(max_length=200, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="cabins_added",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            # Case-insensitive, so "Cabin 1" and "cabin 1" cannot both exist and
+            # leave reception guessing which column a doctor is actually in.
+            models.UniqueConstraint(
+                Lower("name"), name="cabin_name_unique_ci",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = " ".join((self.name or "").split())
+        super().save(*args, **kwargs)
+
+
 class ClinicHoliday(models.Model):
     """A day the clinic is closed to everyone."""
 
@@ -475,6 +522,12 @@ class DoctorSchedule(models.Model):
         null=True, blank=True,
         help_text="Leave empty to use the clinic's standard slot length.",
     )
+    #: Nullable because the clinic ran without cabins before KAN-22, and the
+    #: rows already entered are still true — they simply do not say which room.
+    cabin = models.ForeignKey(
+        Cabin, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="weekly_sittings",
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -491,8 +544,9 @@ class DoctorSchedule(models.Model):
         ]
 
     def __str__(self):
+        where = f" · {self.cabin.name}" if self.cabin_id else ""
         return (f"{self.doctor.display_name} · {self.get_weekday_display()} "
-                f"{self.start_time:%H:%M}–{self.end_time:%H:%M}")
+                f"{self.start_time:%H:%M}–{self.end_time:%H:%M}{where}")
 
 
 class ScheduleOverride(models.Model):
@@ -514,6 +568,10 @@ class ScheduleOverride(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     slot_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
+    cabin = models.ForeignKey(
+        Cabin, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="one_off_sittings",
+    )
     note = models.CharField(max_length=200, blank=True)
 
     created_by = models.ForeignKey(
@@ -536,8 +594,9 @@ class ScheduleOverride(models.Model):
         ]
 
     def __str__(self):
+        where = f" · {self.cabin.name}" if self.cabin_id else ""
         return (f"{self.doctor.display_name} · {self.date:%d %b} "
-                f"{self.start_time:%H:%M}–{self.end_time:%H:%M}")
+                f"{self.start_time:%H:%M}–{self.end_time:%H:%M}{where}")
 
 
 class DoctorLeave(models.Model):

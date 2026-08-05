@@ -1,0 +1,122 @@
+{% comment %}
+The add-event pop-up (FR-8, FR-9).
+
+One dialog whose fields follow the event type, rather than a separate pop-up per
+type. What reception is adding is a choice made *inside* the dialog — asking
+before it opens would mean knowing the answer to reach the question.
+
+Rendered into the page and hidden, not fetched: the form is small, and a dialog
+that needs a round trip before it appears is a dialog that sometimes does not.
+
+This dialog does need JavaScript to open, as the clinic's other modals do. The
+fallback is not a degraded version of this form — it is the Doctor schedule
+screen, which is plain HTML forms and can do everything here except in one step.
+
+The fields for the type not chosen are *disabled* as well as hidden, so a doctor
+half-filled-in before switching to Holiday is not submitted.
+{% endcomment %}
+
+<div class="modal-backdrop" id="event-modal" hidden data-close-on-backdrop>
+  <div class="modal modal--narrow" role="dialog" aria-modal="true"
+       aria-labelledby="event-modal-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="event-modal-title">Add to the calendar</h2>
+      <button type="button" class="modal__close" aria-label="Close" data-close-modal>&times;</button>
+    </div>
+
+    <form method="post" action="{% url 'reception_add_calendar_event' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="{{ event_form.event_type.id_for_label }}">
+            {{ event_form.event_type.label }}
+          </label>
+          {{ event_form.event_type }}
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label" for="{{ event_form.date.id_for_label }}">
+              {{ event_form.date.label }}
+            </label>
+            {{ event_form.date }}
+          </div>
+          <div class="field" data-when="once">
+            <label class="field__label" for="{{ event_form.until.id_for_label }}">
+              {{ event_form.until.label }}
+            </label>
+            {{ event_form.until }}
+            <p class="field__help">{{ event_form.until.help_text }}</p>
+          </div>
+        </div>
+
+        {# ── Working hours ────────────────────────────────────────────── #}
+        <div data-event-fields="hours">
+          <div class="form-grid">
+            <div class="field">
+              <label class="field__label" for="{{ event_form.doctor.id_for_label }}">
+                {{ event_form.doctor.label }}
+              </label>
+              {{ event_form.doctor }}
+              {% comment %}
+              KAN-21 FR-10 / AC-8: a doctor who has not set a password is not in
+              this list, because hours for somebody who cannot sign in put a
+              patient in front of an empty cabin.
+              {% endcomment %}
+              <p class="field__help">
+                Only doctors who have finished setting up their account appear here.
+              </p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="{{ event_form.cabin.id_for_label }}">
+                {{ event_form.cabin.label }}
+              </label>
+              {{ event_form.cabin }}
+            </div>
+            <div class="field">
+              <label class="field__label" for="{{ event_form.start_time.id_for_label }}">
+                {{ event_form.start_time.label }}
+              </label>
+              {{ event_form.start_time }}
+            </div>
+            <div class="field">
+              <label class="field__label" for="{{ event_form.end_time.id_for_label }}">
+                {{ event_form.end_time.label }}
+              </label>
+              {{ event_form.end_time }}
+            </div>
+            <div class="field">
+              <label class="field__label" for="{{ event_form.repeat.id_for_label }}">
+                {{ event_form.repeat.label }}
+              </label>
+              {{ event_form.repeat }}
+            </div>
+          </div>
+        </div>
+
+        {# ── Holiday ──────────────────────────────────────────────────── #}
+        <div data-event-fields="holiday">
+          <div class="field">
+            <label class="field__label" for="{{ event_form.name.id_for_label }}">
+              {{ event_form.name.label }}
+            </label>
+            {{ event_form.name }}
+          </div>
+          <p class="field__help">
+            The clinic closes for the whole day and nothing can be booked.
+            To bring the year's holidays in at once,
+            <a href="{% url 'reception_import_holidays' %}">upload the CSV</a>.
+          </p>
+        </div>
+      </div>
+
+      <div class="modal__footer">
+        <button type="button" class="btn btn--secondary" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn--primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>

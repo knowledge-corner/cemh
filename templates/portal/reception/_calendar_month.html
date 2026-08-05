@@ -1,0 +1,98 @@
+{% comment %}
+The month grid.
+
+Each cell shows at most a few entries and then a count, because a clinic with
+five doctors working six days produces thirty entries in a week and a cell that
+grows to fit them makes the month unreadable (KAN-22 T-8). The day view is where
+the full picture lives, and each date links straight to it.
+
+Holidays are marked with a word as well as a colour. Orange alone fails both
+contrast and colour-blindness, and "the clinic is shut" is not a fact to convey
+by hue (KAN-24's accessibility requirement, which applies here because this is
+where holidays are drawn).
+{% endcomment %}
+
+<div class="table-scroll">
+  <table class="calendar" role="grid" aria-label="Availability by month">
+    <thead>
+      <tr>
+        <th scope="col"><abbr title="Monday">Mon</abbr></th>
+        <th scope="col"><abbr title="Tuesday">Tue</abbr></th>
+        <th scope="col"><abbr title="Wednesday">Wed</abbr></th>
+        <th scope="col"><abbr title="Thursday">Thu</abbr></th>
+        <th scope="col"><abbr title="Friday">Fri</abbr></th>
+        <th scope="col"><abbr title="Saturday">Sat</abbr></th>
+        <th scope="col"><abbr title="Sunday">Sun</abbr></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for week in weeks %}
+        <tr>
+          {% for cell in week %}
+            <td class="calendar__cell{% if not cell.in_month %} is-outside{% endif %}{% if cell.is_today %} is-today{% endif %}{% if cell.holiday %} is-holiday{% endif %}">
+              <div class="calendar__daynum">
+                <a href="?view=day&amp;date={{ cell.date|date:'Y-m-d' }}{{ filter_query }}"
+                   aria-label="Open {{ cell.date|date:'l j F Y' }}">{{ cell.date|date:"j" }}</a>
+                {% if not is_doctor_view %}
+                  <button type="button" class="calendar__add" title="Add an event on {{ cell.date|date:'j M' }}"
+                          aria-label="Add an event on {{ cell.date|date:'l j F Y' }}"
+                          data-add-event data-date="{{ cell.date|date:'Y-m-d' }}">+</button>
+                {% endif %}
+              </div>
+
+              {% if cell.holiday %}
+                <p class="chip chip--holiday">
+                  <span class="chip__kind">Closed</span> {{ cell.holiday.name }}
+                </p>
+              {% endif %}
+
+              {% comment %}
+              The cabin goes on its own line. Run on after the name it read as
+              part of it — "Adway Kulkarni No cabin set" looked like a doctor
+              called Adway Kulkarni No.
+              {% endcomment %}
+              {% for entry in cell.entries %}
+                <p class="chip chip--hours{% if entry.away %} chip--away{% endif %}">
+                  <span class="chip__line">
+                    <span class="chip__time mono">{{ entry.start|time:"H:i" }}</span>
+                    {{ entry.doctor.display_name }}
+                  </span>
+                  <span class="chip__where">
+                    {% if entry.cabin %}{{ entry.cabin.name }}{% else %}No cabin{% endif %}
+                    {% if entry.away %}&middot; <span class="chip__kind">Away</span>{% endif %}
+                  </span>
+                </p>
+              {% endfor %}
+
+              {% for absence in cell.leave %}
+                <p class="chip chip--leave">
+                  <span class="chip__kind">Away</span> {{ absence.doctor.display_name }}
+                </p>
+              {% endfor %}
+
+              {% if cell.more %}
+                <a class="calendar__more"
+                   href="?view=day&amp;date={{ cell.date|date:'Y-m-d' }}{{ filter_query }}">
+                  +{{ cell.more }} more
+                </a>
+              {% endif %}
+
+              {% comment %}
+              Counted rather than listed. Every doctor without hours of their own
+              falls back to the clinic default on every working day, so drawing
+              them filled the month with identical chips and hid the real
+              sittings. Still shown, because those hours can genuinely be booked.
+              {% endcomment %}
+              {% if cell.on_default %}
+                <a class="calendar__default"
+                   href="?view=day&amp;date={{ cell.date|date:'Y-m-d' }}{{ filter_query }}">
+                  {{ cell.on_default }} on clinic hours
+                </a>
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
