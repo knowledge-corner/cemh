@@ -1,17 +1,17 @@
 # CEMH — public website
 
 The Centre for Endocrine & Metabolic Health's public site. Plain HTML, CSS and
-JavaScript. No build step, no framework, no server, no database.
+JavaScript. **No build step, no framework, no server, no database** — every file
+here is served exactly as it sits, which is what GitHub Pages needs.
 
-It is **completely independent of the clinic management system**, which lives on
-the `main` branch of this repository and is deployed somewhere else entirely.
-Neither one calls the other. Changing this site cannot affect patient records,
-and changing the management system cannot affect this site.
+It is completely independent of the clinic management system on the `main`
+branch. Neither one calls the other.
 
 ```
 index.html            the whole page
 robots.txt
 sitemap.xml
+.nojekyll             tells GitHub Pages to publish the files as they are
 assets/
   css/website.css
   js/website.js       mobile menu and the services tabs; the page works without it
@@ -20,106 +20,119 @@ assets/
   favicon.svg  favicon.ico  apple-touch-icon.png
 ```
 
----
-
-## Looking at it
-
-Double-click `index.html`. That is genuinely all — it runs from a folder, a USB
-stick or a web host without changing anything.
+**To look at it:** double-click `index.html`. That is all.
 
 ---
 
-## ⚠️ Two things to fix before this goes public
+## Publishing on GitHub Pages
 
-### 1. The doctors' photographs are placeholders
+1. **Settings → Pages**
+2. **Source:** Deploy from a branch
+3. **Branch:** `website`, folder `/ (root)`
+4. Save. The first build takes a minute or two.
+
+It then appears at `https://knowledge-corner.github.io/cmeh/`.
+
+### The domain — do this, or the SEO is wrong
+
+Every absolute address in the page says **`https://cemhcare.com`**: the canonical
+link, the sharing preview and the sitemap. Two ways to make that true:
+
+**Either** point the real domain at Pages (recommended — the clinic already owns
+`cemhcare.com`):
+
+- Settings → Pages → Custom domain → `cemhcare.com`
+- At the domain registrar, add the DNS records GitHub shows you
+- Tick **Enforce HTTPS** once the certificate has been issued
+
+**Or** switch the page to the github.io address:
+
+```
+sed -i 's#https://cemhcare.com#https://knowledge-corner.github.io/cmeh#g' \
+  index.html robots.txt sitemap.xml
+```
+
+Getting this wrong does not break the page. It quietly tells Google the real site
+is somewhere else, and the WhatsApp preview image fails to load.
+
+After publishing, submit the sitemap in
+[Google Search Console](https://search.google.com/search-console).
+
+---
+
+## ⚠️ The doctors' photographs are placeholders
 
 `assets/photos/adway-kulkarni.jpg` and `vrushali-kulkarni.jpg` came from the
 design mock-up. **They are AI-generated images of people who do not exist** —
 one still carries a watermark in the corner.
 
-Replace both with real photographs of the actual doctors. Keep the filenames, or
-update the two `<img src="...">` lines in `index.html` to match.
-
 Publishing an invented person under a named doctor's credentials is a
 misrepresentation whatever the intent, and on a medical site it is worse than
-most.
+most. Replace both before this goes live.
 
-### 2. Check the domain
+### Changing a photograph
 
-Every absolute address in the file — the canonical link, the sharing preview,
-the structured data — says `https://cemhcare.com`. If the site will live
-anywhere else, find and replace that one string throughout `index.html`,
-`robots.txt` and `sitemap.xml`.
-
-Getting this wrong does not break the page. It quietly tells Google the real
-site is somewhere else.
-
----
-
-## Publishing
-
-The site is static, so almost anything will host it. Within Google Workspace:
-
-**Google Sites** will not take these files. It is a page builder, not a host —
-you would be rebuilding the page inside its editor and losing the layout, the
-structured data and the sharing preview. Use one of the following instead.
-
-**Firebase Hosting** (free tier, custom domain, HTTPS included) — the usual
-choice for a site this size:
+Drop the new file into `assets/photos/` **keeping the same filename**. Nothing
+else needs editing:
 
 ```
-npm install -g firebase-tools
-firebase login
-firebase init hosting     # public directory: .   single-page app: No
-firebase deploy
+assets/photos/adway-kulkarni.jpg
+assets/photos/vrushali-kulkarni.jpg
 ```
 
-**Google Cloud Storage** — create a bucket named after the domain, upload the
-files, set `index.html` as the main page, make the bucket public.
+What works best: portrait shape, face in the upper third, about 900px wide or
+more, saved under ~300KB. The page crops it to a tall portrait on a computer and
+to a wide band on a phone.
 
-**Anywhere else** — Netlify, Cloudflare Pages, GitHub Pages and ordinary shared
-hosting all take these files unchanged. Upload the folder; there is nothing to
-compile.
-
-After publishing, submit `https://<your-domain>/sitemap.xml` in
-[Google Search Console](https://search.google.com/search-console).
+If you use a different filename, edit the matching `src="..."` in `index.html` —
+there is a comment directly above the doctors' list saying exactly where.
 
 ---
 
-## Making changes
+## Changing anything else
 
-Edit `index.html`. It is one file with the sections in the order they appear:
-header, hero, about, doctors, services, why-us, FAQs, contact, footer.
+Everything is in `index.html`, in the order it appears on the page: header, hero,
+about, doctors, services, why-us, FAQs, contact, footer.
 
-**A doctor joins or leaves.** Copy an existing `<article class="wf-doctor">`
-block and edit it. Then update the `"employee"` list in the JSON-LD block near
-the top of the file — that is what Google reads, and a doctor in one place but
-not the other is worse than a doctor in neither.
+**A doctor's details.** Each doctor is one `<article class="wf-doctor">` block:
+name, role, qualifications, phone, email, two paragraphs, then the columns —
+*Areas of focus*, *Qualifications*, and *Further training* where there is any.
+Edit the list items directly.
 
-**Phone number, address or hours change.** They appear in more than one place —
-the header, the contact card, the footer and the JSON-LD. Search the file for
-the old value and change every one.
+Then update the matching `"employee"` entry in the JSON-LD block near the top of
+the file. That is what Google reads, and a detail in one place but not the other
+is worse than the detail in neither.
 
-**Colours.** All of them are named at the top of `assets/css/website.css`.
+**A doctor joins or leaves.** Copy an existing `<article>` block, change it, give
+it a new `id="doctor-N"`, and add or remove the matching JSON-LD entry.
+
+**Phone number or address.** These appear in the header, the contact card, the
+footer and the JSON-LD. Search the file for the old value and change every one.
+
+**The map.** The `<iframe>` in the contact section uses Google's key-free embed —
+the address goes in the `q=` parameter and Google finds it. To move the pin, edit
+the address in both the `src` *and* the "Open in Google Maps" link below it, or
+they will point at different places. For a pin on the exact doorway rather than
+the building, open Google Maps, find the clinic, choose **Share → Embed a map**,
+and paste that iframe over this one.
+
+**Colours.** All named at the top of `assets/css/website.css`.
 
 ---
 
-## The appointment form
+## Booking
 
-There isn't one, on purpose. The page offers a telephone number and a WhatsApp
-link, both of which reach a person immediately.
+There is no form. The page offers **WhatsApp** and the clinic's telephone
+numbers, both of which reach a person immediately.
 
-A static page cannot receive a form on its own, and a form that silently goes
-nowhere is worse than no form at all — the visitor has been told the clinic will
-ring, and nothing rings.
+A GitHub Pages site is files only — it cannot receive a form submission or send
+an email, because there is nothing running to do it. And a form that silently
+goes nowhere is worse than no form: the visitor is told the clinic will ring, and
+nothing rings.
 
-If you want one back, the simplest route is a Google Form: build it in Drive,
-choose **Send → embed (`<>`)**, and paste the `<iframe>` where `index.html` says
-to. There is a comment marking the exact spot in the contact section. Responses
-land in a Google Sheet the clinic already has.
-
-Whichever route you take, make sure somebody is actually watching where the
-answers go.
+If a written enquiry is wanted later, the two routes that work on a static site
+are a Google Form embed or a form service such as Formspree. Both need somebody
+watching where the answers land.
 
 ---
 
@@ -128,13 +141,17 @@ answers go.
 Title, description and canonical link; Open Graph and Twitter cards with a
 sharing image; favicons; `robots.txt` and `sitemap.xml`; and schema.org
 structured data describing the clinic, both doctors and the FAQs — which is what
-turns a search result into a listing with opening hours and named consultants.
+turns a search result into a listing with named consultants.
 
 One `<h1>`, ordered headings, alt text on every image, keyboard-operable tabs and
-FAQs, no webfonts and no external requests, so it loads quickly on mobile data.
+FAQs, no webfonts. The only external request on the page is the Google map in the
+contact section, and it is lazy-loaded so it cannot hold up the rest.
 
 **There are deliberately no ratings or reviews in the structured data.** There is
 no real source for them, so any number would be invented — which is against
 Google's policy, grounds for removal from search, and a lie told to somebody
 choosing a doctor. Real reviews on the clinic's Google Business Profile appear in
-search on their own and are the honest route to the same thing.
+search on their own, and are the honest route to the same thing.
+
+**Consulting hours appear nowhere**, at the clinic's request — including in the
+structured data, so Google cannot publish hours the page itself does not state.

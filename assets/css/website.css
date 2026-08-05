@@ -450,6 +450,9 @@ summary:focus-visible {
 .wf-contact { background: var(--wf-tint); max-width: none; }
 .wf-contact > * { max-width: var(--wf-wrap); margin-left: auto; margin-right: auto; }
 .wf-contact__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+/* A grid item refuses to shrink below its content's minimum width unless told
+   otherwise, and one stubborn child then widens the whole page. */
+.wf-contact__grid > * { min-width: 0; }
 
 .wf-card { background: var(--wf-surface); border-radius: var(--wf-radius); padding: 28px; }
 .wf-card--form { padding: 32px; }
@@ -578,4 +581,89 @@ textarea.wf__input { resize: vertical; }
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ── Doctor detail ────────────────────────────────────────────────────── */
+/*
+ * The columns under each doctor's paragraphs. Three at most, and they collapse
+ * to one on a phone rather than squeezing three lists into 350px.
+ */
+
+.wf-doctor__detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 24px 32px;
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--wf-line);
+}
+
+.wf-detail__title {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--wf-primary-dark);
+  margin: 0 0 10px;
+}
+
+.wf-detail__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--wf-ink-soft);
+}
+.wf-detail__list li {
+  position: relative;
+  padding-left: 16px;
+  margin-bottom: 7px;
+}
+/* A marker drawn rather than a list bullet, so it keeps the teal and sits
+   where the text starts on a wrapped line. */
+.wf-detail__list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .5em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wf-primary);
+}
+
+/* ── The map ──────────────────────────────────────────────────────────── */
+
+.wf-card--map { display: flex; flex-direction: column; }
+
+/*
+ * The frame holds the iframe's shape before Google's map has loaded. Without
+ * it the card is a few pixels tall and everything below jumps down when the
+ * map arrives.
+ */
+.wf-map-frame {
+  position: relative;
+  width: 100%;
+  /* aspect-ratio alone reserves the height, so nothing jumps when Google's
+     map arrives. Deliberately no min-height: paired with an aspect ratio it
+     also implies a MINIMUM WIDTH (260px x 3/2 = 390px), which made the grid
+     track wider than a phone screen and gave the whole page a horizontal
+     scrollbar. */
+  aspect-ratio: 4 / 3;
+  border-radius: var(--wf-radius);
+  overflow: hidden;
+  border: 1px solid var(--wf-line-teal);
+  background: var(--wf-tint);
+}
+.wf-map-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (max-width: 900px) {
+  .wf-map-frame { aspect-ratio: 3 / 2; }
 }
