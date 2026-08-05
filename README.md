@@ -9,6 +9,7 @@ branch. Neither one calls the other.
 
 ```
 index.html            the whole page
+CNAME                 the custom domain GitHub Pages serves this at
 robots.txt
 sitemap.xml
 .nojekyll             tells GitHub Pages to publish the files as they are
@@ -31,29 +32,30 @@ assets/
 3. **Branch:** `website`, folder `/ (root)`
 4. Save. The first build takes a minute or two.
 
-It then appears at `https://knowledge-corner.github.io/cmeh/`.
+With the `CNAME` file present it is served at `https://www.cemhcare.com/` once
+DNS is pointed at GitHub. Until then, `https://knowledge-corner.github.io/cmeh/`
+also works.
 
-### The domain — do this, or the SEO is wrong
+### The domain
 
-Every absolute address in the page says **`https://cemhcare.com`**: the canonical
-link, the sharing preview and the sitemap. Two ways to make that true:
+`CNAME` in this folder says **`www.cemhcare.com`**, so that is the address the
+site will be served at, and every absolute address in the page — the canonical
+link, the sharing preview, the sitemap — has been set to match it exactly.
 
-**Either** point the real domain at Pages (recommended — the clinic already owns
-`cemhcare.com`):
-
-- Settings → Pages → Custom domain → `cemhcare.com`
-- At the domain registrar, add the DNS records GitHub shows you
-- Tick **Enforce HTTPS** once the certificate has been issued
-
-**Or** switch the page to the github.io address:
+**They have to keep matching.** `cemhcare.com` and `www.cemhcare.com` are two
+different addresses to a search engine, and a canonical link pointing at one
+while the site is served from the other splits the page against itself and
+breaks the WhatsApp preview image. If the CNAME ever changes, change these too:
 
 ```
-sed -i 's#https://cemhcare.com#https://knowledge-corner.github.io/cmeh#g' \
+sed -i 's#https://www.cemhcare.com#https://THE-NEW-ADDRESS#g' \
   index.html robots.txt sitemap.xml
 ```
 
-Getting this wrong does not break the page. It quietly tells Google the real site
-is somewhere else, and the WhatsApp preview image fails to load.
+Still to do at the registrar: add the DNS records GitHub shows under
+Settings → Pages, then tick **Enforce HTTPS** once the certificate is issued.
+Point the bare `cemhcare.com` at `www` as well, so somebody typing it without
+the prefix still arrives.
 
 After publishing, submit the sitemap in
 [Google Search Console](https://search.google.com/search-console).
@@ -155,3 +157,19 @@ search on their own, and are the honest route to the same thing.
 
 **Consulting hours appear nowhere**, at the clinic's request — including in the
 structured data, so Google cannot publish hours the page itself does not state.
+
+
+---
+
+## Two files here that this site does not use
+
+`requirements.txt` and `prod.txt` list Python packages — Django, gunicorn,
+psycopg2 and so on. **GitHub Pages does not run Python**, so nothing reads them
+and nothing installs them; they are left over from when this was going to be
+hosted somewhere that runs code.
+
+They are harmless, and they have been left alone rather than deleted because
+they were not mine to remove. But they are misleading to the next person who
+opens this folder, and their pinned versions no longer match the clinic
+management system on `main`. Worth deleting once you are sure nothing else
+wants them.
