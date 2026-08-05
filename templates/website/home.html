@@ -1,5 +1,5 @@
 {% load static %}<!DOCTYPE html>
-<html lang="en">
+<html lang="en-IN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,14 +7,71 @@
   {% comment %}
   The one page in this application that should be found. Everything behind the
   login stays noindex; this is the clinic's shopfront.
+
+  max-snippet/max-image-preview let Google show the full description and a large
+  image. Without them it may choose a short snippet and a thumbnail, which for a
+  local clinic is the difference between a listing somebody taps and one they
+  scroll past.
   {% endcomment %}
-  <meta name="robots" content="index, follow">
-  <title>{{ clinic_name }} — {{ clinic_tagline }}, Borivali West, Mumbai</title>
-  <meta name="description"
-        content="{{ clinic_tagline }} in Borivali West, Mumbai. Diabetes, thyroid, growth and
-                 hormone disorders in adults and children. Call {{ clinic_phone }} to book.">
+  <meta name="robots"
+        content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <title>{{ clinic_name }} — {{ clinic_tagline }} in {{ clinic_city|default:"Mumbai" }}</title>
+  <meta name="description" content="{{ meta_description }}">
+
+  {% comment %}
+  One address for this page, whatever address a visitor arrived at. Without it,
+  the page reached with a ?utm_source on the end, or over http, or with a
+  trailing slash, counts as a separate page competing with itself.
+  {% endcomment %}
+  <link rel="canonical" href="{{ canonical_url }}">
+
+  {# Where the clinic is, for the local-search signals that are not JSON-LD. #}
+  <meta name="geo.region" content="IN-MH">
+  <meta name="geo.placename" content="{{ clinic_city|default:'Mumbai' }}">
+  <meta name="author" content="{{ clinic_name }}">
+  <meta name="theme-color" content="#2f7d72">
+
+  {% comment %}
+  The link preview. This clinic asks patients to book over WhatsApp, and a
+  WhatsApp message carrying a bare link with no preview looks like spam — which
+  is the opposite of what a clinic sending its own address wants.
+  {% endcomment %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ og_site_name }}">
+  <meta property="og:title" content="{{ og_title }}">
+  <meta property="og:description" content="{{ og_description }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:locale" content="en_IN">
+  <meta property="og:image" content="{{ og_image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{ clinic_name }} — {{ clinic_tagline }}">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ og_title }}">
+  <meta name="twitter:description" content="{{ og_description }}">
+  <meta name="twitter:image" content="{{ og_image }}">
+
+  <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+  <link rel="icon" href="{% static 'favicon.ico' %}" sizes="32x32">
+  <link rel="apple-touch-icon" href="{% static 'apple-touch-icon.png' %}">
 
   <link rel="stylesheet" href="{% static 'css/website.css' %}">
+
+  {% comment %}
+  Everything the page claims about itself, as one connected graph: the clinic,
+  the doctors who work there, the questions it answers. This is what turns a
+  blue link into a listing with a map pin, opening hours and named consultants.
+
+  Written into the HTML by the server, never assembled by JavaScript. Google
+  will usually render a page before reading it, but Bing and every social
+  crawler take the source as it arrives — and structured data they never see is
+  structured data that does nothing.
+
+  Angle brackets are escaped upstream in website/seo.py, so a bio containing a
+  closing script tag cannot end this one early.
+  {% endcomment %}
+  <script type="application/ld+json">{{ structured_data|safe }}</script>
 </head>
 <body>
 
@@ -158,16 +215,25 @@
   {% if doctors %}
     <div class="wf-doctors__list">
       {% for entry in doctors %}
-        <article class="wf-doctor">
+        {% comment %}
+        The id matches the Physician @id in the structured data, so the thing
+        the graph names is a place on the page a person can actually be sent to.
+        {% endcomment %}
+        <article class="wf-doctor" id="doctor-{{ entry.doctor.pk }}">
           <div class="wf-doctor__row">
             {% comment %}
             A photograph when the clinic has put one in the photos folder, and
             initials when it has not. Never a broken image: a missing picture on
             a clinic's front page reads as a broken clinic.
+
+            width and height are the intrinsic box the stylesheet then sizes.
+            They stop the text below jumping as each photograph arrives, which
+            is a ranking signal as well as an irritation.
             {% endcomment %}
             {% if entry.photo_url %}
               <img class="wf-doctor__photo" src="{{ entry.photo_url }}"
-                   alt="Dr. {{ entry.doctor.display_name }}"
+                   alt="Dr. {{ entry.doctor.display_name }}, {{ entry.profile.specialisation.name|default:'consultant' }}"
+                   width="120" height="165"
                    loading="lazy" decoding="async">
             {% else %}
               <p class="wf-doctor__photo wf-doctor__photo--none" aria-hidden="true">

@@ -17,7 +17,7 @@ from django.shortcuts import redirect, render
 
 from accounts.models import Role, User
 
-from . import photos
+from . import photos, seo
 from .forms import CallbackForm
 
 #: The conditions each half of the practice treats, as the public page groups
@@ -144,12 +144,33 @@ def home(request):
     else:
         form = CallbackForm()
 
+    doctors = _doctors()
+
+    # One sentence, written once, used as the meta description, the sharing
+    # preview and the page's structured description. Three copies of nearly the
+    # same sentence is how they end up contradicting each other.
+    description = (
+        f"{settings.CLINIC.CLINIC_TAGLINE} in {settings.CLINIC.CLINIC_CITY}. "
+        f"Specialist care for diabetes, thyroid, growth, puberty, obesity and "
+        f"bone health, for adults and children. "
+        f"Call {settings.CLINIC.CLINIC_PHONE} to book."
+    )
+
     return render(request, "website/home.html", {
-        "doctors": _doctors(),
+        "doctors": doctors,
         "adult_services": ADULT_SERVICES,
         "paediatric_services": PAEDIATRIC_SERVICES,
         "faqs": FAQS,
         "form": form,
+        "meta_description": description,
+        "structured_data": seo.structured_data(
+            request,
+            doctors=doctors,
+            services=ADULT_SERVICES + PAEDIATRIC_SERVICES,
+            faqs=FAQS,
+            description=description,
+        ),
+        **seo.meta(request, description=description),
         "whatsapp_url": _whatsapp_link(),
         "consulting_hours": settings.CLINIC.CONSULTING_HOURS_DISPLAY,
         "working_days": settings.CLINIC.WORKING_DAYS_DISPLAY,

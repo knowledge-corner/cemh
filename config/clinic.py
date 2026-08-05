@@ -28,6 +28,52 @@ CLINIC_ADDRESS = os.environ.get(
 CLINIC_PHONE = os.environ.get("CLINIC_PHONE", "7045032951")
 CLINIC_EMAIL = os.environ.get("CLINIC_EMAIL", "")
 
+# ── The same address, in parts ────────────────────────────────────────────────
+#
+# CLINIC_ADDRESS above is what a human reads. A search engine wants the pieces
+# separately, and splitting the one-line version on commas guesses wrongly the
+# moment a clinic writes its address any other way. So the parts are stated,
+# and the one-line version stays exactly as the clinic writes it.
+
+CLINIC_STREET = os.environ.get(
+    "CLINIC_STREET",
+    "2nd Floor, Seatherny Hospital, Sodawala Lane, Nutan Nagar, Borivali West",
+)
+CLINIC_CITY = os.environ.get("CLINIC_CITY", "Mumbai")
+CLINIC_REGION = os.environ.get("CLINIC_REGION", "Maharashtra")
+CLINIC_POSTCODE = os.environ.get("CLINIC_POSTCODE", "400092")
+CLINIC_COUNTRY = os.environ.get("CLINIC_COUNTRY", "IN")
+
+# Map pin, for the "where is this" panel Google shows beside a local business.
+#
+# **Deliberately empty.** Nobody has surveyed this building, and a guessed
+# coordinate is worse than none: it puts a pin on a map that patients then drive
+# to. Read them off Google Maps for the real doorway and set them here.
+CLINIC_LATITUDE = os.environ.get("CLINIC_LATITUDE", "")
+CLINIC_LONGITUDE = os.environ.get("CLINIC_LONGITUDE", "")
+
+# ── Public site ───────────────────────────────────────────────────────────────
+
+# The address the public page lives at, with no trailing slash — used for the
+# canonical link, the sharing preview and the sitemap, all of which need an
+# absolute URL rather than a path.
+#
+# Empty means "work it out from the request", which is right on a laptop and
+# wrong behind a proxy that rewrites Host. Set it in production.
+SITE_URL = os.environ.get("SITE_URL", "").rstrip("/")
+
+# Profiles that are unambiguously this clinic — a Google Business listing, a
+# Practo page, Instagram. Emitted as schema.org `sameAs`, which is how a search
+# engine ties them to one another. One per line or comma-separated.
+#
+# Empty by default. Listing a page the clinic does not control would attach
+# somebody else's reputation to this one.
+SOCIAL_PROFILES = tuple(
+    url.strip()
+    for url in os.environ.get("SOCIAL_PROFILES", "").replace("\n", ",").split(",")
+    if url.strip()
+)
+
 # Where the public page's WhatsApp button sends people. Defaults to the clinic
 # number rather than either doctor's mobile — change if appointment requests
 # should reach a doctor directly.

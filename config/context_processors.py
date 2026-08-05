@@ -14,6 +14,7 @@ def clinic_branding(request):
         "clinic_short_name": clinic.CLINIC_SHORT_NAME,
         "clinic_tagline": clinic.CLINIC_TAGLINE,
         "clinic_address": clinic.CLINIC_ADDRESS,
+        "clinic_city": clinic.CLINIC_CITY,
         "clinic_phone": clinic.CLINIC_PHONE,
         "clinic_email": clinic.CLINIC_EMAIL,
         # The clinic calls the patient identifier a UHID; templates use this
