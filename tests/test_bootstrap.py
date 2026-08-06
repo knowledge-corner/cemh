@@ -113,3 +113,39 @@ class TestItSurvivesBeingRunOnAWorkingSystem(TestCase):
         self.assertTrue(Visit.objects.filter(pk=visit.pk).exists())
         self.assertTrue(Patient.objects.filter(pk=patient.pk).exists())
         self.assertTrue(User.objects.filter(pk=doctor.pk).exists())
+
+
+class TestReachingItFromAPhone(TestCase):
+    """
+    The clinic's own phones and tablets, on the surgery Wi-Fi.
+
+    The container publishes port 8000 to the whole machine, so the only thing
+    that ever stopped this was ALLOWED_HOSTS: a phone sends the laptop's local
+    network address as the Host header, Django did not recognise it, and the
+    answer was a bare 400 that says nothing about which setting caused it.
+    """
+
+    def test_dev_accepts_a_host_it_cannot_know_in_advance(self):
+        # A router lease, not a fixed address — which is the reason the setting
+        # cannot be a list of addresses written down in the file.
+        from config.settings import dev
+
+        self.assertIn("*", dev.ALLOWED_HOSTS)
+
+    def test_production_still_refuses_to_start_without_one(self):
+        # The whole reason opening dev up is safe. If this ever passes silently,
+        # the clinic's server is answering to any Host header that reaches it.
+        #
+        # Matched on the message rather than merely on RuntimeError. prod.py
+        # raises the same class for a missing SECRET_KEY two lines later, and
+        # reloading this module does not reload base.py underneath it, so the
+        # test SECRET_KEY survives and that second guard fires as well —
+        # checking the type alone still passed with this guard deleted.
+        import importlib
+        import os
+
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {"ALLOWED_HOSTS": ""}):
+            with self.assertRaisesRegex(RuntimeError, "ALLOWED_HOSTS"):
+                importlib.reload(importlib.import_module("config.settings.prod"))

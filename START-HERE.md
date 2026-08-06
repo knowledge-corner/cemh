@@ -65,6 +65,42 @@ do it from the admin page — see below.
 
 ---
 
+## Using it from a phone or tablet
+
+Anything on the **same Wi-Fi** as this computer can open the system. There is
+nothing to install on the phone — it is the same screens, in the phone's own
+browser.
+
+**1. Find this computer's address on the network.**
+
+| Your computer | Do this |
+|---|---|
+| Windows | Press the Windows key, type `cmd`, press Enter. Type `ipconfig` and press Enter. Read **IPv4 Address** — something like `192.168.1.7`. |
+| Mac | Apple menu → **System Settings** → **Network** → click the connected Wi-Fi. The address is shown there. |
+
+**2. On the phone, open the browser and go to that address with `:8000` after
+it** — for example `http://192.168.1.7:8000`.
+
+Type it into the **address bar**, not the search box, or the phone will look it
+up on Google instead of finding it on your own network.
+
+Worth knowing:
+
+* **This computer must be switched on with the system running.** The phone is
+  only a window onto it. Nothing is stored on the phone.
+* **The address can change.** Most routers hand out a new one every so often, so
+  if it stops working, run `ipconfig` again — it is almost always that. If it
+  becomes a nuisance, ask whoever set up the router for a "reserved address" or
+  "static lease" for this computer.
+* **Same Wi-Fi only.** It will not work on mobile data, or from home. That is
+  deliberate.
+* **Anyone else on that Wi-Fi can reach it too**, and needs only a username and
+  password to get in. On the surgery's own network that is the point of it. Do
+  not do this on a guest or shared network, and once the clinic depends on the
+  system, stop handing the Wi-Fi password out freely.
+
+---
+
 ## Shutting down
 
 Double-click **STOP-CLINIC.bat** (Windows) or **STOP-CLINIC.command** (Mac).
@@ -123,8 +159,11 @@ change `SEED_DEMO: "1"` to `SEED_DEMO: "0"` before the first start.
 not `/admin/` — that is deliberate.
 
 **This is not yet set up for use over the internet.** It runs on this one
-computer, reachable at `localhost`. Putting it online safely is a separate job
-involving a domain name, a certificate and India-resident hosting.
+computer, reachable from that computer and from anything on the same Wi-Fi —
+see *Using it from a phone or tablet* above. That is a local network, not the
+internet: nothing outside the surgery can reach it. Putting it online safely is
+a separate job involving a domain name, a certificate and India-resident
+hosting.
 
 ---
 
