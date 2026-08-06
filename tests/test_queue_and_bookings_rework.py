@@ -192,16 +192,17 @@ class TestTheNavBar(TestCase):
         self.assertIn("aria-label=\"Filter the board by doctor\"", body)
 
     def test_doctor_availability_is_not_on_the_board(self):
-        # AC-9.
+        # AC-9. Setting a doctor's working days is diary work; since KAN-50 the
+        # calendar is where all of it happens, and it is still not on the board.
         body = self.client.get(reverse("reception_home")).content.decode()
-        self.assertNotIn(reverse("reception_availability"), body)
+        self.assertNotIn(reverse("reception_calendar"), body)
 
     def test_bookings_carries_its_own_three(self):
         # Bookings AC-1.
         body = self.client.get(reverse("reception_bookings")).content.decode()
         self.assertIn("Today's queue", body)
         self.assertIn("New booking", body)
-        self.assertIn("Doctor schedule", body)
+        self.assertIn(reverse("reception_calendar"), body)
 
     def test_both_screens_use_the_same_bar(self):
         # Bookings AC-2 — one template, so they cannot drift apart.

@@ -34,29 +34,63 @@
     }
   }
 
+  /* Space-separated, because a couple of fields belong to more than one type:
+   * "who is away" and "whose hours are these" are the same question and the
+   * same picker, and duplicating it would let the two drift apart. */
+  function belongsTo(section, chosen) {
+    var owners = (section.getAttribute("data-event-fields") || "").split(/\s+/);
+    for (var i = 0; i < owners.length; i++) {
+      if (owners[i] === chosen) return true;
+    }
+    return false;
+  }
+
   function applyType() {
     var chosen = typeField ? typeField.value : "hours";
     var sections = modal.querySelectorAll("[data-event-fields]");
     for (var i = 0; i < sections.length; i++) {
-      setEnabled(sections[i], sections[i].getAttribute("data-event-fields") === chosen);
+      setEnabled(sections[i], belongsTo(sections[i], chosen));
     }
     applyRepeat();
   }
 
-  /* A weekly pattern runs until it is removed, so an end date would be a
-   * promise the model cannot keep. The server refuses the combination; this
-   * stops it being offered in the first place. */
+  /* Three repeats, and each wants a different pair of fields:
+   *
+   *   "Does not repeat"     end date, no weekdays
+   *   "On chosen weekdays"  end date *and* weekdays  (KAN-22)
+   *   "Every week"          neither
+   *
+   * A weekly pattern runs until it is removed, so an end date would be a
+   * promise the model cannot keep; the server refuses the combination, and
+   * this stops it being offered. Days ticked and then abandoned by changing
+   * the repeat are cleared as well as hidden — the server rejects them rather
+   * than ignoring them, and a rejection naming a field the user can no longer
+   * see is a dead end.
+   */
   function applyRepeat() {
     var repeat = modal.querySelector('select[name="repeat"]');
-    var range = modal.querySelector('[data-when="once"]');
-    if (!range) return;
+    var value = repeat && !repeat.disabled ? repeat.value : "once";
 
-    var weekly = repeat && !repeat.disabled && repeat.value === "weekly";
-    range.hidden = weekly;
-    var input = range.querySelector("input");
-    if (input) {
-      input.disabled = weekly;
-      if (weekly) input.value = "";
+    var range = modal.querySelector('[data-when="once"]');
+    if (range) {
+      var weekly = value === "weekly";
+      range.hidden = weekly;
+      var input = range.querySelector("input");
+      if (input) {
+        input.disabled = weekly;
+        if (weekly) input.value = "";
+      }
+    }
+
+    var picker = modal.querySelector('[data-when="selected"]');
+    if (picker) {
+      var selected = value === "selected";
+      picker.hidden = !selected;
+      var boxes = picker.querySelectorAll('input[type="checkbox"]');
+      for (var i = 0; i < boxes.length; i++) {
+        boxes[i].disabled = !selected;
+        if (!selected) boxes[i].checked = false;
+      }
     }
   }
 

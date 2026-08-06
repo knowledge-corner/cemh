@@ -17,7 +17,7 @@ a Friday than on a Monday, and the failure reads as a product bug.
 from datetime import date, time, timedelta
 
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from accounts.models import DoctorProfile, Specialisation
@@ -731,14 +731,27 @@ class TestRemoving(CalendarTestCase):
 
 # ── Cabins reach the rest of the system ──────────────────────────────────────
 
-class TestTheScheduleScreenStillWorks(CalendarTestCase):
-    """The older availability screen writes the same rows and must keep doing so."""
+class TestTheAddEventPopUpWritesTheSameRows(CalendarTestCase):
+    """
+    KAN-50 left the calendar as the only screen writing these tables.
+
+    These were written against the availability screen it replaced. They are
+    kept, pointed at the pop-up: what they check is that a cabin chosen here
+    reaches the schedule row and that a clash is refused, and both still have to
+    be true of whichever screen does the writing.
+    """
+
+    def _add(self, doctor, **overrides):
+        payload = {
+            "event_type": "hours", "doctor": doctor.pk, "cabin": self.one.pk,
+            "date": self.monday.isoformat(), "repeat": "weekly",
+            "start_time": "10:00", "end_time": "13:00",
+        }
+        payload.update(overrides)
+        return self.client.post(reverse("reception_add_calendar_event"), payload)
 
     def test_a_cabin_can_be_chosen_there_too(self):
-        self.client.post(reverse("reception_add_availability", args=["schedule"]), {
-            "doctor": self.asha.pk, "weekday": MONDAY, "cabin": self.one.pk,
-            "start_time": "10:00", "end_time": "13:00", "slot_minutes": "",
-        })
+        self._add(self.asha)
         self.assertEqual(DoctorSchedule.objects.get(doctor=self.asha).cabin, self.one)
 
     def test_it_refuses_a_clash_as_well(self):
@@ -746,20 +759,35 @@ class TestTheScheduleScreenStillWorks(CalendarTestCase):
             doctor=self.asha, weekday=MONDAY, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
-        self.client.post(reverse("reception_add_availability", args=["schedule"]), {
-            "doctor": self.vikram.pk, "weekday": MONDAY, "cabin": self.one.pk,
-            "start_time": "11:00", "end_time": "14:00", "slot_minutes": "",
-        })
+        self._add(self.vikram, start_time="11:00", end_time="14:00")
         self.assertFalse(DoctorSchedule.objects.filter(doctor=self.vikram).exists())
 
     def test_hours_entered_there_show_on_the_calendar(self):
-        self.client.post(reverse("reception_add_availability", args=["schedule"]), {
-            "doctor": self.asha.pk, "weekday": MONDAY, "cabin": self.one.pk,
-            "start_time": "10:00", "end_time": "13:00", "slot_minutes": "",
-        })
+        self._add(self.asha)
         response = self.client.get(
             reverse("reception_calendar"),
             {"view": "day", "date": self.monday.isoformat()},
         )
         self.assertContains(response, "Asha Rao")
         self.assertContains(response, "Cabin 1")
+
+
+class TestTheAvailabilityScreenIsGone(CalendarTestCase):
+    """KAN-50. Two screens writing one set of tables is two answers to
+    "when does this doctor work", so the older one was removed outright."""
+
+    def test_its_urls_no_longer_resolve(self):
+        for name in ("reception_availability", "reception_add_availability",
+                     "reception_remove_availability"):
+            with self.subTest(name=name):
+                with self.assertRaises(NoReverseMatch):
+                    reverse(name)
+
+    def test_nothing_still_links_to_it(self):
+        # A dead link is worse than a missing one: it 404s in front of the user
+        # rather than being noticed here.
+        for url in (reverse("reception_calendar"), reverse("reception_bookings"),
+                    reverse("reception_home"), reverse("reception_doctors")):
+            with self.subTest(url=url):
+                body = self.client.get(url).content.decode()
+                self.assertNotIn("/availability", body)

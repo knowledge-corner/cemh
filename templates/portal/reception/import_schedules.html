@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Import doctor rotas — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Import doctor rotas</h1>
+    <p class="page-header__sub">
+      One row per doctor, cabin and pattern. "M-W-F through September" becomes
+      every one of those dates.
+    </p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Back to the calendar</a>
+</div>
+
+<div class="card page--narrow">
+  <div class="card__body">
+
+    <h2 class="section-title">1 &middot; Get the template</h2>
+    <p class="faint small" style="margin:0 0 .75rem">
+      Keep the column headings exactly as they are — they are how the file is read.
+    </p>
+
+    <div class="table-scroll" style="margin-bottom:1rem">
+      <table class="table table--middle">
+        <thead><tr><th>Column</th><th>What goes in it</th></tr></thead>
+        <tbody>
+          {% for column, help in columns %}
+            <tr>
+              <td class="mono strong">{{ column }}</td>
+              <td>{{ help }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% comment %}
+    The day codes are shown rather than only described. T and Th are the pair
+    people get wrong, and a rota loaded onto the wrong day of the week is not
+    something anybody notices until a doctor arrives to an empty cabin.
+    {% endcomment %}
+    <p class="faint small" style="margin:0 0 .5rem"><strong>Day codes</strong> — join with hyphens, e.g. <span class="mono">M-W-F</span></p>
+    <div class="table-scroll" style="margin-bottom:1rem">
+      <table class="table table--middle">
+        <thead><tr>{% for code, number, name in day_codes %}<th class="mono">{{ code }}</th>{% endfor %}</tr></thead>
+        <tbody><tr>{% for code, number, name in day_codes %}<td>{{ name }}</td>{% endfor %}</tr></tbody>
+      </table>
+    </div>
+
+    <p style="margin:0 0 1.5rem">
+      <a class="btn btn--secondary" href="{% url 'reception_schedule_template' %}">
+        Download the template
+      </a>
+    </p>
+
+    <h2 class="section-title">2 &middot; Upload it</h2>
+    <p class="faint small" style="margin:0 0 .75rem">
+      Nothing is saved yet. The file is checked first and you are shown how many
+      entries each row will create before anything is written.
+    </p>
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="field">
+        <label class="field__label" for="import-file">CSV file</label>
+        <input class="input" type="file" name="file" id="import-file"
+               accept=".csv,text/csv" required>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn--primary">Check the file</button>
+        <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Cancel</a>
+      </div>
+    </form>
+
+    {% if result and not result.fatal %}
+      <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--border)">
+      <h2 class="section-title">3 &middot; What is in the file</h2>
+
+      {% if result.problems %}
+        <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+          <div>
+            <span class="alert-strip__title">
+              {{ result.problems|length }} row{{ result.problems|pluralize }} could not be used
+            </span><br>
+            These will be left out. The rest can still be imported — fix these in
+            the spreadsheet and upload it again afterwards.
+          </div>
+        </div>
+        <div class="table-scroll" style="margin-bottom:1rem">
+          <table class="table table--middle">
+            <thead><tr><th>Line</th><th>Problem</th></tr></thead>
+            <tbody>
+              {% for problem in result.problems %}
+                <tr><td class="mono">{{ problem.line }}</td><td>{{ problem.message }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      {% if result.duplicates %}
+        <div class="alert-strip alert-strip--info" style="margin-bottom:1rem">
+          <div>
+            <span class="alert-strip__title">Some dates are already recorded</span><br>
+            Those exact hours already exist and are left alone rather than added twice.
+          </div>
+        </div>
+        <div class="table-scroll" style="margin-bottom:1rem">
+          <table class="table table--middle">
+            <thead><tr><th>Line</th><th>Detail</th></tr></thead>
+            <tbody>
+              {% for line, note in result.duplicates %}
+                <tr><td class="mono">{{ line }}</td><td class="faint">{{ note }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      {% if result.planned %}
+        <div class="alert-strip alert-strip--success" style="margin-bottom:1rem">
+          <div>
+            <span class="alert-strip__title">
+              Ready to create {{ result.total_entries }}
+              working-hours entr{{ result.total_entries|pluralize:"y,ies" }}
+              from {{ result.planned|length }} row{{ result.planned|pluralize }}
+            </span><br>
+            Nothing has been saved yet. Check the list, then confirm.
+          </div>
+        </div>
+        <div class="table-scroll" style="margin-bottom:1rem">
+          <table class="table table--middle">
+            <thead>
+              <tr><th>Line</th><th>Doctor</th><th>Cabin</th><th>Days</th>
+                  <th>Hours</th><th>Dates</th><th>First</th><th>Last</th></tr>
+            </thead>
+            <tbody>
+              {% for row in result.planned %}
+                <tr>
+                  <td class="mono">{{ row.line }}</td>
+                  <td class="strong">{{ row.doctor.display_name }}</td>
+                  <td>{{ row.cabin.name }}</td>
+                  <td class="mono">{{ row.days }}</td>
+                  <td class="mono">{{ row.start_time|time:"H:i" }}–{{ row.end_time|time:"H:i" }}</td>
+                  <td class="mono">{{ row.count }}</td>
+                  <td class="faint">{{ row.dates.0|date:"j M Y" }}</td>
+                  <td class="faint">{{ row.dates|last|date:"j M Y" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="confirm" value="1">
+          <p class="faint small" style="margin:0 0 .5rem">
+            Choose the same file again to confirm. It is read a second time so
+            that what is written is what is on your disk now, not a copy the
+            server has been holding on to.
+          </p>
+          <div class="field">
+            <label class="field__label" for="confirm-file">The same CSV file</label>
+            <input class="input" type="file" name="file" id="confirm-file"
+                   accept=".csv,text/csv" required>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn--primary">
+              Create {{ result.total_entries }} entr{{ result.total_entries|pluralize:"y,ies" }}
+            </button>
+          </div>
+        </form>
+      {% else %}
+        <p class="faint">There is nothing new in this file to import.</p>
+      {% endif %}
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

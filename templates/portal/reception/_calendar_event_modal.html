@@ -53,23 +53,27 @@ half-filled-in before switching to Holiday is not submitted.
           </div>
         </div>
 
+        {# ── Who (working hours and leave both need one) ──────────────── #}
+        <div data-event-fields="hours leave">
+          <div class="field">
+            <label class="field__label" for="{{ event_form.doctor.id_for_label }}">
+              {{ event_form.doctor.label }}
+            </label>
+            {{ event_form.doctor }}
+            {% comment %}
+            KAN-21 FR-10 / AC-8: a doctor who has not set a password is not in
+            this list, because hours for somebody who cannot sign in put a
+            patient in front of an empty cabin.
+            {% endcomment %}
+            <p class="field__help">
+              Only doctors who have finished setting up their account appear here.
+            </p>
+          </div>
+        </div>
+
         {# ── Working hours ────────────────────────────────────────────── #}
         <div data-event-fields="hours">
           <div class="form-grid">
-            <div class="field">
-              <label class="field__label" for="{{ event_form.doctor.id_for_label }}">
-                {{ event_form.doctor.label }}
-              </label>
-              {{ event_form.doctor }}
-              {% comment %}
-              KAN-21 FR-10 / AC-8: a doctor who has not set a password is not in
-              this list, because hours for somebody who cannot sign in put a
-              patient in front of an empty cabin.
-              {% endcomment %}
-              <p class="field__help">
-                Only doctors who have finished setting up their account appear here.
-              </p>
-            </div>
             <div class="field">
               <label class="field__label" for="{{ event_form.cabin.id_for_label }}">
                 {{ event_form.cabin.label }}
@@ -95,6 +99,59 @@ half-filled-in before switching to Holiday is not submitted.
               {{ event_form.repeat }}
             </div>
           </div>
+
+          {% comment %}
+          KAN-22: "M-W-F". Checkboxes rather than a typed code, because a doctor
+          works Monday, Wednesday and Friday far more often than seven
+          consecutive days, and the only way to say so before this was to add
+          each date by hand and hope none were missed.
+
+          Shown only for the weekday repeat, and disabled with it, so days
+          ticked before changing your mind are not submitted.
+          {% endcomment %}
+          <div class="field" data-when="selected">
+            <span class="field__label">{{ event_form.weekdays.label }}</span>
+            {{ event_form.weekdays }}
+          </div>
+        </div>
+
+        {# ── Away ─────────────────────────────────────────────────────── #}
+        {% comment %}
+        KAN-50. The calendar took over from the availability screen, and this is
+        the one thing that screen could do which the calendar could not: say a
+        doctor is away on a day they have no weekly pattern to delete.
+
+        Leaving both times empty is the whole day, which is what most leave is.
+        {% endcomment %}
+        <div data-event-fields="leave">
+          <div class="form-grid">
+            <div class="field">
+              <label class="field__label" for="{{ event_form.leave_start_time.id_for_label }}">
+                {{ event_form.leave_start_time.label }}
+              </label>
+              {{ event_form.leave_start_time }}
+            </div>
+            <div class="field">
+              <label class="field__label" for="{{ event_form.leave_end_time.id_for_label }}">
+                {{ event_form.leave_end_time.label }}
+              </label>
+              {{ event_form.leave_end_time }}
+            </div>
+          </div>
+          <p class="field__help" style="margin-top:-.5rem">
+            Leave both empty for the whole day.
+          </p>
+          <div class="field">
+            <label class="field__label" for="{{ event_form.reason.id_for_label }}">
+              {{ event_form.reason.label }}
+            </label>
+            {{ event_form.reason }}
+            <p class="field__help">{{ event_form.reason.help_text }}</p>
+          </div>
+          <p class="field__help">
+            Anyone already booked in is listed after saving, so they can be rung
+            and moved.
+          </p>
         </div>
 
         {# ── Holiday ──────────────────────────────────────────────────── #}

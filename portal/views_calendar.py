@@ -26,6 +26,7 @@ from accounts.models import Role, Specialisation, User
 from accounts.permissions import role_required
 from appointments import calendar as clinic_calendar
 from appointments import holidays
+from appointments import schedules_csv
 from appointments.models import (
     Cabin, ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride,
 )
@@ -63,6 +64,20 @@ def _visible_doctors(request):
     return User.objects.filter(role=Role.DOCTOR, is_active=True).select_related(
         "doctor_profile", "doctor_profile__specialisation"
     )
+
+
+def _pending_doctors(request):
+    """
+    Doctors added but not yet activated (KAN-21 FR-7).
+
+    Empty for a doctor's own view — whose invitation is outstanding is
+    reception's business, not something to show one doctor about another.
+    """
+    if _is_doctor(request.user):
+        return User.objects.none()
+    return User.objects.filter(
+        role=Role.DOCTOR, doctor_profile__activated_at__isnull=True,
+    ).select_related("doctor_profile").order_by("first_name")
 
 
 def _apply_filters(request, doctors):
@@ -131,6 +146,12 @@ def calendar_view(request):
         # string in three places is how one of them loses the filter.
         "filter_query": _filter_query(request),
         "has_doctors": bool(doctors),
+        # KAN-21 AC-3, and KAN-50's half of it: doctors who have not set a
+        # password are deliberately absent from the pickers here, and a name
+        # that is simply missing reads as the system having lost a doctor
+        # rather than as a step nobody has finished. The availability screen
+        # used to say so; this is the only screen left that can.
+        "pending_doctors": _pending_doctors(request),
     }
 
     if view == DAY:
@@ -263,7 +284,34 @@ def add_calendar_event(request):
         messages.success(request, f"Added: {created[0]}.")
     else:
         messages.success(request, f"Added {len(created)} entries.")
+
+    # Leave recorded after patients have been confirmed is the case that
+    # matters: those patients have to be rung and moved, and nobody will do it
+    # if the screen does not say so. Reported after the success message so the
+    # warning is the last thing read, not the first thing scrolled past.
+    _warn_about_stranded_patients(request, created)
     return _back(request)
+
+
+def _warn_about_stranded_patients(request, created):
+    """Name the bookings a newly recorded absence has stranded (KAN-50)."""
+    stranded = []
+    for obj in created:
+        if isinstance(obj, DoctorLeave):
+            stranded.extend(obj.affected_visits())
+    if not stranded:
+        return
+
+    names = ", ".join(
+        f"{v.patient.full_name} "
+        f"({timezone.localtime(v.scheduled_start):%d %b %H:%M})"
+        for v in stranded
+    )
+    messages.warning(
+        request,
+        f"{len(stranded)} patient{'' if len(stranded) == 1 else 's'} already "
+        f"booked must be rung and moved: {names}",
+    )
 
 
 # ── Clinic holidays from a spreadsheet (KAN-24) ──────────────────────────────
@@ -465,3 +513,96 @@ def close_callback(request, pk):
         f"{callback.name} marked {callback.get_status_display().lower()}.",
     )
     return _back(request, "reception_callbacks")
+
+
+# ── Doctor rotas from a spreadsheet (KAN-22) ─────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def schedule_template(request):
+    """The blank CSV, with its own instructions and the day codes in it."""
+    response = HttpResponse(schedules_csv.template_csv(), content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="doctor-schedules.csv"'
+    return response
+
+
+@role_required(Role.RECEPTIONIST)
+def import_schedules(request):
+    """
+    Load a month of rotas from the template.
+
+    Two passes, like the other two importers: the first reads the file and
+    reports what it found — including how many dated entries each row will
+    become — and nothing is written until reception has seen that and pressed
+    the second button. One line saying "M-W-F through September" turning into
+    thirteen entries is exactly the sort of thing somebody should see the size
+    of before it happens.
+    """
+    result = None
+
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+
+        if upload is None:
+            messages.error(request, "Choose a CSV file first.")
+        else:
+            result = schedules_csv.parse(upload)
+
+            if result.fatal:
+                messages.error(request, result.fatal)
+            elif request.POST.get("confirm") and result.can_import:
+                written = schedules_csv.commit(result, created_by=request.user)
+                for entry in written:
+                    record(request, AuditAction.CREATE, obj=entry,
+                           description=f"Rota imported: {entry}")
+                messages.success(
+                    request,
+                    f"Imported {len(written)} working-hours "
+                    f"entr{'y' if len(written) == 1 else 'ies'} from "
+                    f"{len(result.planned)} row{'' if len(result.planned) == 1 else 's'}."
+                    + (f" {len(result.problems)} row"
+                       f"{'' if len(result.problems) == 1 else 's'} could not be "
+                       f"read and were left out." if result.problems else ""),
+                )
+                return redirect("reception_calendar")
+
+    return render(request, "portal/reception/import_schedules.html", {
+        "result": result,
+        "columns": [(name, schedules_csv.COLUMN_HELP[name])
+                    for name in schedules_csv.COLUMNS],
+        "day_codes": schedules_csv.weekday_codes.DAY_CODES,
+        "date_help": schedules_csv.DATE_HELP,
+    })
+
+
+# ── Editing a holiday (KAN-24) ───────────────────────────────────────────────
+
+@role_required(Role.RECEPTIONIST)
+def edit_holiday(request, pk):
+    """
+    Change a holiday's name or date.
+
+    KAN-24 asks for add, edit and delete; only add and delete were built, so a
+    holiday entered on the wrong date had to be deleted and re-added. That is
+    the same two clicks, but it loses who recorded it and when.
+    """
+    holiday = get_object_or_404(ClinicHoliday, pk=pk)
+    before = str(holiday)
+
+    if request.method == "POST":
+        form = clinic_forms.ClinicHolidayForm(request.POST, instance=holiday)
+        if form.is_valid():
+            form.save()
+            record(request, AuditAction.UPDATE, obj=holiday,
+                   description=f"Holiday changed: {before} -> {holiday}")
+            messages.success(request, f"{holiday.name} updated.")
+            return _back(request)
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+    else:
+        form = clinic_forms.ClinicHolidayForm(instance=holiday)
+
+    return render(request, "portal/reception/edit_holiday.html", {
+        "form": form,
+        "holiday": holiday,
+    })

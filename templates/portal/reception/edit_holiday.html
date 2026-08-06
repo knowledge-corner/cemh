@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Edit holiday — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Edit holiday</h1>
+    <p class="page-header__sub">{{ holiday.name }} &middot; {{ holiday.date|date:"l j F Y" }}</p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'reception_calendar' %}?view=day&amp;date={{ holiday.date|date:'Y-m-d' }}">
+    Back to the calendar
+  </a>
+</div>
+
+<div class="card page--narrow">
+  <div class="card__body">
+    {% comment %}
+    A holiday entered on the wrong date used to mean deleting it and adding it
+    again — the same two clicks, but it lost who recorded it and when. KAN-24
+    asks for add, edit and delete; this is the edit.
+    {% endcomment %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.GET.next }}">
+
+      {% for field in form %}
+        <div class="field">
+          <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<p class="field__help">{{ field.help_text }}</p>{% endif %}
+          {% for error in field.errors %}
+            <p class="field__error" role="alert">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+
+      <div class="form-actions">
+        <button class="btn btn--primary" type="submit">Save</button>
+        <a class="btn btn--secondary"
+           href="{% url 'reception_calendar' %}?view=day&amp;date={{ holiday.date|date:'Y-m-d' }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

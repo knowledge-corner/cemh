@@ -645,12 +645,15 @@ class TestTheActionsBar(TestCase):
             self.assertContains(response, reverse(name))
 
     def test_the_doctor_schedule_is_reached_from_bookings_not_the_board(self):
+        # Since KAN-50 the doctor schedule *is* the calendar — one screen
+        # rather than two writing the same tables — but where it is reached
+        # from has not changed.
         board = self.client.get(reverse("reception_home"))
-        self.assertNotContains(board, reverse("reception_availability"))
+        self.assertNotContains(board, reverse("reception_calendar"))
 
         diary = self.client.get(reverse("reception_bookings"))
-        self.assertContains(diary, reverse("reception_availability"))
-        self.assertContains(diary, "Doctor schedule")
+        self.assertContains(diary, reverse("reception_calendar"))
+        self.assertContains(diary, "Calendar")
 
     def test_a_doctor_is_shown_none_of_them(self):
         # AC-6 — a doctor reads the board but does not work it.

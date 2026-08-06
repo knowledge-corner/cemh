@@ -19,7 +19,7 @@ from accounts import invitations
 from accounts.models import (
     DoctorInvitation, DoctorProfile, Role, Specialisation, User,
 )
-from appointments.models import DoctorSchedule
+from appointments.models import Cabin, DoctorSchedule
 
 from .factories import make_doctor, make_receptionist
 
@@ -294,11 +294,18 @@ class TestPendingDoctorsAreNotSchedulable(TestCase):
         self.client.force_login(self.receptionist)
         self.client.post(reverse("reception_add_doctor"), _form())
         self.pending = User.objects.get(email="vrushali@example.in")
+        self.cabin = Cabin.objects.create(name="Cabin 1")
+        self.monday = timezone.localdate()
+        while self.monday.weekday() != 0:
+            self.monday += timedelta(days=1)
 
     def _give_hours(self, doctor):
+        # KAN-50 removed the availability screen; the calendar's add-event
+        # pop-up is the one way in now, and the rule has to hold there.
         return self.client.post(
-            reverse("reception_add_availability", args=["schedule"]),
-            {"doctor": doctor.pk, "weekday": 0,
+            reverse("reception_add_calendar_event"),
+            {"event_type": "hours", "doctor": doctor.pk, "cabin": self.cabin.pk,
+             "date": self.monday.isoformat(), "repeat": "weekly",
              "start_time": "10:00", "end_time": "13:00"},
             follow=True,
         )
@@ -308,13 +315,27 @@ class TestPendingDoctorsAreNotSchedulable(TestCase):
         self._give_hours(self.pending)
         self.assertEqual(DoctorSchedule.objects.filter(doctor=self.pending).count(), 0)
 
-    def test_the_availability_screen_says_why_they_are_missing(self):
-        # The other half of AC-3. They are absent from every dropdown on that
-        # screen, and a name that is simply missing reads as a fault in the
-        # system rather than as a step nobody has finished.
-        response = self.client.get(reverse("reception_availability"))
+    def test_the_calendar_says_why_they_are_missing(self):
+        # The other half of AC-3. They are absent from every dropdown on the
+        # screen that gives out hours, and a name that is simply missing reads
+        # as a fault in the system rather than as a step nobody has finished.
+        response = self.client.get(reverse("reception_calendar"))
         self.assertContains(response, "Cannot be given hours yet")
         self.assertContains(response, "Vrushali Kulkarni")
+
+    def test_a_doctor_is_not_told_whose_invitation_is_outstanding(self):
+        # Reception's business, not one doctor's business about another.
+        active = make_doctor(username="dr-active", email="active@example.in")
+        DoctorProfile.objects.create(user=active, activated_at=timezone.now())
+        self.client.force_login(active)
+
+        response = self.client.get(reverse("reception_calendar"))
+        self.assertNotContains(response, "Cannot be given hours yet")
+        # Checked against the context rather than the page: the test client
+        # keeps one cookie jar across force_login, so the receptionist's
+        # success toast from setUp is still queued and carries the name. A
+        # browser gets a fresh session per sign-in and never sees it.
+        self.assertEqual(list(response.context["pending_doctors"]), [])
 
     def test_the_guard_holds_for_a_doctor_who_is_active_but_never_activated(self):
         # The case the dropdown filter does not catch: an account made before

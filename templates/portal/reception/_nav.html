@@ -45,15 +45,12 @@ beside it only crowded the row. Screen readers get it from aria-label.
     {% endif %}
 
     {% comment %}
-    Two ways into the same facts, kept apart on purpose. The calendar is where
-    you *look* — which room is free on Thursday. The schedule screen is where
-    the underlying rows are listed and edited. Reached from Bookings only:
-    neither is part of running today's clinic, and both were crowding the
-    board's bar.
+    One way into a doctor's schedule, since KAN-50: the calendar. There used to
+    be a second screen listing the same rows, and two screens writing one set of
+    tables is two answers to "when does this doctor work".
     {% endcomment %}
     {% if nav_active == "bookings" or nav_active == "doctors" %}
       <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Calendar</a>
-      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor schedule</a>
       {% comment %}
       Only shown when somebody is actually waiting for a call. A permanently
       visible zero is a link nobody clicks, and then the day it matters it

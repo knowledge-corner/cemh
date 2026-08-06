@@ -38,13 +38,9 @@ urlpatterns = [
     # Followed by the doctor from their email, so no sign-in required.
     path("activate/<str:token>/", views_doctors.activate_doctor, name="doctor_activate"),
 
-    # ── Doctor availability ──────────────────────────────────────────────
-    path("reception/availability/", views_reception.availability,
-         name="reception_availability"),
-    path("reception/availability/add/<str:kind>/", views_reception.add_availability,
-         name="reception_add_availability"),
-    path("reception/availability/<str:kind>/<int:pk>/remove/",
-         views_reception.remove_availability, name="reception_remove_availability"),
+    # KAN-50 removed the separate Doctor availability screen. The calendar is
+    # now the one place a doctor's schedule is viewed and edited, so a second
+    # screen writing the same tables was two answers to one question.
 
     # ── The availability calendar (KAN-22) ───────────────────────────────
     # Doctors reach this too, scoped to themselves inside the view.
@@ -62,6 +58,14 @@ urlpatterns = [
          name="reception_import_holidays"),
     path("calendar/holidays/template.csv", views_calendar.holiday_template,
          name="reception_holiday_template"),
+    path("calendar/holidays/<int:pk>/edit/", views_calendar.edit_holiday,
+         name="reception_edit_holiday"),
+
+    # ── Doctor rotas from a spreadsheet (KAN-22) ─────────────────────────
+    path("calendar/schedules/import/", views_calendar.import_schedules,
+         name="reception_import_schedules"),
+    path("calendar/schedules/template.csv", views_calendar.schedule_template,
+         name="reception_schedule_template"),
 
     # ── Callback requests from the public website ────────────────────────
     path("reception/callbacks/", views_calendar.callbacks, name="reception_callbacks"),

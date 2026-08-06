@@ -30,7 +30,8 @@ it.
   <div class="row-actions">
     <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>
     {% if not is_doctor_view %}
-      <a class="btn btn--secondary" href="{% url 'reception_availability' %}">Doctor schedule</a>
+      <a class="btn btn--secondary" href="{% url 'reception_import_schedules' %}">Import rota</a>
+      <a class="btn btn--secondary" href="{% url 'reception_import_holidays' %}">Import holidays</a>
     {% endif %}
   </div>
 </div>
@@ -108,6 +109,25 @@ it.
         No doctor has finished setting up their account yet.
         <a href="{% url 'reception_doctors' %}">Add a doctor</a> first.
       {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{% if pending_doctors %}
+  {% comment %}
+  KAN-21 AC-3. These doctors are missing from the pickers on this screen on
+  purpose — nobody can sign in as them, so hours in their name would put a
+  patient in front of an empty cabin. Missing and unexplained is how reception
+  concludes the system has lost a doctor, so the absence is stated.
+  {% endcomment %}
+  <div class="alert-strip alert-strip--info" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">Cannot be given hours yet</span><br>
+      {% for doctor in pending_doctors %}
+        {{ doctor.display_name }}{% if not forloop.last %}, {% endif %}
+      {% endfor %}
+      — still to set a password.
+      <a href="{% url 'reception_doctors' %}">Re-send the invitation</a>.
     </div>
   </div>
 {% endif %}

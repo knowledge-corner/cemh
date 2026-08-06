@@ -18,11 +18,16 @@ form — quietly, and in the direction that puts a patient in front of nobody.
       {% if holiday.note %}{{ holiday.note }}{% endif %}
     </div>
     {% if not is_doctor_view %}
-      <form method="post" action="{% url 'reception_delete_calendar_entry' 'holiday' holiday.pk %}">
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <button class="btn btn--secondary" type="submit">Remove holiday</button>
-      </form>
+      <div class="row-actions">
+        <a class="btn btn--secondary"
+           href="{% url 'reception_edit_holiday' holiday.pk %}?next={{ request.get_full_path|urlencode }}">Edit</a>
+        <form method="post" action="{% url 'reception_delete_calendar_entry' 'holiday' holiday.pk %}"
+              style="display:inline">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button class="btn btn--secondary" type="submit">Remove holiday</button>
+        </form>
+      </div>
     {% endif %}
   </div>
 {% endif %}
@@ -30,10 +35,30 @@ form — quietly, and in the direction that puts a patient in front of nobody.
 {% if leave %}
   <div class="alert-strip" style="margin-bottom:1rem">
     <div>
-      <span class="alert-strip__title">Away today</span><br>
+      <span class="alert-strip__title">Away today</span>
+      {% comment %}
+      One line per absence rather than a run-on sentence, because since KAN-50
+      each one is removable and a button needs something to sit beside. Leave
+      recorded on the wrong doctor is otherwise permanent — the screen that used
+      to delete it is gone.
+      {% endcomment %}
       {% for absence in leave %}
-        {{ absence.doctor.display_name }}
-        ({% if absence.whole_day %}all day{% else %}{{ absence.start_time|time:"H:i" }}–{{ absence.end_time|time:"H:i" }}{% endif %}){% if not forloop.last %}, {% endif %}
+        <div class="away-line">
+          <span>
+            {{ absence.doctor.display_name }}
+            ({% if absence.whole_day %}all day{% else %}{{ absence.start_time|time:"H:i" }}–{{ absence.end_time|time:"H:i" }}{% endif %})
+            {% if absence.reason %}&middot; {{ absence.reason }}{% endif %}
+          </span>
+          {% if not is_doctor_view %}
+            <form method="post"
+                  action="{% url 'reception_delete_calendar_entry' 'leave' absence.pk %}"
+                  onsubmit="return confirm('{{ absence.doctor.display_name|escapejs }} is back in on {{ anchor|date:'j M'|escapejs }}?');">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button class="btn btn--secondary" type="submit">Not away after all</button>
+            </form>
+          {% endif %}
+        </div>
       {% endfor %}
     </div>
   </div>

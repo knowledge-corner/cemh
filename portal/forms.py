@@ -18,6 +18,7 @@ from accounts.models import (
     DoctorProfile, Role, Specialisation, User, phone_validator,
 )
 from appointments import scheduling
+from appointments import weekdays as weekday_codes
 from appointments.models import Visit, VisitStatus
 from billing.models import Charge, Payment
 from clinical.models import ClinicalNote, Diagnosis, Investigation
@@ -894,19 +895,29 @@ class CalendarEventForm(forms.Form):
     writes — a weekly repeat is a :class:`DoctorSchedule` row, a one-off is a
     :class:`ScheduleOverride` — so there is one answer to "when does this doctor
     work" rather than a calendar's answer and a booking form's answer.
+
+    KAN-50 removed that availability screen, and leave was the one thing on it
+    the calendar could not do: the calendar *showed* who was away but the only
+    way to record it was to delete one occurrence of a weekly pattern. A doctor
+    on the clinic's default hours has no pattern to delete, so there was no way
+    at all to say they were away. Leave is therefore a third event type here.
     """
 
     HOURS = "hours"
+    LEAVE = "leave"
     HOLIDAY = "holiday"
     EVENT_TYPES = [
         (HOURS, "Doctor working hours"),
+        (LEAVE, "Doctor away"),
         (HOLIDAY, "Clinic holiday"),
     ]
 
     ONCE = "once"
+    SELECTED = "selected"
     WEEKLY = "weekly"
     REPEATS = [
         (ONCE, "Does not repeat"),
+        (SELECTED, "On chosen weekdays, until the end date"),
         (WEEKLY, "Every week, until removed"),
     ]
 
@@ -919,8 +930,13 @@ class CalendarEventForm(forms.Form):
         label="Date",
         widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
     )
+    #: Not "Repeat daily until": this one field is the end of the range for all
+    #: four things the dialog adds, and only one of them repeats daily. Under
+    #: "Doctor away" it read as though leave were being repeated, and under
+    #: "On chosen weekdays" it contradicted the picker directly beneath it. The
+    #: repeat select beside it already says what happens between the two dates.
     until = forms.DateField(
-        label="Repeat daily until", required=False,
+        label="Last date", required=False,
         help_text="Leave empty for a single day.",
         widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
     )
@@ -944,7 +960,33 @@ class CalendarEventForm(forms.Form):
     )
     repeat = forms.ChoiceField(
         label="Repeat", choices=REPEATS, initial=ONCE, required=False,
-        widget=forms.Select(attrs=INPUT),
+        widget=forms.Select(attrs={**INPUT, "id": "id_repeat"}),
+    )
+    #: KAN-22: "M-W-F", chosen as checkboxes rather than typed. A doctor works
+    #: Monday, Wednesday and Friday far more often than they work seven
+    #: consecutive days, and before this the only way to say so was to add each
+    #: date by hand and hope none were missed.
+    weekdays = forms.MultipleChoiceField(
+        label="On these days", choices=weekday_codes.CHOICES, required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "daypick"}),
+    )
+
+    # Away (KAN-50). Separate time fields from the working-hours pair rather
+    # than shared ones: the hours section is disabled wholesale when another
+    # event type is chosen, and a field that is required in one section and
+    # optional in another is a field nobody can reason about.
+    leave_start_time = forms.TimeField(
+        label="Away from", required=False,
+        widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+    )
+    leave_end_time = forms.TimeField(
+        label="Away until", required=False,
+        widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
+    )
+    reason = forms.CharField(
+        label="Reason", max_length=200, required=False,
+        help_text="Optional, and shown to reception only.",
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Conference"}),
     )
 
     # Holiday
@@ -975,6 +1017,8 @@ class CalendarEventForm(forms.Form):
 
         if event_type == self.HOURS:
             self._clean_hours(cleaned)
+        elif event_type == self.LEAVE:
+            self._clean_leave(cleaned)
         elif event_type == self.HOLIDAY:
             self._clean_holiday(cleaned)
         return cleaned
@@ -1009,7 +1053,29 @@ class CalendarEventForm(forms.Form):
         if start and end and start == end:
             self.add_error("end_time", "An entry with no length is not working hours.")
 
-        weekly = cleaned.get("repeat") == self.WEEKLY
+        repeat = cleaned.get("repeat")
+        chosen_days = cleaned.get("weekdays") or []
+
+        if repeat == self.SELECTED:
+            # Both halves are the point of this mode: which days, and how far.
+            if not chosen_days:
+                self.add_error("weekdays", "Choose at least one day of the week.")
+            if not cleaned.get("until"):
+                self.add_error(
+                    "until",
+                    "Give the last date. Chosen weekdays repeat between the two "
+                    "dates, so without an end date there is nothing to generate.",
+                )
+        elif chosen_days:
+            # Ticked, then the mode changed. Acting on them anyway would create
+            # a rota nobody asked for.
+            self.add_error(
+                "weekdays",
+                "Days of the week only apply to 'On chosen weekdays'. Change "
+                "the repeat, or clear these.",
+            )
+
+        weekly = repeat == self.WEEKLY
         if weekly and cleaned.get("until"):
             # A weekly pattern has no end date in the model, and pretending it
             # honours one would quietly create hours that never stop.
@@ -1024,6 +1090,27 @@ class CalendarEventForm(forms.Form):
             return
 
         from appointments import calendar as clinic_calendar
+
+        if repeat == self.SELECTED:
+            wanted = {weekday_codes.CODE_TO_WEEKDAY[c] for c in chosen_days}
+            dates = [d for d in dates if d.weekday() in wanted]
+            if not dates:
+                self.add_error(
+                    "weekdays",
+                    "No "
+                    + ", ".join(weekday_codes.CODE_TO_NAME[c] for c in chosen_days)
+                    + " falls between those two dates.",
+                )
+                return
+            if len(dates) > weekday_codes.MAX_GENERATED:
+                self.add_error(
+                    "until",
+                    f"That would create {len(dates)} entries. Check the dates — "
+                    f"the most that can be added at once is "
+                    f"{weekday_codes.MAX_GENERATED}.",
+                )
+                return
+            self._generated = dates
 
         if weekly:
             conflicts = clinic_calendar.find_conflicts(
@@ -1043,6 +1130,59 @@ class CalendarEventForm(forms.Form):
         if len(conflicts) > 5:
             self.add_error(
                 None, f"…and {len(conflicts) - 5} more dates with the same clash."
+            )
+
+    def _clean_leave(self, cleaned):
+        """
+        A doctor is away — the whole day, or a stretch of it (KAN-50).
+
+        No conflict check: leave is allowed to land on top of working hours,
+        because that is the entire point of recording it. What it must not do
+        is land silently on top of *patients*, which the view reports after
+        saving.
+        """
+        if not cleaned.get("doctor"):
+            self.add_error("doctor", "Say who is away.")
+
+        start = cleaned.get("leave_start_time")
+        end = cleaned.get("leave_end_time")
+
+        # Both or neither. One alone is somebody who started filling in a part
+        # day and stopped, and storing it as a whole day would mark a doctor
+        # away for hours they are in.
+        if bool(start) != bool(end):
+            self.add_error(
+                "leave_end_time" if start else "leave_start_time",
+                "Give both times, or leave both empty for the whole day.",
+            )
+        elif start and end and end <= start:
+            self.add_error("leave_end_time", "The end time must be after the start time.")
+
+        if cleaned.get("weekdays"):
+            self.add_error(
+                "weekdays",
+                "Days of the week only apply to working hours.",
+            )
+
+        dates = self._dates(cleaned)
+        if self.errors or dates is None:
+            return
+
+        from appointments.models import DoctorLeave
+
+        # Already recorded is not an error — somebody extending a week of leave
+        # by a day should not have to work out which days are new.
+        self._existing_leave = set(
+            DoctorLeave.objects.filter(
+                doctor=cleaned["doctor"], date__in=dates,
+                start_time=start, end_time=end,
+            ).values_list("date", flat=True)
+        )
+        if len(self._existing_leave) == len(dates):
+            self.add_error(
+                "date",
+                f"{cleaned['doctor'].display_name} is already recorded as away "
+                + ("that day." if len(dates) == 1 else "on every one of those days."),
             )
 
     def _clean_holiday(self, cleaned):
@@ -1071,12 +1211,22 @@ class CalendarEventForm(forms.Form):
     def save(self, created_by=None):
         """Create the rows and return them, newest question first."""
         from appointments.models import (
-            ClinicHoliday, DoctorSchedule, ScheduleOverride,
+            ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride,
         )
 
         cleaned = self.cleaned_data
         dates = self._dates(cleaned)
         created = []
+
+        # Chosen weekdays narrow the range to the days actually ticked. Worked
+        # out again rather than carried over from validation, so save() cannot
+        # write a different set of dates from the one that was checked for
+        # clashes.
+        if cleaned.get("repeat") == self.SELECTED and cleaned.get("weekdays"):
+            wanted = {
+                weekday_codes.CODE_TO_WEEKDAY[c] for c in cleaned["weekdays"]
+            }
+            dates = [d for d in dates if d.weekday() in wanted]
 
         if cleaned["event_type"] == self.HOLIDAY:
             skipped = getattr(self, "_existing_holidays", set())
@@ -1085,6 +1235,21 @@ class CalendarEventForm(forms.Form):
                     continue
                 created.append(ClinicHoliday.objects.create(
                     date=day, name=cleaned["name"],
+                ))
+            return created
+
+        if cleaned["event_type"] == self.LEAVE:
+            already = getattr(self, "_existing_leave", set())
+            for day in dates:
+                if day in already:
+                    continue
+                created.append(DoctorLeave.objects.create(
+                    doctor=cleaned["doctor"],
+                    date=day,
+                    start_time=cleaned.get("leave_start_time") or None,
+                    end_time=cleaned.get("leave_end_time") or None,
+                    reason=cleaned.get("reason", ""),
+                    created_by=created_by,
                 ))
             return created
 

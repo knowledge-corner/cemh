@@ -248,6 +248,17 @@ p { margin: 0 0 .75rem; }
 .alert-strip--info    { background: var(--info-bg);    color: var(--info);    border-left: 3px solid var(--info); }
 .alert-strip__title { font-weight: 700; }
 
+/* One absence per row, with its own remove button (KAN-50). Wraps rather than
+   squashing the name, since the name is the part that has to be read. */
+.away-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .375rem;
+}
+.away-line form { margin: 0; }
+
 /* ── Tabs ──────────────────────────────────────────────────────────────── */
 
 .tabs {
@@ -744,6 +755,25 @@ p { margin: 0 0 .75rem; }
 .form-grid .field:has(textarea) { grid-column: 1 / -1; }
 .field--check { display: flex; align-items: center; gap: .5rem; }
 .field--check .field__label { margin-bottom: 0; }
+
+/* Days of the week, laid out as a week reads (KAN-22). Wrapping rather than
+   scrolling: seven days that run off the edge of a narrow dialog would let
+   somebody set a Monday/Wednesday clinic without ever seeing Friday. */
+.daypick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .875rem;
+}
+.daypick label {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  font-size: .8125rem;
+  /* The whole label is the target, not the 13px box beside it. */
+  cursor: pointer;
+  white-space: nowrap;
+}
+.daypick input[type="checkbox"] { margin: 0; }
 
 /* ── Reception queue board ─────────────────────────────────────────────── */
 

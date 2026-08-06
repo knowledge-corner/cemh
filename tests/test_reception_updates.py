@@ -329,9 +329,13 @@ class TestLeaveSurfacesThePatientsToRing(TestCase):
         self.assertIn(self.visit, leave.affected_visits())
 
     def test_recording_leave_warns_the_receptionist_by_name(self):
+        # Recorded from the calendar's add-event pop-up since KAN-50 took the
+        # availability screen away. The call list is the whole reason the
+        # feature exists, so it had to survive the move.
         response = self.client.post(
-            reverse("reception_add_availability", args=["leave"]),
-            {"doctor": self.doctor.pk, "date": self.day.strftime("%Y-%m-%d")},
+            reverse("reception_add_calendar_event"),
+            {"event_type": "leave", "doctor": self.doctor.pk,
+             "date": self.day.strftime("%Y-%m-%d")},
             follow=True,
         )
         self.assertContains(response, "must be rung")
@@ -532,17 +536,32 @@ class TestTheHistoryWithRealMoneyOnIt(TestCase):
         self.assertIn(self.patient.patient_id, body)
 
 
-class TestAvailabilityScreenAccess(TestCase):
+class TestCalendarAccess(TestCase):
+    """
+    KAN-50 replaced the availability screen with the calendar, and the two do
+    not have the same access rule. The old screen was reception-only; a doctor
+    may open the calendar, scoped to themselves, but may not write to it.
+    """
+
     def test_a_receptionist_may_open_it(self):
         self.client.force_login(make_receptionist())
         self.assertEqual(
-            self.client.get(reverse("reception_availability")).status_code, 200
+            self.client.get(reverse("reception_calendar")).status_code, 200
         )
 
-    def test_a_doctor_may_not(self):
+    def test_a_doctor_may_read_it(self):
         self.client.force_login(make_doctor())
         self.assertEqual(
-            self.client.get(reverse("reception_availability")).status_code, 403
+            self.client.get(reverse("reception_calendar")).status_code, 200
+        )
+
+    def test_a_doctor_may_not_write_to_it(self):
+        # The scoping is a rule about who may do what, not a filter, so it has
+        # to be refused at the view rather than by leaving the button off.
+        self.client.force_login(make_doctor())
+        self.assertEqual(
+            self.client.post(reverse("reception_add_calendar_event"), {}).status_code,
+            403,
         )
 
 
