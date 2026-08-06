@@ -215,27 +215,37 @@ def auto_cancel_stale(now=None):
     return closed
 
 
-def unclosed_before(day=None):
+def unclosed(day=None):
     """
-    Every appointment from before ``day`` that is not closed yet.
+    Every appointment that has been consulted and not yet billed.
 
     "Closed" means the receipt has been generated, which is what locks the
     appointment. So this list is consultations the doctor finished and nobody
     billed, and nothing else.
 
+    **Today included**, up to and including ``day``. It counted only previous
+    days at first, which made it a next-morning tidy-up rather than what it is:
+    the receptionist's billing worklist for the clinic she is running. A patient
+    the doctor finished with an hour ago was not on it and the tab did not
+    appear at all, so she was shown work already hers only the following day.
+
+    Every earlier day too, not just yesterday. A day missed on Friday is still
+    owed on Monday, and a list that showed one day would let it scroll quietly
+    out of sight.
+
     A visit that has been paid for is **not** on it. Taking the fee is the last
     thing the receptionist does; asking her to press a second button afterwards
-    would make a two-step job out of the one the clinic described, and the
-    sweep marks those finished on its own.
+    would make a two-step job out of the one the clinic described, and the sweep
+    marks those finished on its own.
 
-    Across every previous day, not just yesterday. A day missed on Friday is
-    still owed on Monday, and a list that showed only yesterday would let it
-    scroll quietly out of sight.
+    A patient still in a cabin is not on it either. There is no fee to collect
+    until the doctor has finished, so listing them would be listing work nobody
+    can do yet.
     """
     day = day or timezone.localdate()
     return list(
         Visit.objects.filter(
-            scheduled_start__date__lt=day,
+            scheduled_start__date__lte=day,
             status=VisitStatus.CONSULTED,
         )
         .with_related()

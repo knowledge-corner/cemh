@@ -213,7 +213,7 @@ def _queue_context(request, day=None):
     # The whole worklist, not just the unsigned day's share: the alert sends
     # the receptionist to one list, and it has to be the same list she finds
     # when she gets there.
-    unclosed = signoff.unclosed_before(day) if unsigned else []
+    unclosed = signoff.unclosed(day) if unsigned else []
 
     return {
         "day": day,
@@ -666,7 +666,7 @@ def bookings(request):
     # The unclosed tab exists only while it has rows. The alert on the board
     # links straight here, so somebody arriving from it must land on the tab
     # rather than on whichever one happened to be default.
-    unclosed = signoff.unclosed_before() if signoff.is_enabled() else []
+    unclosed = signoff.unclosed() if signoff.is_enabled() else []
     # The tab is also where the day is signed off, so it has to survive the list
     # emptying — that is the moment the button appears. Without this the last
     # receipt made the tab vanish and took the only way to sign off with it.

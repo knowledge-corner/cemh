@@ -864,7 +864,7 @@ class TestCheckingTheFeeBeforeSigningOff(SignOffTestCase):
         )
         visit.refresh_from_db()
         self.assertEqual(visit.status, VisitStatus.CONSULTED)
-        self.assertEqual(len(signoff.unclosed_before()), 1)
+        self.assertEqual(len(signoff.unclosed()), 1)
 
 
 class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):
@@ -891,7 +891,7 @@ class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):
         ])   # deliberately no Charge
 
     def test_it_is_on_the_unclosed_list(self):
-        self.assertIn(self.visit, signoff.unclosed_before())
+        self.assertIn(self.visit, signoff.unclosed())
 
     def test_the_list_offers_a_way_to_close_it(self):
         response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
@@ -907,7 +907,7 @@ class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):
         )
         self.visit.refresh_from_db()
         self.assertEqual(self.visit.status, VisitStatus.COMPLETED)
-        self.assertEqual(signoff.unclosed_before(), [])
+        self.assertEqual(signoff.unclosed(), [])
 
     def test_the_trail_says_nothing_was_collected(self):
         self.client.post(reverse("reception_close_without_fee", args=[self.visit.pk]))
@@ -1112,3 +1112,77 @@ class TestSigningOffCannotManufactureItsOwnWork(SignOffTestCase):
         self.assertEqual(said[0].level_tag, "success")
         self.assertIn("signed off", str(said[0]))
         self.assertIn("switched off", str(said[0]))
+
+
+class TestTheTabAppearsAsSoonAsSomebodyIsConsulted(SignOffTestCase):
+    """
+    The list is the receptionist's billing worklist for the clinic she is
+    running, not a next-morning tidy-up.
+
+    It only counted previous days, so a patient the doctor finished with an hour
+    ago — fee set, nothing collected — was not on it and the tab did not appear
+    at all. She had to wait until the following morning to be shown work that
+    was already hers.
+    """
+
+    def _today_consulted(self, hour=11, phone=None, fee="800"):
+        visit = make_visit(
+            make_patient(phone=phone) if phone else make_patient(),
+            self.doctor, start=today_at(hour),
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            visit.transition_to(status, by_user=self.receptionist)
+        Charge.objects.create(
+            visit=visit, patient=visit.patient,
+            consultation_fee=Decimal(fee), set_by=self.doctor,
+        )
+        return visit
+
+    def test_one_patient_consulted_today_brings_the_tab_up(self):
+        self._today_consulted()
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertIn("unclosed", [key for key, _ in response.context["tabs"]])
+        self.assertEqual(response.context["unclosed_count"], 1)
+
+    def test_the_patient_is_listed_with_a_receipt_button(self):
+        visit = self._today_consulted()
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertContains(response, visit.patient.patient_id)
+        self.assertContains(
+            response, reverse("reception_generate_receipt", args=[visit.pk]),
+        )
+
+    def test_any_doctor_counts_not_just_one(self):
+        other = make_doctor(username="dr-second", email="second@example.in")
+        visit = make_visit(
+            make_patient(phone="9820091919"), other, start=today_at(14),
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            visit.transition_to(status, by_user=self.receptionist)
+
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertEqual(response.context["unclosed_count"], 1)
+
+    def test_billing_it_takes_it_off_again(self):
+        visit = self._today_consulted()
+        self.client.post(
+            reverse("reception_generate_receipt", args=[visit.pk]),
+            {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
+        )
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertEqual(response.context["unclosed_count"], 0)
+
+    def test_a_patient_still_with_the_doctor_is_not_on_it_yet(self):
+        # In the cabin is not consulted. There is no fee to collect until the
+        # doctor has finished, so listing them would be listing work nobody can
+        # do.
+        visit = make_visit(make_patient(phone="9820092929"), self.doctor,
+                           start=today_at(16))
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN):
+            visit.transition_to(status, by_user=self.receptionist)
+
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertEqual(response.context["unclosed_count"], 0)
