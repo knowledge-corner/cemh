@@ -752,84 +752,119 @@ class TestTheUnclosedWorklist(SignOffTestCase):
         self.assertContains(board, "tab=unclosed")
 
 
-class TestTheSignOffButtonOnTheBoard(SignOffTestCase):
+class TestSigningOffLivesOnTheUnclosedTab(SignOffTestCase):
     """
-    Visible only when the clinic has finished: Stage 3 empty, nothing owed in
-    Stage 4. It is also the receptionist's answer to "has the doctor signed
-    everyone off?" — she does not have to go and ask, because the button
-    appearing is the answer.
+    Not on the board. It was there briefly and moved.
+
+    Signing a day off means having checked what is in it, and a button that
+    closes the day from a screen showing none of that is a button pressed
+    without looking. It sits under the list it depends on.
     """
 
-    def _today(self, hour=10, phone=None, upto=None):
-        # A fixed hour of the day, not an offset from the clock. An offset runs
-        # past midnight when the suite runs in the evening, which moves the
-        # visit off today's board and quietly switches off the very rule under
-        # test.
-        visit = make_visit(
-            make_patient(phone=phone) if phone else make_patient(),
-            self.doctor, start=today_at(hour),
+    def test_the_board_does_not_offer_it(self):
+        body = self.client.get(reverse("reception_home")).content.decode()
+        self.assertNotIn("Today's clinic is finished", body)
+        self.assertNotIn("send the day sheet", body)
+
+    def test_the_tab_survives_the_list_emptying(self):
+        # The moment the button appears is the moment the list is empty, so a
+        # tab that vanished then would take the only way to sign off with it.
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertEqual(response.context["unclosed_count"], 0)
+        self.assertIn("unclosed", [key for key, _ in response.context["tabs"]])
+        self.assertTrue(response.context["can_sign_off"])
+        self.assertContains(response, "Sign off")
+
+    def test_it_is_not_offered_while_something_is_unbilled(self):
+        self._consulted()
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertFalse(response.context["can_sign_off"])
+        self.assertNotContains(response, "Nothing is left open")
+
+    def test_signing_off_from_the_tab_closes_the_day(self):
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        self.client.post(reverse("reception_close_day"),
+                         {"date": self.yesterday.isoformat()})
+        self.assertTrue(DaySignOff.objects.filter(date=self.yesterday).exists())
+        self.assertIsNone(signoff.is_due(now=MID_MORNING()))
+
+
+class TestCheckingTheFeeBeforeSigningOff(SignOffTestCase):
+    """
+    The receptionist verifies the list she is about to close, so she has to be
+    able to fix what she finds — and must not be able to rewrite what a receipt
+    already says.
+    """
+
+    def test_the_list_offers_an_edit(self):
+        visit = self._consulted()
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertContains(
+            response, reverse("reception_edit_charge", args=[visit.pk]),
         )
-        for status in (upto or []):
-            visit.transition_to(status, by_user=self.receptionist)
-        return visit
 
-    def _board(self):
-        return self.client.get(reverse("reception_home"))
-
-    def test_hidden_while_somebody_is_in_a_cabin(self):
-        self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN])
-        response = self._board()
-        self.assertFalse(response.context["can_sign_off_today"])
-        self.assertNotContains(response, "Today's clinic is finished")
-
-    def test_hidden_while_a_consultation_is_still_to_be_billed(self):
-        self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN,
-                          VisitStatus.CONSULTED])
-        self.assertFalse(self._board().context["can_sign_off_today"])
-
-    def test_shown_once_the_cabin_is_empty_and_everything_is_billed(self):
-        visit = self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN,
-                                  VisitStatus.CONSULTED])
-        Charge.objects.create(
-            visit=visit, patient=visit.patient,
-            consultation_fee=Decimal("800"), set_by=self.doctor,
+    def test_an_unpaid_fee_can_be_corrected(self):
+        visit = self._consulted()
+        self.client.post(
+            reverse("reception_edit_charge", args=[visit.pk]),
+            {"consultation_fee": "800", "procedure_fee": "200",
+             "discount": "0", "notes": "Dressing"},
         )
+        visit.charge.refresh_from_db()
+        self.assertEqual(visit.charge.total, Decimal("1000.00"))
+
+    def test_a_paid_fee_cannot_be_changed(self):
+        # Editing what a receipt already says was owed leaves the printed copy
+        # and the record disagreeing, with the patient holding the printed one.
+        visit = self._consulted()
         self.client.post(
             reverse("reception_generate_receipt", args=[visit.pk]),
             {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
         )
-        response = self._board()
-        self.assertTrue(response.context["can_sign_off_today"])
-        self.assertContains(response, "Today's clinic is finished")
+        self.client.post(
+            reverse("reception_edit_charge", args=[visit.pk]),
+            {"consultation_fee": "5000", "procedure_fee": "0",
+             "discount": "0", "notes": ""},
+        )
+        visit.charge.refresh_from_db()
+        self.assertEqual(visit.charge.total, Decimal("800.00"))
 
-    def test_a_booking_nobody_arrived_for_does_not_hold_it_back(self):
-        # Stages 1 and 2 are not checked. Somebody who never turned up is an
-        # ordinary end to a day, and demanding it be cleared first would make
-        # the button unreachable whenever a patient went home.
-        self._today()
-        self.assertTrue(self._board().context["can_sign_off_today"])
+    def test_the_refusal_says_why(self):
+        visit = self._consulted()
+        self.client.post(
+            reverse("reception_generate_receipt", args=[visit.pk]),
+            {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
+        )
+        response = self.client.get(
+            reverse("reception_edit_charge", args=[visit.pk]), follow=True,
+        )
+        self.assertContains(response, "already been paid")
 
-    def test_signing_today_off_does_not_cancel_this_evenings_bookings(self):
-        # The sweep is right for yesterday and quite wrong at four o'clock.
-        later = self._today(hour=17)
-        self.client.post(reverse("reception_close_day"),
-                         {"date": timezone.localdate().isoformat()})
-        later.refresh_from_db()
-        self.assertEqual(later.status, VisitStatus.BOOKED)
-        self.assertTrue(DaySignOff.objects.filter(date=timezone.localdate()).exists())
+    def test_the_correction_is_recorded(self):
+        from audit.models import AccessLog
 
-    def test_signing_today_off_is_refused_while_a_cabin_is_busy(self):
-        # The button is hidden, so reaching here means going round the screen.
-        self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN])
-        self.client.post(reverse("reception_close_day"),
-                         {"date": timezone.localdate().isoformat()})
-        self.assertFalse(DaySignOff.objects.exists())
+        visit = self._consulted()
+        self.client.post(
+            reverse("reception_edit_charge", args=[visit.pk]),
+            {"consultation_fee": "900", "procedure_fee": "0",
+             "discount": "0", "notes": ""},
+        )
+        self.assertTrue(
+            AccessLog.objects.filter(description__contains="Charge corrected").exists()
+        )
 
-    def test_tomorrow_cannot_be_signed_off(self):
-        ahead = timezone.localdate() + timedelta(days=1)
-        self.client.post(reverse("reception_close_day"),
-                         {"date": ahead.isoformat()})
-        self.assertFalse(DaySignOff.objects.exists())
+    def test_generating_the_receipt_is_still_what_closes_it(self):
+        # Editing checks the amount; it does not close anything.
+        visit = self._consulted()
+        self.client.post(
+            reverse("reception_edit_charge", args=[visit.pk]),
+            {"consultation_fee": "900", "procedure_fee": "0",
+             "discount": "0", "notes": ""},
+        )
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONSULTED)
+        self.assertEqual(len(signoff.unclosed_before()), 1)
 
 
 class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):

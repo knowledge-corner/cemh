@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Check the fee — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Check the fee</h1>
+    <p class="page-header__sub">
+      {{ visit.patient.full_name }}
+      &middot; <span class="mono">{{ visit.patient.patient_id }}</span>
+      &middot; {{ visit.doctor.display_name }}
+      &middot; {{ visit.scheduled_start|date:"j M Y, H:i" }}
+    </p>
+  </div>
+  <a class="btn btn--secondary" href="{{ back|default:'/reception/bookings/?tab=unclosed' }}">
+    Back to the list
+  </a>
+</div>
+
+<div class="card page--narrow">
+  <div class="card__body">
+    {% comment %}
+    The receptionist is checking a list she is about to close, so she has to be
+    able to fix what she finds — a procedure the doctor forgot to add, a
+    discount agreed at the desk.
+
+    Reachable only while nothing has been paid. The view refuses a settled
+    charge outright rather than relying on this page not being opened: editing
+    what a receipt already says was owed leaves a printed document and a
+    database row disagreeing, with the patient holding the printed one.
+    {% endcomment %}
+    <p class="faint small" style="margin:0 0 1rem">
+      Nothing has been collected against this visit yet, so the amount can still
+      be corrected. Once a receipt is issued it cannot be changed here.
+    </p>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ back }}">
+
+      <div class="form-grid">
+        {% for field in form %}
+          <div class="field">
+            <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<p class="field__help">{{ field.help_text }}</p>{% endif %}
+            {% for error in field.errors %}
+              <p class="field__error" role="alert">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if form.non_field_errors %}
+        <div class="alert-strip alert-strip--danger" style="margin:1rem 0">
+          <div>{% for error in form.non_field_errors %}{{ error }}{% endfor %}</div>
+        </div>
+      {% endif %}
+
+      <p class="faint small" style="margin:1rem 0 0">
+        Currently {{ clinic_currency }}{{ charge.total }} to collect.
+      </p>
+
+      <div class="form-actions">
+        <button class="btn btn--primary" type="submit">Save the fee</button>
+        <a class="btn btn--secondary"
+           href="{{ back|default:'/reception/bookings/?tab=unclosed' }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

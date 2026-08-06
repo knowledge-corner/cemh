@@ -203,6 +203,7 @@ was.
     the button to do that appears here rather than being somewhere else to go
     and find.
     {% endcomment %}
+    {% if unclosed %}
     <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
       <div>
         <span class="alert-strip__title">
@@ -244,6 +245,15 @@ was.
               </td>
               <td class="text-right nowrap">
                 {% if visit.charge %}
+                  {% comment %}
+                  Check before closing. Nothing has been collected yet, so the
+                  fee can still be corrected — a procedure the doctor forgot,
+                  a discount agreed at the desk. Once a receipt exists the view
+                  refuses it, because changing what a receipt already says was
+                  owed leaves the printed copy and the record disagreeing.
+                  {% endcomment %}
+                  <a class="btn btn--secondary"
+                     href="{% url 'reception_edit_charge' visit.pk %}?next={% url 'reception_bookings' %}%3Ftab%3Dunclosed">Edit</a>
                   <button type="button" class="btn btn--primary"
                           hx-get="{% url 'reception_generate_receipt' visit.pk %}"
                           hx-target="#modal-host" hx-swap="innerHTML">Generate receipt</button>
@@ -269,6 +279,7 @@ was.
           {% endfor %}
         </tbody>
       </table>
+    {% endif %}
     </div>
   {% endif %}
 
@@ -280,11 +291,19 @@ was.
     <div class="alert-strip alert-strip--success" style="margin-top:1rem">
       <div>
         <span class="alert-strip__title">Nothing is left open</span><br>
-        Every earlier appointment is closed.
+        Every appointment has been checked and billed
+        {% if pending_day %}
+          — {{ pending_day|date:"l j F" }} can now be signed off.
+        {% else %}
+          .
+        {% endif %}
         <div style="margin-top:.625rem">
           <form method="post" action="{% url 'reception_close_day' %}">
             {% csrf_token %}
-            <button class="btn btn--primary" type="submit">Sign off and send the day sheet</button>
+            {% if pending_day %}
+              <input type="hidden" name="date" value="{{ pending_day|date:'Y-m-d' }}">
+            {% endif %}
+            <button class="btn btn--primary" type="submit">Sign off</button>
           </form>
         </div>
       </div>

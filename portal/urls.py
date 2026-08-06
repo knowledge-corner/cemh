@@ -78,6 +78,9 @@ urlpatterns = [
     # be recorded twice.
     path("reception/billing/<int:pk>/receipt/", views_reception.generate_receipt,
          name="reception_generate_receipt"),
+    # Correcting a fee before the day is signed off. Refused once paid.
+    path("reception/billing/<int:pk>/edit-charge/",
+         views_reception.edit_charge, name="reception_edit_charge"),
     # A consultation the doctor put no fee on. Without a way to close it the
     # visit blocks the sign-off for ever — see the view.
     path("reception/billing/<int:pk>/close-unpaid/",

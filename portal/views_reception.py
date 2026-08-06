@@ -239,13 +239,7 @@ def _queue_context(request, day=None):
         # the receptionist nothing to act on.
         "unsigned_day": unsigned,
         "unclosed_count": len(unclosed),
-        # Today's clinic is finished: nobody with a doctor, nothing left to
-        # bill. The sign-off button is hidden until this is true rather than
-        # shown and refused — being told off for pressing the only control on
-        # the screen teaches nothing about what is actually outstanding.
-        "can_sign_off_today": (
-            signoff.is_enabled() and not unsigned and signoff.can_close(day)
-        ),
+
         # What still has to happen before the receptionist can go home. Stage 4
         # holds both the unpaid and the paid now, so "still open" counts the
         # money owed rather than the whole column.
@@ -673,8 +667,12 @@ def bookings(request):
     # links straight here, so somebody arriving from it must land on the tab
     # rather than on whichever one happened to be default.
     unclosed = signoff.unclosed_before() if signoff.is_enabled() else []
+    # The tab is also where the day is signed off, so it has to survive the list
+    # emptying — that is the moment the button appears. Without this the last
+    # receipt made the tab vanish and took the only way to sign off with it.
+    pending_day = signoff.is_due() if signoff.is_enabled() else None
     tabs = list(BOOKING_TABS)
-    if unclosed:
+    if unclosed or pending_day:
         tabs.append(UNCLOSED_TAB)
 
     tab = request.GET.get("tab", "upcoming")
@@ -697,6 +695,7 @@ def bookings(request):
         # off. Offered here as well as on the board because this is where the
         # receptionist has just finished the work that makes it possible.
         "can_sign_off": signoff.is_enabled() and not unclosed,
+        "pending_day": pending_day,
         "today_rows": today_rows,
         "ahead_rows": ahead_rows,
         "upcoming_count": len(today_rows) + len(ahead_rows),
@@ -1095,6 +1094,72 @@ def generate_receipt(request, pk):
         },
         request=request,
     ))
+
+
+@role_required(Role.RECEPTIONIST)
+def edit_charge(request, pk):
+    """
+    Check the fee, and correct it, before the day is signed off.
+
+    The receptionist verifies the list she is about to close, so she needs to
+    be able to fix what she finds — a procedure the doctor forgot to add, a
+    discount agreed at the desk. Small corrections, on the screen where the
+    checking happens.
+
+    **Refused once money has been taken.** Editing a charge that has been paid
+    against would silently change what a receipt already says was owed, leaving
+    a printed document and a database row that disagree — and the patient
+    holding the printed one. A settled bill that is genuinely wrong is a refund
+    and a fresh charge, which is a decision somebody makes rather than a number
+    quietly retyped.
+    """
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor", "charge"), pk=pk
+    )
+    charge = getattr(visit, "charge", None)
+    back = request.POST.get("next") or request.GET.get("next") or None
+
+    if charge is None:
+        messages.error(
+            request,
+            f"{visit.doctor.display_name} has not set a fee for this visit, so "
+            f"there is nothing to edit.",
+        )
+        return redirect(back or "reception_bookings")
+
+    if charge.amount_paid > 0:
+        messages.error(
+            request,
+            f"{visit.patient.full_name}'s bill has already been paid. A receipt "
+            f"has been issued for it, so the amount cannot be changed here.",
+        )
+        return redirect(back or "reception_bookings")
+
+    if request.method == "POST":
+        form = clinic_forms.ChargeForm(request.POST, instance=charge)
+        if form.is_valid():
+            was = charge.total
+            form.save()
+            charge.refresh_from_db()
+            record(
+                request, AuditAction.UPDATE, obj=charge, patient=visit.patient,
+                description=f"Charge corrected at the desk: {was} -> {charge.total}",
+            )
+            messages.success(
+                request,
+                f"{visit.patient.full_name}'s fee is now "
+                f"{settings.CLINIC.CURRENCY_SYMBOL}{charge.total}.",
+            )
+            return redirect(back or "reception_bookings")
+    else:
+        form = clinic_forms.ChargeForm(instance=charge)
+
+    return render(request, "portal/reception/edit_charge.html", {
+        "visit": visit,
+        "charge": charge,
+        "form": form,
+        "back": back,
+    })
 
 
 @role_required(Role.RECEPTIONIST)
