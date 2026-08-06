@@ -28,7 +28,7 @@ from django.utils import timezone
 
 from accounts.models import Role, User
 from accounts.permissions import role_required
-from appointments import scheduling
+from appointments import scheduling, signoff
 from appointments.models import (
     ClinicHoliday, DoctorLeave, DoctorSchedule, InvalidTransition,
     ScheduleOverride, Visit, VisitStatus,
@@ -198,6 +198,12 @@ def _queue_context(request, day=None):
     # and it makes today's board lie about who the doctor is seeing.
     stale = list(Visit.objects.unfinished_before(day))
 
+    # KAN-49. Yesterday, if nobody signed it off. Everything else on this board
+    # is about today; this is the one thing that has to interrupt it, because
+    # an unsigned day means money owed that nobody is looking for any more.
+    unsigned = signoff.is_due(day)
+    unsigned_unbilled = signoff.unbilled(unsigned) if unsigned else []
+
     return {
         "day": day,
         "columns": columns,
@@ -217,6 +223,11 @@ def _queue_context(request, day=None):
         "can_work_queue": request.user.role == Role.RECEPTIONIST or request.user.is_superuser,
         "stale": stale,
         "stale_count": len(stale),
+        # KAN-49: the previous day, if it was never signed off, and the visits
+        # from it that still owe money. Both are needed — the date alone gives
+        # the receptionist nothing to act on.
+        "unsigned_day": unsigned,
+        "unsigned_unbilled": unsigned_unbilled,
         # What still has to happen before the receptionist can go home. Stage 4
         # holds both the unpaid and the paid now, so "still open" counts the
         # money owed rather than the whole column.
@@ -247,55 +258,88 @@ def queue_board(request):
 @role_required(Role.RECEPTIONIST)
 def close_day(request):
     """
-    Clear anything left open from a previous day.
+    Sign a clinic day off: sweep what is left, send the report, record it.
 
-    Every stale visit is closed through the same state machine as a live one, so
-    the trail says what happened: a patient who never arrived becomes a no-show,
-    and one who was seen but never billed is left alone, because money still has
-    to be collected and that is a real task rather than an untidy row.
+    KAN-49 asks for "no checkout button — just the bill form and the sign-off
+    email", and KAN-48 for the report itself. They are one action here because
+    the next morning has to ask one question: *was yesterday signed off?* Two
+    separate buttons would give two answers and no way to know which one the
+    receptionist forgot.
+
+    The date can be given, so the previous day can be signed off from the alert
+    that is blocking today. Without one it closes yesterday, which is what the
+    button on the board means.
     """
     if request.method != "POST":
         return redirect("reception_home")
 
-    closed, skipped = 0, 0
-    for visit in Visit.objects.unfinished_before():
-        # A booking nobody ever confirmed lapsed; one the patient confirmed and
-        # then missed is a no-show, and the difference matters when the clinic
-        # later asks how often people fail to turn up. The state machine draws
-        # the same distinction, so no-show is only reachable from confirmed.
-        target = {
-            VisitStatus.BOOKED: VisitStatus.CANCELLED,
-            VisitStatus.CONFIRMED: VisitStatus.NO_SHOW,
-            VisitStatus.ARRIVED: VisitStatus.CANCELLED,
-            VisitStatus.IN_CABIN: VisitStatus.CONSULTED,
-        }.get(visit.status)
-        if target is None:
-            skipped += 1
-            continue
-        try:
-            visit.transition_to(
-                target, by_user=request.user, note="Closed by the end-of-day sweep",
-            )
-        except InvalidTransition:
-            skipped += 1
-        else:
-            closed += 1
-            record(
-                request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
-                description=f"End-of-day sweep closed visit as {visit.get_status_display()}",
-            )
+    # Without a date, the oldest day still open — not simply yesterday. A visit
+    # left over from the day before that would otherwise sit there while the
+    # button above it reported success every time it was pressed, which is the
+    # failure KAN-49 is about wearing a different hat.
+    day = _as_date(request.POST.get("date"))
+    if day is None:
+        oldest = Visit.objects.unfinished_before().first()
+        day = (
+            timezone.localtime(oldest.scheduled_start).date() if oldest
+            else timezone.localdate() - timedelta(days=1)
+        )
 
-    if closed:
-        messages.success(request, f"Closed {closed} visit{'' if closed == 1 else 's'} "
-                                  f"left open from previous days.")
-    if skipped:
+    if day >= timezone.localdate():
+        # Signing off today would sweep patients who are still in the building.
+        messages.error(
+            request,
+            "A day can only be signed off once it is over. Today's clinic is "
+            "still running.",
+        )
+        return redirect("reception_home")
+
+    outstanding = signoff.unbilled(day)
+    if outstanding:
+        # KAN-49 AC: the unbilled ones must be cleared first. Refusing here
+        # rather than sweeping them is the whole point — a consultation swept
+        # away is the only record that money is owed, gone.
+        names = ", ".join(
+            f"{v.patient.full_name} ({v.patient.patient_id})" for v in outstanding[:5]
+        )
+        messages.error(
+            request,
+            f"{len(outstanding)} consultation"
+            f"{'' if len(outstanding) == 1 else 's'} from {day:%d %b} still "
+            f"{'has' if len(outstanding) == 1 else 'have'} to be billed before "
+            f"the day can be signed off: {names}"
+            + (f" and {len(outstanding) - 5} more." if len(outstanding) > 5 else "."),
+        )
+        return redirect("reception_home")
+
+    entry, created = signoff.sign_off(day, by_user=request.user)
+
+    if not created:
+        messages.info(request, f"{day:%d %b} was already signed off.")
+        return redirect("reception_home")
+
+    record(
+        request, AuditAction.UPDATE, obj=entry,
+        description=f"Clinic day {day:%Y-%m-%d} signed off",
+    )
+
+    if entry.delivery_error:
+        # The day IS closed. Saying so first matters: a receptionist told only
+        # that the email failed will press the button again, and the second
+        # press reports "already signed off", which reads as the first having
+        # done nothing.
         messages.warning(
             request,
-            f"{skipped} still need attention — a consultation that has not been "
-            f"billed cannot simply be swept away.",
+            f"{day:%d %b} is signed off, but the report could not be sent — "
+            f"{entry.delivery_error}",
         )
-    if not closed and not skipped:
-        messages.info(request, "Nothing was left open. The board is clear.")
+    else:
+        messages.success(
+            request,
+            f"{day:%d %b} signed off. {entry.billed_count} billed, "
+            f"{entry.cancelled_count} cancelled, {entry.no_show_count} no-show"
+            + (f" — report sent to {entry.sent_to}." if entry.sent_to else "."),
+        )
     return redirect("reception_home")
 
 
@@ -316,10 +360,27 @@ def move_visit(request, pk, to_status):
 
     moved = False
     if request.method == "POST":
-        # Two receptionists clicking Confirm on the same card is not an error —
-        # they both did the right thing, and one of them simply got there
-        # second. Say so plainly rather than reporting a failure.
-        if visit.status == to_status:
+        # KAN-49. Nothing new is marked arrived while a previous day is still
+        # unsigned. Starting today's queue on top of an unclosed yesterday is
+        # how the unbilled consultations stop being looked for at all — the
+        # board fills with live work and they scroll away.
+        #
+        # Only arrivals are blocked. Cancelling, and moving a patient already
+        # in the building along, must keep working: the people held up by this
+        # are standing in the waiting room, and refusing to let the doctor see
+        # them would make a paperwork problem into a clinical one.
+        blocked = signoff.is_due() if to_status == VisitStatus.ARRIVED else None
+        if blocked is not None:
+            messages.error(
+                request,
+                f"{blocked:%d %b} has not been signed off yet. Clear anything "
+                f"still to be billed from that day and send the sign-off, then "
+                f"carry on with today.",
+            )
+        elif visit.status == to_status:
+            # Two receptionists clicking the same card is not an error — they
+            # both did the right thing, and one of them simply got there
+            # second. Say so plainly rather than reporting a failure.
             messages.info(
                 request,
                 f"{visit.patient.full_name} was already "

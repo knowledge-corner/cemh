@@ -155,6 +155,16 @@ WORKING_DAYS_DISPLAY = os.environ.get("WORKING_DAYS_DISPLAY", "Open all week")
 CURRENCY_SYMBOL = os.environ.get("CURRENCY_SYMBOL", "₹")
 DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
 
+# Who receives the end-of-day sheet (KAN-48). Comma-separated; falls back to
+# CLINIC_EMAIL when empty.
+#
+# **Deliberately empty by default.** The report carries patient names against
+# amounts, so a guessed address would post patient data to whoever happens to
+# own it. Left unset, the day still signs off — the clinic is never blocked by
+# this — and the record says the report was not sent, so it is visible rather
+# than silently lost.
+SIGN_OFF_EMAILS = os.environ.get("SIGN_OFF_EMAILS", "")
+
 # ── Clinical defaults ─────────────────────────────────────────────────────────
 
 # A patient is offered growth charts below this age, in years.

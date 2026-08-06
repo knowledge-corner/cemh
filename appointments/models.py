@@ -11,6 +11,8 @@ Every state change is recorded, so "when did this patient actually arrive" and
 what.
 """
 
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeBoundary, RangeOperators
@@ -694,3 +696,44 @@ class DoctorLeave(models.Model):
             .order_by("scheduled_start")
         )
         return [v for v in candidates if self.covers(v.scheduled_start, v.scheduled_end)]
+
+
+class DaySignOff(models.Model):
+    """
+    The receptionist's declaration that a clinic day is finished (KAN-48, KAN-49).
+
+    One row per date, and its existence is the whole point: KAN-49 asks for an
+    alert "only if the previous day's sign-off wasn't sent", which needs
+    somewhere to record that it was. Deriving it from the visits does not work —
+    a day on which nobody was billed and a day nobody closed look identical from
+    the visit table, and only one of them is a problem.
+
+    The counts are stored rather than recomputed. They are what was true when
+    the day was signed off, and a correction made afterwards should not silently
+    rewrite a figure somebody has already sent to the accountant.
+    """
+
+    date = models.DateField(unique=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="day_sign_offs",
+    )
+    sent_to = models.CharField(max_length=320, blank=True)
+
+    billed_count = models.PositiveIntegerField(default=0)
+    cancelled_count = models.PositiveIntegerField(default=0)
+    no_show_count = models.PositiveIntegerField(default=0)
+    collected = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+
+    #: Set when the report could not be emailed. The day is still signed off —
+    #: refusing to close a clinic day because a mail server was down would
+    #: block the next morning's work over something nobody at the desk can fix.
+    delivery_error = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        ordering = ["-date"]
+        verbose_name = "day sign-off"
+
+    def __str__(self):
+        return f"Sign-off for {self.date:%d %b %Y}"

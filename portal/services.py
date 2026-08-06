@@ -317,4 +317,18 @@ def todays_queue(doctor):
         VisitStatus.CONSULTED: 4,
         VisitStatus.BILLED: 5,
     }
-    return sorted(visits, key=lambda v: (rank.get(v.status, 9), v.scheduled_start))
+    ordered = sorted(visits, key=lambda v: (rank.get(v.status, 9), v.scheduled_start))
+
+    # KAN-49: grey the Send button out while somebody is still in the cabin.
+    #
+    # The rule itself lives in Visit.transition_to and is enforced there; this
+    # only stops the doctor being offered a button that will refuse them. A
+    # doctor who has forgotten to finish the last consultation reads a live
+    # "Send in" that errors as the system being broken — a greyed one naming
+    # who is still in there reads as the thing they have left to do, which is
+    # what KAN-49 means by the missed completion persisting.
+    occupied = next((v for v in ordered if v.status == VisitStatus.IN_CABIN), None)
+    for visit in ordered:
+        visit.send_blocked_by = occupied if occupied and occupied.pk != visit.pk else None
+
+    return ordered

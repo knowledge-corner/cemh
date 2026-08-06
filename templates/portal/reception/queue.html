@@ -46,7 +46,77 @@ overnight makes today's board lie about who the doctor is with, so this sits at
 the top of the screen until it is dealt with rather than in a report nobody
 opens.
 {% endcomment %}
-{% if stale and can_work_queue %}
+{% if unsigned_day and can_work_queue %}
+  {% comment %}
+  KAN-49. Yesterday was never signed off, so today is held until it is.
+
+  Deliberately the loudest thing on the screen and deliberately blocking:
+  everything else here is about today, and an unsigned day means consultations
+  owed money that nobody is looking for any more. Left as a gentle notice it
+  would be scrolled past every morning until the money was written off by
+  forgetting.
+
+  Marking patients arrived is refused while this is up — and only that. The
+  patients already in the building keep moving, because turning a paperwork
+  problem into people not being seen would be a worse bargain than the one this
+  is trying to make.
+  {% endcomment %}
+  <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">
+        {{ unsigned_day|date:"l j F" }} has not been signed off
+      </span><br>
+      Today's arrivals are on hold until it is.
+
+      {% if unsigned_unbilled %}
+        <p style="margin:.5rem 0 0">
+          {{ unsigned_unbilled|length }} consultation{{ unsigned_unbilled|pluralize }}
+          from that day still to be billed — take the fee on each, then send the
+          sign-off:
+        </p>
+        <ul class="unsigned__list">
+          {% for visit in unsigned_unbilled %}
+            <li>
+              <span class="mono">{{ visit.scheduled_start|date:"H:i" }}</span>
+              {{ visit.patient.full_name }}
+              (<span class="mono">{{ visit.patient.patient_id }}</span>)
+              &middot; {{ visit.doctor.display_name }}
+              {% if visit.charge %}
+                &middot; <strong>{{ clinic_currency }}{{ visit.charge.balance }}</strong>
+              {% endif %}
+              <button type="button" class="btn btn--primary"
+                      hx-get="{% url 'reception_generate_receipt' visit.pk %}"
+                      hx-target="#modal-host" hx-swap="innerHTML">Generate receipt</button>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p style="margin:.5rem 0 0">
+          Nothing is left to bill. Send the sign-off and carry on.
+        </p>
+      {% endif %}
+
+      <div style="margin-top:.625rem">
+        <form method="post" action="{% url 'reception_close_day' %}">
+          {% csrf_token %}
+          <input type="hidden" name="date" value="{{ unsigned_day|date:'Y-m-d' }}">
+          <button class="btn {% if unsigned_unbilled %}btn--secondary{% else %}btn--primary{% endif %}"
+                  type="submit"
+                  {% if unsigned_unbilled %}title="Bill the consultations above first"{% endif %}>
+            Sign off {{ unsigned_day|date:"j M" }} and send the day sheet
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% comment %}
+Anything else left open from an earlier day — a visit from before yesterday
+that the sign-off above does not cover. Rarer, and not blocking, because by
+this point somebody has already been told about it at least once.
+{% endcomment %}
+{% if stale and can_work_queue and not unsigned_day %}
   <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
     <div>
       <span class="alert-strip__title">
@@ -61,6 +131,8 @@ opens.
       <div style="margin-top:.625rem">
         <form method="post" action="{% url 'reception_close_day' %}">
           {% csrf_token %}
+          <input type="hidden" name="date"
+                 value="{{ stale.0.scheduled_start|date:'Y-m-d' }}">
           <button class="btn btn--secondary" type="submit">Close them off</button>
         </form>
       </div>

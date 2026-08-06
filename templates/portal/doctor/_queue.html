@@ -44,15 +44,25 @@ empty list with somebody already waiting outside the door.
               Reception knows who has arrived; only the doctor knows they are
               ready, and a patient sent in before then sits in an empty cabin.
 
-              The one-per-cabin rule is enforced in Visit.transition_to, so a
-              second send is refused there rather than re-checked here.
+              The one-per-cabin rule is enforced in Visit.transition_to. Since
+              KAN-49 it is also shown: a live button that then refuses reads as
+              a broken screen, while a greyed one naming who is still in the
+              cabin reads as the consultation the doctor has not finished —
+              which is the thing they actually have to do.
               {% endcomment %}
               {% if visit.status == "ARRIVED" %}
-                <form method="post" action="{% url 'doctor_send_for_patient' visit.pk %}"
-                      style="display:inline">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn--primary">Send in</button>
-                </form>
+                {% if visit.send_blocked_by %}
+                  <button type="button" class="btn btn--primary" disabled
+                          title="Finish with {{ visit.send_blocked_by.patient.full_name }} first — they are still in the cabin.">
+                    Send in
+                  </button>
+                {% else %}
+                  <form method="post" action="{% url 'doctor_send_for_patient' visit.pk %}"
+                        style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn--primary">Send in</button>
+                  </form>
+                {% endif %}
               {% endif %}
               <a class="btn btn--secondary" href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open</a>
             </td>
