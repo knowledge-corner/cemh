@@ -337,3 +337,46 @@ class TestTheLaunchersSurviveUpdatingThemselves(SimpleTestCase):
         # that dropped it would leave a window waiting for a keypress at login.
         restart = self.windows.index('start "" "%~f0"')
         self.assertIn("%*", self.windows[restart:restart + 40])
+
+
+class TestTheLauncherPrintsTheAddressForAPhone(SimpleTestCase):
+    """
+    The clinic's phones and tablets reach the system over the surgery Wi-Fi, at
+    an address the launcher can work out and the receptionist cannot.
+
+    It is also not a fixed address. The router hands out a new one every so
+    often, so "it worked last week" is the commonest reason the phone stops
+    loading — which makes printing it every morning worth more than writing it
+    down once.
+    """
+
+    def setUp(self):
+        self.windows = (REPO / "START-CLINIC.bat").read_text()
+        self.mac = (REPO / "START-CLINIC.command").read_text()
+
+    def test_both_launchers_offer_it(self):
+        for name, body in (("Windows", self.windows), ("Mac", self.mac)):
+            with self.subTest(launcher=name):
+                self.assertIn("From a phone on the same Wi-Fi", body)
+
+    def test_it_asks_by_default_route_not_by_reading_every_address(self):
+        # These machines have several IPv4 addresses. Docker and WSL each add a
+        # virtual adapter — 172.29.80.1 and the like — that no phone can reach,
+        # and printing one of those sends somebody chasing a network fault that
+        # does not exist. Only the real one carries a default gateway.
+        self.assertIn("IPv4DefaultGateway", self.windows)
+        self.assertIn("route -n get default", self.mac)
+
+    def test_neither_launcher_fails_when_it_cannot_work_the_address_out(self):
+        # PowerShell can be blocked by policy, and route/ipconfig are not on
+        # every machine. Missing the extra line is a smaller problem than a
+        # launcher that stops before opening the clinic.
+        self.assertIn("if defined LANIP", self.windows)
+        self.assertIn('if [ -n "$lan_ip" ]', self.mac)
+
+    def test_the_settings_actually_accept_such_a_host(self):
+        # The launcher printing an address Django then refuses with a bare 400
+        # is worse than not printing one: it looks like the phone's fault.
+        from config.settings import dev
+
+        self.assertIn("*", dev.ALLOWED_HOSTS)

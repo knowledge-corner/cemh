@@ -170,11 +170,30 @@ echo   Ready.
 
 :open
 start "" http://localhost:8000/
+
+REM --- The address a phone on the same Wi-Fi should use ---------------
+REM  Printed rather than left to be looked up, because it is not fixed:
+REM  the router hands out a new one every so often, and "it worked last
+REM  week" is the commonest reason the phone stops loading.
+REM
+REM  Asked for by default gateway rather than read off ipconfig, because
+REM  this machine has more than one IPv4 address. Docker and WSL each add
+REM  a virtual adapter - 172.29.80.1 and the like - which no phone can
+REM  reach, and those have no default gateway. The real Wi-Fi one does.
+REM
+REM  Entirely optional. If PowerShell is blocked, or the command finds
+REM  nothing, the loop body never runs and the banner is simply shorter.
+set "LANIP="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-NetIPConfiguration ^| Where-Object { $_.IPv4DefaultGateway -ne $null -and $_.NetAdapter.Status -eq 'Up' } ^| Select-Object -First 1).IPv4Address.IPAddress" 2^>nul`) do set "LANIP=%%i"
+
 echo.
 echo   ================================================
 echo      The clinic system is running.
 echo.
 echo      Address:   http://localhost:8000
+if defined LANIP echo.
+if defined LANIP echo      From a phone on the same Wi-Fi:
+if defined LANIP echo         http://%LANIP%:8000
 echo.
 echo      Reception: reception / clinicdemo2026
 echo      Doctor:    vrushali / clinicdemo2026

@@ -141,11 +141,33 @@ main() {
   # open on macOS, xdg-open on Linux — whichever exists.
   (open http://localhost:8000/ 2>/dev/null || xdg-open http://localhost:8000/ 2>/dev/null) &
 
+  # The address a phone on the same Wi-Fi should use. Printed rather than
+  # left to be looked up, because it is not fixed: the router hands out a
+  # new one every so often, and "it worked last week" is the commonest
+  # reason the phone stops loading.
+  #
+  # Asked of whichever interface carries the default route, so Docker's own
+  # virtual adapters — which no phone can reach — are never offered in its
+  # place. Optional: if none of it works, the banner is simply shorter.
+  lan_ip=""
+  if command -v route >/dev/null 2>&1 && command -v ipconfig >/dev/null 2>&1; then
+    iface=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')
+    [ -n "$iface" ] && lan_ip=$(ipconfig getifaddr "$iface" 2>/dev/null)
+  fi
+  if [ -z "$lan_ip" ]; then
+    lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')      # Linux
+  fi
+
   echo ""
   echo "  ================================================"
   echo "     The clinic system is running."
   echo ""
   echo "     Address:   http://localhost:8000"
+  if [ -n "$lan_ip" ]; then
+    echo ""
+    echo "     From a phone on the same Wi-Fi:"
+    echo "        http://${lan_ip}:8000"
+  fi
   echo ""
   echo "     Reception: reception / clinicdemo2026"
   echo "     Doctor:    vrushali / clinicdemo2026"
