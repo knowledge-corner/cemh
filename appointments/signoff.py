@@ -149,6 +149,60 @@ def is_due(day=None, now=None):
     return yesterday
 
 
+def auto_cancel_stale(now=None):
+    """
+    Cancel anything from a previous day that was never marked arrived.
+
+    The clinic's rule: a patient who did not turn up needs nothing pressed. So
+    after five in the morning the previous days' unarrived bookings close
+    themselves, and the receptionist starts the day with a board showing only
+    today.
+
+    Not a scheduled job, because there is no scheduler here and adding one to a
+    clinic laptop is adding something that can be quietly not running —
+    discovered the month nothing had been cancelled. It runs on the first
+    reception page load after five instead, which is the same moment anybody
+    would have noticed, and is cheap when there is nothing to do.
+
+    A consultation is never touched, arrived or not. Money owed is a task, and
+    this is the function whose whole job is closing things — exactly where that
+    rule is easiest to lose.
+
+    Returns how many were closed.
+    """
+    if not is_enabled():
+        return 0
+
+    now = now or timezone.localtime()
+    if now.hour < SWEEP_AFTER_HOUR:
+        # Still tonight. An evening list running past midnight would otherwise
+        # have its waiting patients cancelled out from under it.
+        return 0
+
+    stale = Visit.objects.filter(
+        scheduled_start__date__lt=now.date(),
+        status__in=(VisitStatus.BOOKED, VisitStatus.CONFIRMED),
+    )
+    closed = 0
+    for visit in stale:
+        # Booked-but-never-confirmed lapsed; confirmed-and-missed is a no-show.
+        # Both are "not arrived", and the day sheet reports them separately
+        # because the clinic asked for a no-show sheet — one bucket would leave
+        # that sheet permanently empty.
+        target = SWEEP_TARGETS[visit.status]
+        try:
+            visit.transition_to(
+                target, note="Not marked arrived — closed automatically",
+            )
+        except InvalidTransition:
+            logger.warning("Could not auto-close visit %s", visit.pk)
+        else:
+            closed += 1
+    if closed:
+        logger.info("Auto-closed %s unarrived visit(s) from previous days", closed)
+    return closed
+
+
 def unclosed_before(day=None):
     """
     Every appointment from before ``day`` that is not closed yet.

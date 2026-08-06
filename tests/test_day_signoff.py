@@ -295,7 +295,7 @@ class TestTheNextMorningIsHeldUp(SignOffTestCase):
         self._visit()
         today = make_visit(
             make_patient(phone="9820099999"), self.doctor,
-            start=timezone.now() + timedelta(hours=2),
+            start=today_at(15),
         )
         self.client.post(
             reverse("reception_move_visit", args=[today.pk, "ARRIVED"]),
@@ -308,7 +308,7 @@ class TestTheNextMorningIsHeldUp(SignOffTestCase):
         self._visit()
         today = make_visit(
             make_patient(phone="9820099999"), self.doctor,
-            start=timezone.now() + timedelta(hours=2),
+            start=today_at(15),
         )
         response = self.client.post(
             reverse("reception_move_visit", args=[today.pk, "ARRIVED"]),
@@ -323,7 +323,7 @@ class TestTheNextMorningIsHeldUp(SignOffTestCase):
         self._visit()
         today = make_visit(
             make_patient(phone="9820099999"), self.doctor,
-            start=timezone.now() + timedelta(hours=2),
+            start=today_at(15),
         )
         self.client.post(
             reverse("reception_move_visit", args=[today.pk, "CANCELLED"]),
@@ -336,7 +336,7 @@ class TestTheNextMorningIsHeldUp(SignOffTestCase):
         self._visit()
         today = make_visit(
             make_patient(phone="9820099999"), self.doctor,
-            start=timezone.now() + timedelta(hours=2),
+            start=today_at(15),
         )
         self.client.post(reverse("reception_close_day"),
                          {"date": self.yesterday.isoformat()})
@@ -396,12 +396,14 @@ class TestTheSendButtonWaitsForTheCabin(TestCase):
     def setUp(self):
         self.doctor = make_doctor()
         self.receptionist = make_receptionist()
+        # Fixed hours of the day, not offsets from the clock: an offset run in
+        # the evening lands tomorrow, which takes the visit off today's queue
+        # and switches off the one-per-cabin rule under test.
         self.first = make_visit(
-            make_patient(), self.doctor, start=timezone.now() + timedelta(hours=1),
+            make_patient(), self.doctor, start=today_at(9),
         )
         self.second = make_visit(
-            make_patient(phone="9820088888"), self.doctor,
-            start=timezone.now() + timedelta(hours=3),
+            make_patient(phone="9820088888"), self.doctor, start=today_at(11),
         )
         for visit in (self.first, self.second):
             visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
@@ -521,7 +523,7 @@ class TestSignOffCanBeSwitchedOff(TestCase):
         # still refusing. Nothing would explain the refusal.
         today = make_visit(
             make_patient(phone="9820077777"), self.doctor,
-            start=timezone.now() + timedelta(hours=2),
+            start=today_at(15),
         )
         self.client.post(
             reverse("reception_move_visit", args=[today.pk, "ARRIVED"]),
@@ -861,3 +863,94 @@ class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):
         self.client.post(reverse("reception_close_day"),
                          {"date": self.yesterday.isoformat()})
         self.assertTrue(DaySignOff.objects.filter(date=self.yesterday).exists())
+
+
+class TestUnarrivedAppointmentsCloseThemselves(SignOffTestCase):
+    """
+    The clinic's rule: a patient who did not turn up needs nothing pressed.
+
+    Cancel is gone from the Stage 1 card, so this is the only thing that clears
+    them — which makes "it must not touch a consultation" matter more here than
+    anywhere else. This is the function whose whole job is closing things, and
+    an unbilled consultation swept away is the money nobody looks for again.
+    """
+
+    def test_a_booking_nobody_arrived_for_is_cancelled(self):
+        visit = self._visit()
+        signoff.auto_cancel_stale(now=MID_MORNING())
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CANCELLED)
+
+    def test_a_confirmed_booking_the_patient_missed_is_a_no_show(self):
+        # Both are "not arrived". They are reported separately because the day
+        # sheet has a no-show tab, which one bucket would leave always empty.
+        visit = self._visit(upto=[VisitStatus.CONFIRMED])
+        signoff.auto_cancel_stale(now=MID_MORNING())
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.NO_SHOW)
+
+    def test_nothing_happens_before_five_in_the_morning(self):
+        # An evening list running past midnight would otherwise have its
+        # waiting patients cancelled out from under it.
+        visit = self._visit()
+        four_am = timezone.localtime().replace(hour=4, minute=0)
+        self.assertEqual(signoff.auto_cancel_stale(now=four_am), 0)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.BOOKED)
+
+    def test_an_unbilled_consultation_is_never_touched(self):
+        visit = self._consulted()
+        signoff.auto_cancel_stale(now=MID_MORNING())
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONSULTED)
+
+    def test_todays_bookings_are_left_alone(self):
+        today = make_visit(
+            make_patient(phone="9820045454"), self.doctor, start=today_at(15),
+        )
+        signoff.auto_cancel_stale(now=MID_MORNING())
+        today.refresh_from_db()
+        self.assertEqual(today.status, VisitStatus.BOOKED)
+
+    def test_opening_the_board_is_what_triggers_it(self):
+        visit = self._visit()
+        self.client.get(reverse("reception_home"))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CANCELLED)
+
+    def test_the_trail_says_why(self):
+        visit = self._visit()
+        signoff.auto_cancel_stale(now=MID_MORNING())
+        note = visit.status_events.latest("created_at").note
+        self.assertIn("not marked arrived", note.lower())
+
+    def test_it_is_cheap_to_repeat(self):
+        self._visit()
+        self.assertEqual(signoff.auto_cancel_stale(now=MID_MORNING()), 1)
+        self.assertEqual(signoff.auto_cancel_stale(now=MID_MORNING()), 0)
+
+
+class TestTheCancelButtonIsGoneFromTheCard(SignOffTestCase):
+    """
+    It sat one button from Mark arrived, on the screen used most under
+    pressure, and took no reason. Cancelling now happens on the booking itself,
+    where a reason is asked for and recorded.
+    """
+
+    def test_the_stage_one_card_offers_only_mark_arrived(self):
+        make_visit(make_patient(phone="9820067676"), self.doctor, start=today_at(15))
+        body = self.client.get(reverse("reception_home")).content.decode()
+        self.assertIn("Mark arrived", body)
+        self.assertNotIn(">Cancel<", body)
+
+    def test_a_booking_can_still_be_cancelled_with_a_reason(self):
+        # The capability must not have gone with the button.
+        visit = make_visit(
+            make_patient(phone="9820078787"), self.doctor, start=today_at(16),
+        )
+        self.client.post(
+            reverse("reception_edit_booking", args=[visit.pk]),
+            {"action": "cancel", "reason": "Patient rang to cancel"},
+        )
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CANCELLED)

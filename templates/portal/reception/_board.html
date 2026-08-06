@@ -89,13 +89,17 @@ to be readable at a glance. They stay on the Bookings screen and in the record.
               {% if not can_work_queue %}
               {% elif visit.status == "BOOKED" or visit.status == "CONFIRMED" %}
                 {% comment %}
-                Stage 1 carries two actions and no more. The confirming telephone
-                call is gone, so a booking and a confirmed booking are the same
-                thing to the person at the desk: the patient is either here or
-                they are not.
+                One action. The patient is either here or they are not, and if
+                they are not, nothing needs pressing: anything still unarrived
+                is cancelled automatically after five the next morning.
+
+                Cancel is gone from the card deliberately. It sat next to Mark
+                arrived, one button apart, on the screen used most under
+                pressure — and it took a reason nobody could give from here. A
+                patient who rings to cancel is cancelled from the booking
+                itself, on Bookings, where the reason is asked for and recorded.
                 {% endcomment %}
                 {% include "portal/reception/_move_button.html" with visit=visit to="ARRIVED" label="Mark arrived" primary=1 %}
-                {% include "portal/reception/_move_button.html" with visit=visit to="CANCELLED" label="Cancel" %}
               {% elif visit.status == "ARRIVED" %}
                 {% comment %}
                 The doctor calls the next patient in, not reception. Reception

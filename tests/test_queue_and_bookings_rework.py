@@ -100,10 +100,16 @@ class TestStageOneActions(TestCase):
     def _body(self):
         return self.client.get(reverse("reception_home")).content.decode()
 
-    def test_mark_arrived_and_cancel_are_offered(self):
+    def test_only_mark_arrived_is_offered(self):
+        # Superseded. Stage 1 carried Mark arrived and Cancel; the clinic asked
+        # for Cancel to go. It sat one button from Mark arrived on the screen
+        # used most under pressure, and took no reason. Anything unarrived is
+        # now closed automatically after five the next morning, and a patient
+        # who rings to cancel is cancelled from the booking itself — where a
+        # reason is asked for. See tests/test_day_signoff.py.
         body = self._body()
         self.assertIn("Mark arrived", body)
-        self.assertIn(">Cancel<", body)
+        self.assertNotIn(">Cancel<", body)
 
     def test_the_confirm_by_phone_action_is_gone(self):
         self.assertNotIn("Confirmed by phone", self._body())

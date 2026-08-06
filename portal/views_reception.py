@@ -95,6 +95,14 @@ def _queue_context(request, day=None):
     """
     day = day or timezone.localdate()
 
+    # Anything from a previous day that was never marked arrived closes itself
+    # after five in the morning. Done here rather than by a scheduled job: there
+    # is no scheduler on a clinic laptop, and one more thing that can be quietly
+    # not running is discovered the month nothing was cancelled. This is the
+    # first thing anybody opens, so it is the same moment they would have
+    # noticed anyway.
+    signoff.auto_cancel_stale()
+
     visits = (
         Visit.objects.filter(scheduled_start__date=day)
         .with_related()
