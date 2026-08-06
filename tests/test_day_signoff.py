@@ -26,7 +26,9 @@ from appointments.models import DaySignOff, Visit, VisitStatus
 from billing.models import Charge, Payment
 from portal import services
 
-from .factories import make_doctor, make_patient, make_receptionist, make_visit
+from .factories import (
+    make_doctor, make_patient, make_receptionist, make_visit, today_at,
+)
 
 
 #: What config/clinic.py ships with. Read rather than repeated, so a clinic
@@ -278,11 +280,16 @@ class TestTheNextMorningIsHeldUp(SignOffTestCase):
         response = self.client.get(reverse("reception_home"))
         self.assertContains(response, "has not been signed off")
 
-    def test_the_board_names_what_is_left_to_bill(self):
-        visit = self._consulted()
+    def test_the_board_counts_what_is_left_and_links_to_the_list(self):
+        # Superseded. The alert used to list the patients and put a receipt
+        # button on each, inside a warning strip on a board that reloads every
+        # thirty seconds. The clinic asked for the list to live under All
+        # bookings instead, so the alert now says how many and sends her there.
+        self._consulted()
         response = self.client.get(reverse("reception_home"))
-        self.assertContains(response, visit.patient.patient_id)
-        self.assertContains(response, "still to be billed")
+        self.assertContains(response, "still to close")
+        self.assertContains(response, "Show all unclosed appointments")
+        self.assertContains(response, "tab=unclosed")
 
     def test_marking_a_patient_arrived_is_refused(self):
         self._visit()
@@ -364,11 +371,16 @@ class TestSigningOffFromTheBoard(SignOffTestCase):
                          {"date": self.yesterday.isoformat()})
         self.assertTrue(DaySignOff.objects.filter(date=self.yesterday).exists())
 
-    def test_today_cannot_be_signed_off(self):
-        # Sweeping today would close patients who are still in the building.
+    def test_today_can_be_signed_off_once_the_clinic_has_finished(self):
+        # Superseded. This used to refuse today outright, on the grounds that
+        # sweeping it would close patients still in the building. The clinic
+        # asked for the button on the board, so today is allowed — guarded by
+        # can_close() instead, which is the condition that was really meant.
         self.client.post(reverse("reception_close_day"),
                          {"date": timezone.localdate().isoformat()})
-        self.assertFalse(DaySignOff.objects.exists())
+        self.assertTrue(
+            DaySignOff.objects.filter(date=timezone.localdate()).exists()
+        )
 
     def test_a_doctor_may_not_sign_the_day_off(self):
         self.client.force_login(self.doctor)
@@ -629,3 +641,223 @@ class TestTheSweepCanActuallyClearTheBoard(TestCase):
         self.assertIn("not been billed", said)
         # One left, not two: the paid one went.
         self.assertIn("1 still", said)
+
+
+class TestTheUnclosedWorklist(SignOffTestCase):
+    """
+    The alert points at one place; that place has to be able to do the work.
+
+    Billing inside a warning strip on a board that reloads every thirty seconds
+    was the reason the feature was switched off. The list lives under All
+    bookings now, as a tab that exists only while it has rows on it.
+    """
+
+    def test_the_tab_appears_only_when_something_is_open(self):
+        clean = self.client.get(reverse("reception_bookings"))
+        self.assertNotIn(
+            "unclosed", [key for key, _label in clean.context["tabs"]],
+        )
+
+        self._consulted()
+        with_work = self.client.get(reverse("reception_bookings"))
+        self.assertIn("unclosed", [key for key, _label in with_work.context["tabs"]])
+
+    def test_it_lists_the_open_appointment_with_a_receipt_button(self):
+        visit = self._consulted()
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertContains(response, visit.patient.patient_id)
+        self.assertContains(
+            response, reverse("reception_generate_receipt", args=[visit.pk]),
+        )
+
+    def test_it_covers_every_earlier_day_not_only_yesterday(self):
+        # A day missed on Friday is still owed on Monday.
+        old = make_visit(
+            make_patient(phone="9820012121"), self.doctor,
+            start=timezone.now() - timedelta(days=5),
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            old.transition_to(status, by_user=self.receptionist)
+
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertContains(response, old.patient.patient_id)
+
+    def test_taking_the_fee_is_the_whole_job(self):
+        # The receipt is what locks the appointment. Asking for a second button
+        # afterwards would make two steps out of the one the clinic described,
+        # and the sweep marks paid visits finished on its own.
+        visit = self._consulted()
+        self.client.post(
+            reverse("reception_generate_receipt", args=[visit.pk]),
+            {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
+        )
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.BILLED)
+
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertEqual(response.context["unclosed_count"], 0)
+
+    def test_billing_it_takes_it_off_the_list(self):
+        visit = self._consulted()
+        self.client.post(
+            reverse("reception_generate_receipt", args=[visit.pk]),
+            {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
+        )
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertEqual(response.context["unclosed_count"], 0)
+
+    def test_the_sign_off_button_appears_once_the_list_is_empty(self):
+        self._consulted()
+        busy = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertFalse(busy.context["can_sign_off"])
+
+        clear = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertIsNotNone(clear)
+
+    def test_the_alert_sends_her_to_the_list_rather_than_billing_in_place(self):
+        self._consulted()
+        board = self.client.get(reverse("reception_home"))
+        self.assertContains(board, "Show all unclosed appointments")
+        self.assertContains(board, "tab=unclosed")
+
+
+class TestTheSignOffButtonOnTheBoard(SignOffTestCase):
+    """
+    Visible only when the clinic has finished: Stage 3 empty, nothing owed in
+    Stage 4. It is also the receptionist's answer to "has the doctor signed
+    everyone off?" — she does not have to go and ask, because the button
+    appearing is the answer.
+    """
+
+    def _today(self, hour=10, phone=None, upto=None):
+        # A fixed hour of the day, not an offset from the clock. An offset runs
+        # past midnight when the suite runs in the evening, which moves the
+        # visit off today's board and quietly switches off the very rule under
+        # test.
+        visit = make_visit(
+            make_patient(phone=phone) if phone else make_patient(),
+            self.doctor, start=today_at(hour),
+        )
+        for status in (upto or []):
+            visit.transition_to(status, by_user=self.receptionist)
+        return visit
+
+    def _board(self):
+        return self.client.get(reverse("reception_home"))
+
+    def test_hidden_while_somebody_is_in_a_cabin(self):
+        self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN])
+        response = self._board()
+        self.assertFalse(response.context["can_sign_off_today"])
+        self.assertNotContains(response, "Today's clinic is finished")
+
+    def test_hidden_while_a_consultation_is_still_to_be_billed(self):
+        self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN,
+                          VisitStatus.CONSULTED])
+        self.assertFalse(self._board().context["can_sign_off_today"])
+
+    def test_shown_once_the_cabin_is_empty_and_everything_is_billed(self):
+        visit = self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN,
+                                  VisitStatus.CONSULTED])
+        Charge.objects.create(
+            visit=visit, patient=visit.patient,
+            consultation_fee=Decimal("800"), set_by=self.doctor,
+        )
+        self.client.post(
+            reverse("reception_generate_receipt", args=[visit.pk]),
+            {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
+        )
+        response = self._board()
+        self.assertTrue(response.context["can_sign_off_today"])
+        self.assertContains(response, "Today's clinic is finished")
+
+    def test_a_booking_nobody_arrived_for_does_not_hold_it_back(self):
+        # Stages 1 and 2 are not checked. Somebody who never turned up is an
+        # ordinary end to a day, and demanding it be cleared first would make
+        # the button unreachable whenever a patient went home.
+        self._today()
+        self.assertTrue(self._board().context["can_sign_off_today"])
+
+    def test_signing_today_off_does_not_cancel_this_evenings_bookings(self):
+        # The sweep is right for yesterday and quite wrong at four o'clock.
+        later = self._today(hour=17)
+        self.client.post(reverse("reception_close_day"),
+                         {"date": timezone.localdate().isoformat()})
+        later.refresh_from_db()
+        self.assertEqual(later.status, VisitStatus.BOOKED)
+        self.assertTrue(DaySignOff.objects.filter(date=timezone.localdate()).exists())
+
+    def test_signing_today_off_is_refused_while_a_cabin_is_busy(self):
+        # The button is hidden, so reaching here means going round the screen.
+        self._today(upto=[VisitStatus.ARRIVED, VisitStatus.IN_CABIN])
+        self.client.post(reverse("reception_close_day"),
+                         {"date": timezone.localdate().isoformat()})
+        self.assertFalse(DaySignOff.objects.exists())
+
+    def test_tomorrow_cannot_be_signed_off(self):
+        ahead = timezone.localdate() + timedelta(days=1)
+        self.client.post(reverse("reception_close_day"),
+                         {"date": ahead.isoformat()})
+        self.assertFalse(DaySignOff.objects.exists())
+
+
+class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):
+    """
+    The dead end that would have made the whole thing unusable.
+
+    A doctor can finish a consultation without setting a fee — a free follow-up,
+    or simply forgetting. The receipt dialog has nothing to collect, so it shows
+    "no fee has been set" and a Close button, and the visit stays CONSULTED for
+    ever: on the unclosed list, blocking the sign-off, holding up every
+    following morning's arrivals. The receptionist cannot invent a fee, and
+    nothing on the screen offers a way out.
+
+    So there is one, and it is explicit and recorded rather than quiet. Writing
+    off a fee is a decision somebody makes, and the trail has to say that
+    nothing was collected and who decided it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.visit = self._visit(upto=[
+            VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+            VisitStatus.IN_CABIN, VisitStatus.CONSULTED,
+        ])   # deliberately no Charge
+
+    def test_it_is_on_the_unclosed_list(self):
+        self.assertIn(self.visit, signoff.unclosed_before())
+
+    def test_the_list_offers_a_way_to_close_it(self):
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertContains(response, "No fee set")
+        self.assertContains(
+            response, reverse("reception_close_without_fee", args=[self.visit.pk]),
+        )
+
+    def test_closing_it_takes_it_off_the_list(self):
+        self.client.post(
+            reverse("reception_close_without_fee", args=[self.visit.pk]),
+            {"next": reverse("reception_bookings")},
+        )
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, VisitStatus.COMPLETED)
+        self.assertEqual(signoff.unclosed_before(), [])
+
+    def test_the_trail_says_nothing_was_collected(self):
+        self.client.post(reverse("reception_close_without_fee", args=[self.visit.pk]))
+        note = self.visit.status_events.latest("created_at").note
+        self.assertIn("no fee", note.lower())
+
+    def test_it_is_refused_when_there_is_actually_money_owed(self):
+        # Otherwise this becomes a one-click way to write off a real bill.
+        owed = self._consulted(hour=14, phone="9820031313")
+        self.client.post(reverse("reception_close_without_fee", args=[owed.pk]))
+        owed.refresh_from_db()
+        self.assertEqual(owed.status, VisitStatus.CONSULTED)
+
+    def test_the_day_can_then_be_signed_off(self):
+        self.client.post(reverse("reception_close_without_fee", args=[self.visit.pk]))
+        self.client.post(reverse("reception_close_day"),
+                         {"date": self.yesterday.isoformat()})
+        self.assertTrue(DaySignOff.objects.filter(date=self.yesterday).exists())

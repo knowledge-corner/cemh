@@ -68,42 +68,65 @@ opens.
       </span><br>
       Today's arrivals are on hold until it is.
 
-      {% if unsigned_unbilled %}
+      {% comment %}
+      The alert says what is wrong and sends her to the one place the work can
+      be done. It does not try to be that place: the list belongs under All
+      bookings, where a table has room for the date, the doctor and the amount,
+      and where working down it does not mean doing the day's billing inside a
+      warning strip on a board that reloads every thirty seconds.
+      {% endcomment %}
+      {% if unclosed_count %}
         <p style="margin:.5rem 0 0">
-          {{ unsigned_unbilled|length }} consultation{{ unsigned_unbilled|pluralize }}
-          from that day still to be billed — take the fee on each, then send the
-          sign-off:
+          {{ unclosed_count }} appointment{{ unclosed_count|pluralize }}
+          still to close. Take the fee on each — the receipt is what locks it.
         </p>
-        <ul class="unsigned__list">
-          {% for visit in unsigned_unbilled %}
-            <li>
-              <span class="mono">{{ visit.scheduled_start|date:"H:i" }}</span>
-              {{ visit.patient.full_name }}
-              (<span class="mono">{{ visit.patient.patient_id }}</span>)
-              &middot; {{ visit.doctor.display_name }}
-              {% if visit.charge %}
-                &middot; <strong>{{ clinic_currency }}{{ visit.charge.balance }}</strong>
-              {% endif %}
-              <button type="button" class="btn btn--primary"
-                      hx-get="{% url 'reception_generate_receipt' visit.pk %}"
-                      hx-target="#modal-host" hx-swap="innerHTML">Generate receipt</button>
-            </li>
-          {% endfor %}
-        </ul>
       {% else %}
         <p style="margin:.5rem 0 0">
-          Nothing is left to bill. Send the sign-off and carry on.
+          Nothing is left to close. Send the sign-off and carry on.
         </p>
       {% endif %}
 
+      <div class="row-actions" style="margin-top:.625rem">
+        <a class="btn btn--primary"
+           href="{% url 'reception_bookings' %}?tab=unclosed">
+          Show all unclosed appointments
+        </a>
+        {% if not unclosed_count %}
+          <form method="post" action="{% url 'reception_close_day' %}">
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ unsigned_day|date:'Y-m-d' }}">
+            <button class="btn btn--primary" type="submit">
+              Sign off {{ unsigned_day|date:"j M" }} and send the day sheet
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% comment %}
+Signing today off, from the board.
+
+Shown only when the clinic has actually finished: nobody in a cabin, and
+nothing in Stage 4 still owed. Hidden rather than shown-and-refused — the
+receptionist would otherwise be told off for pressing the only control on the
+screen, with no way to know the doctor had not finished with somebody.
+
+This is also the answer to "has the doctor signed everyone off?". She does not
+have to go and ask: the button appearing is the answer.
+{% endcomment %}
+{% if can_sign_off_today and can_work_queue %}
+  <div class="alert-strip alert-strip--success" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">Today's clinic is finished</span><br>
+      Nobody is with a doctor and every consultation has been billed.
       <div style="margin-top:.625rem">
         <form method="post" action="{% url 'reception_close_day' %}">
           {% csrf_token %}
-          <input type="hidden" name="date" value="{{ unsigned_day|date:'Y-m-d' }}">
-          <button class="btn {% if unsigned_unbilled %}btn--secondary{% else %}btn--primary{% endif %}"
-                  type="submit"
-                  {% if unsigned_unbilled %}title="Bill the consultations above first"{% endif %}>
-            Sign off {{ unsigned_day|date:"j M" }} and send the day sheet
+          <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+          <button class="btn btn--primary" type="submit">
+            Sign off {{ day|date:"j M" }} and send the day sheet
           </button>
         </form>
       </div>

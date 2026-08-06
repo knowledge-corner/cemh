@@ -149,6 +149,35 @@ def is_due(day=None, now=None):
     return yesterday
 
 
+def unclosed_before(day=None):
+    """
+    Every appointment from before ``day`` that is not closed yet.
+
+    "Closed" means the receipt has been generated, which is what locks the
+    appointment. So this list is consultations the doctor finished and nobody
+    billed, and nothing else.
+
+    A visit that has been paid for is **not** on it. Taking the fee is the last
+    thing the receptionist does; asking her to press a second button afterwards
+    would make a two-step job out of the one the clinic described, and the
+    sweep marks those finished on its own.
+
+    Across every previous day, not just yesterday. A day missed on Friday is
+    still owed on Monday, and a list that showed only yesterday would let it
+    scroll quietly out of sight.
+    """
+    day = day or timezone.localdate()
+    return list(
+        Visit.objects.filter(
+            scheduled_start__date__lt=day,
+            status=VisitStatus.CONSULTED,
+        )
+        .with_related()
+        .select_related("charge")
+        .order_by("scheduled_start")
+    )
+
+
 def unbilled(day):
     """Consultations from ``day`` that were never paid for — KAN-48's whole subject."""
     return list(
@@ -157,6 +186,33 @@ def unbilled(day):
         .select_related("charge")
         .order_by("scheduled_start")
     )
+
+
+def can_close(day=None):
+    """
+    Is today's clinic finished enough to sign off?
+
+    Two conditions, both from the board the receptionist is looking at:
+
+    * nobody is in a cabin — Stage 3 is empty, so no doctor is still with a
+      patient whose fee is not set yet;
+    * nothing in Stage 4 is still owed — every consultation has had its receipt
+      generated, which is what locks it.
+
+    Stages 1 and 2 are deliberately not checked. A patient who never turned up
+    and one still in the waiting room at closing time are both ordinary ends to
+    a day, and the sweep deals with them. Demanding they be cleared first would
+    make the button unreachable on any day somebody went home early.
+
+    The button is hidden rather than shown-and-refused when this is False: the
+    receptionist would otherwise be told off for pressing the only control on
+    the screen, having no way to know the doctor had not finished.
+    """
+    day = day or timezone.localdate()
+    today = Visit.objects.filter(scheduled_start__date=day)
+    if today.filter(status=VisitStatus.IN_CABIN).exists():
+        return False
+    return not today.filter(status=VisitStatus.CONSULTED).exists()
 
 
 def _rows(day):
@@ -253,7 +309,7 @@ def build_report(day):
 
 
 @transaction.atomic
-def sign_off(day, by_user=None, send=True):
+def sign_off(day, by_user=None, send=True, sweep_first=True):
     """
     Sweep the day, email the report, and record that it was done.
 
@@ -261,6 +317,12 @@ def sign_off(day, by_user=None, send=True):
     sending a second report. Two receptionists both pressing the button at the
     end of a shift is not an error, and the accountant receiving the day twice
     is worse than either of them being told "already done".
+
+    ``sweep_first`` is False when signing off the day that is still today. The
+    sweep cancels bookings nobody arrived for, which is the right thing to do to
+    yesterday and quite wrong to do at four in the afternoon — this evening's
+    patients have not failed to turn up yet. Today's stragglers are swept the
+    next morning, on their own date, like every other day's.
 
     The sign-off is recorded even when the email fails. Refusing to close a
     clinic day because a mail server is down would block the next morning's work
@@ -271,7 +333,8 @@ def sign_off(day, by_user=None, send=True):
     if existing is not None:
         return existing, False
 
-    sweep(day, by_user=by_user)
+    if sweep_first:
+        sweep(day, by_user=by_user)
     report = build_report(day)
 
     to = recipients()

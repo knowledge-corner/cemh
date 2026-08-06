@@ -202,7 +202,10 @@ def _queue_context(request, day=None):
     # is about today; this is the one thing that has to interrupt it, because
     # an unsigned day means money owed that nobody is looking for any more.
     unsigned = signoff.is_due(day)
-    unsigned_unbilled = signoff.unbilled(unsigned) if unsigned else []
+    # The whole worklist, not just the unsigned day's share: the alert sends
+    # the receptionist to one list, and it has to be the same list she finds
+    # when she gets there.
+    unclosed = signoff.unclosed_before(day) if unsigned else []
 
     return {
         "day": day,
@@ -227,7 +230,14 @@ def _queue_context(request, day=None):
         # from it that still owe money. Both are needed — the date alone gives
         # the receptionist nothing to act on.
         "unsigned_day": unsigned,
-        "unsigned_unbilled": unsigned_unbilled,
+        "unclosed_count": len(unclosed),
+        # Today's clinic is finished: nobody with a doctor, nothing left to
+        # bill. The sign-off button is hidden until this is true rather than
+        # shown and refused — being told off for pressing the only control on
+        # the screen teaches nothing about what is actually outstanding.
+        "can_sign_off_today": (
+            signoff.is_enabled() and not unsigned and signoff.can_close(day)
+        ),
         # What still has to happen before the receptionist can go home. Stage 4
         # holds both the unpaid and the paid now, so "still open" counts the
         # money owed rather than the whole column.
@@ -343,12 +353,20 @@ def close_day(request):
             else timezone.localdate() - timedelta(days=1)
         )
 
-    if day >= timezone.localdate():
-        # Sweeping today would close patients who are still in the building.
+    today = timezone.localdate()
+    if day > today:
+        messages.error(request, "That day has not happened yet.")
+        return redirect("reception_home")
+
+    # Today can be signed off, but only once the clinic has actually finished:
+    # nobody with a doctor, and nothing in Stage 4 still owed. The board hides
+    # the button until then, so reaching here with it unfinished means somebody
+    # went round the screen.
+    if day == today and not signoff.can_close(today):
         messages.error(
             request,
-            "A day can only be closed once it is over. Today's clinic is "
-            "still running.",
+            "Today is not finished — somebody is still with a doctor, or a "
+            "consultation has not been billed yet.",
         )
         return redirect("reception_home")
 
@@ -370,7 +388,12 @@ def close_day(request):
         )
         return redirect("reception_home")
 
-    entry, created = signoff.sign_off(day, by_user=request.user)
+    # Today is not swept. The sweep cancels bookings nobody arrived for, which
+    # is right for yesterday and quite wrong at four in the afternoon — this
+    # evening's patients have not failed to turn up yet.
+    entry, created = signoff.sign_off(
+        day, by_user=request.user, sweep_first=day < today,
+    )
 
     if not created:
         messages.info(request, f"{day:%d %b} was already signed off.")
@@ -481,6 +504,14 @@ BOOKING_TABS = [
     ("upcoming", "Upcoming appointments"),
     ("completed", "Completed appointments"),
 ]
+
+#: A third tab, present only while there is something on it.
+#:
+#: This is the worklist behind the morning alert: appointments from previous
+#: days that were never closed. It is deliberately temporary — a permanent tab
+#: reading "Unclosed (0)" is a tab nobody looks at, and the day it stops saying
+#: zero nobody notices either.
+UNCLOSED_TAB = ("unclosed", "Unclosed appointments")
 
 #: A visit is upcoming while it has not yet reached the doctor. CONFIRMED is
 #: included so that a patient moved back out of the waiting room reappears here
@@ -610,8 +641,16 @@ def _past_filters(request):
 @role_required(Role.RECEPTIONIST)
 def bookings(request):
     """The diary ahead, and what has been seen and paid for."""
+    # The unclosed tab exists only while it has rows. The alert on the board
+    # links straight here, so somebody arriving from it must land on the tab
+    # rather than on whichever one happened to be default.
+    unclosed = signoff.unclosed_before() if signoff.is_enabled() else []
+    tabs = list(BOOKING_TABS)
+    if unclosed:
+        tabs.append(UNCLOSED_TAB)
+
     tab = request.GET.get("tab", "upcoming")
-    if tab not in dict(BOOKING_TABS):
+    if tab not in dict(tabs):
         tab = "upcoming"
 
     today_rows, ahead_rows, chosen = _upcoming_filters(request)
@@ -622,8 +661,14 @@ def bookings(request):
     )
 
     return render(request, "portal/reception/bookings.html", {
-        "tabs": BOOKING_TABS,
+        "tabs": tabs,
         "active_tab": tab,
+        "unclosed": unclosed,
+        "unclosed_count": len(unclosed),
+        # Every previous day is accounted for, so the day itself can be signed
+        # off. Offered here as well as on the board because this is where the
+        # receptionist has just finished the work that makes it possible.
+        "can_sign_off": signoff.is_enabled() and not unclosed,
         "today_rows": today_rows,
         "ahead_rows": ahead_rows,
         "upcoming_count": len(today_rows) + len(ahead_rows),
@@ -1025,6 +1070,61 @@ def generate_receipt(request, pk):
 
 
 @role_required(Role.RECEPTIONIST)
+def close_without_fee(request, pk):
+    """
+    Close a consultation the doctor never put a fee on.
+
+    Without this the visit is a dead end. The receipt dialog has nothing to
+    collect, so it offers only a Close button, and the visit stays CONSULTED for
+    ever — on the unclosed list, blocking the sign-off, holding up every
+    following morning's arrivals. The receptionist cannot invent a fee, and
+    nothing on the screen would offer a way out.
+
+    Refused the moment there is a real balance. Otherwise this becomes a
+    one-click way to write off a bill somebody owes, which is the opposite of
+    what the unclosed list is for.
+    """
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor", "charge"), pk=pk
+    )
+    if request.method != "POST":
+        return redirect("reception_bookings")
+
+    charge = getattr(visit, "charge", None)
+    if charge is not None and charge.balance > 0:
+        messages.error(
+            request,
+            f"{visit.patient.full_name} owes "
+            f"{settings.CLINIC.CURRENCY_SYMBOL}{charge.balance}. Take the fee "
+            f"with Generate receipt rather than closing it as unpaid.",
+        )
+        return redirect(request.POST.get("next") or "reception_bookings")
+
+    try:
+        visit.transition_to(
+            VisitStatus.BILLED, by_user=request.user,
+            note="Closed with no fee — the doctor set no charge",
+        )
+        visit.transition_to(
+            VisitStatus.COMPLETED, by_user=request.user,
+            note="Closed with no fee — nothing was collected",
+        )
+    except InvalidTransition as exc:
+        messages.error(request, str(getattr(exc, "message", exc)))
+    else:
+        record(
+            request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+            description="Visit closed with no fee — nothing collected",
+        )
+        messages.success(
+            request,
+            f"{visit.patient.full_name}'s visit closed with no fee. Nothing "
+            f"was collected.",
+        )
+    return redirect(request.POST.get("next") or "reception_bookings")
+
+
+@role_required(Role.RECEPTIONIST)
 def complete_visit(request, pk):
     """Mark the patient as finished and gone."""
     visit = get_object_or_404(Visit, pk=pk)
@@ -1035,7 +1135,10 @@ def complete_visit(request, pk):
             messages.error(request, str(exc))
         else:
             messages.success(request, f"{visit.patient.full_name} checked out.")
-    return redirect("reception_home")
+    # Back to the list it was pressed on. Pressed from the unclosed tab, a
+    # redirect to the board would lose her place on a worklist she is halfway
+    # down.
+    return redirect(request.POST.get("next") or "reception_home")
 
 
 # ── Printing ──────────────────────────────────────────────────────────────────

@@ -98,7 +98,7 @@ was.
       </div>
     {% endif %}
 
-  {% else %}
+  {% elif active_tab == 'completed' %}
     {% comment %}
     Past bookings. Filters are plain GET parameters so a filtered view can be
     bookmarked and, more usefully, so the CSV button exports exactly what is on
@@ -190,7 +190,108 @@ was.
         <div class="empty__hint">Widen the date range, or clear the filters to start again.</div>
       </div>
     {% endif %}
+
+  {% elif active_tab == 'unclosed' %}
+    {% comment %}
+    The worklist behind the morning alert, which links straight to this tab.
+
+    One row per appointment left open on an earlier day, each with its own
+    Generate receipt button, so the receptionist works down the list instead of
+    hunting for those patients on a board that only ever shows today.
+
+    The list is the whole job: when it empties, the day can be signed off, and
+    the button to do that appears here rather than being somewhere else to go
+    and find.
+    {% endcomment %}
+    <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+      <div>
+        <span class="alert-strip__title">
+          {{ unclosed_count }} appointment{{ unclosed_count|pluralize }}
+          from earlier days {{ unclosed_count|pluralize:"is,are" }} still open
+        </span><br>
+        Take the fee on each one — the receipt is what locks the appointment.
+        Once none are left, the day can be signed off.
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="table table--middle">
+        <thead>
+          <tr>
+            <th>Date</th><th>Time</th><th>Patient</th><th>Doctor</th>
+            <th class="table__num">Owed</th><th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for visit in unclosed %}
+            <tr>
+              <td class="nowrap">{{ visit.scheduled_start|date:"j M Y" }}</td>
+              <td class="mono nowrap">{{ visit.scheduled_start|time:"H:i" }}</td>
+              <td>
+                {{ visit.patient.full_name }}<br>
+                <span class="mono faint small">{{ visit.patient.patient_id }}</span>
+              </td>
+              <td>{{ visit.doctor.display_name }}</td>
+              <td class="table__num">
+                {% if visit.charge %}
+                  {{ clinic_currency }}{{ visit.charge.balance }}
+                {% else %}
+                  <span class="faint">No fee set</span>
+                {% endif %}
+              </td>
+              <td>
+                {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
+              </td>
+              <td class="text-right nowrap">
+                {% if visit.charge %}
+                  <button type="button" class="btn btn--primary"
+                          hx-get="{% url 'reception_generate_receipt' visit.pk %}"
+                          hx-target="#modal-host" hx-swap="innerHTML">Generate receipt</button>
+                {% else %}
+                  {% comment %}
+                  The doctor set no fee, so there is nothing to collect and the
+                  receipt dialog has nothing to offer. Without this the visit
+                  could never be closed and would block the sign-off for ever.
+                  Worded so nobody presses it by habit.
+                  {% endcomment %}
+                  <form method="post"
+                        action="{% url 'reception_close_without_fee' visit.pk %}"
+                        style="display:inline"
+                        onsubmit="return confirm('Close {{ visit.patient.full_name|escapejs }} with no fee? Nothing will be collected, and this is recorded.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="next"
+                           value="{% url 'reception_bookings' %}?tab=unclosed">
+                    <button class="btn btn--secondary" type="submit">Close with no fee</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% comment %}
+  Signing the day off, offered the moment the receptionist has finished the
+  work that makes it possible rather than on some other screen.
+  {% endcomment %}
+  {% if can_sign_off and active_tab == 'unclosed' %}
+    <div class="alert-strip alert-strip--success" style="margin-top:1rem">
+      <div>
+        <span class="alert-strip__title">Nothing is left open</span><br>
+        Every earlier appointment is closed.
+        <div style="margin-top:.625rem">
+          <form method="post" action="{% url 'reception_close_day' %}">
+            {% csrf_token %}
+            <button class="btn btn--primary" type="submit">Sign off and send the day sheet</button>
+          </form>
+        </div>
+      </div>
+    </div>
   {% endif %}
 
 </div>
+
+<div id="modal-host"></div>
 {% endblock %}
