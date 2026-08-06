@@ -378,7 +378,15 @@ def close_day(request):
         )
         return redirect("reception_home")
 
-    outstanding = signoff.unbilled(day)
+    # A patient still showing as in the cabin is swept to CONSULTED below, which
+    # creates a receipt to generate *after* the sign-off has already passed the
+    # check for one. Counted here so the day cannot be closed by manufacturing
+    # the very work the close is supposed to require first.
+    outstanding = signoff.unbilled(day) + list(
+        Visit.objects.filter(
+            scheduled_start__date=day, status=VisitStatus.IN_CABIN,
+        ).with_related()
+    )
     if outstanding:
         # KAN-49 AC: the unbilled ones must be cleared first. Refusing here
         # rather than sweeping them is the whole point — a consultation swept
@@ -412,7 +420,19 @@ def close_day(request):
         description=f"Clinic day {day:%Y-%m-%d} signed off",
     )
 
-    if entry.delivery_error:
+    if entry.delivery_error and not signoff.email_enabled():
+        # Sending is off on purpose while the clinic has no mail server. That
+        # is a setting, not a failure, and calling it one puts a warning on the
+        # single action the receptionist performs every day about something she
+        # cannot fix. Said once, quietly, as part of the success.
+        messages.success(
+            request,
+            f"{day:%d %b} signed off. {entry.billed_count} billed, "
+            f"{entry.cancelled_count} cancelled, {entry.no_show_count} no-show. "
+            f"The day sheet was not emailed — sending is switched off until the "
+            f"mail server is set up.",
+        )
+    elif entry.delivery_error:
         # The day IS closed. Saying so first matters: a receptionist told only
         # that the email failed will press the button again, and the second
         # press reports "already signed off", which reads as the first having

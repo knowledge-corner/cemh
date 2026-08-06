@@ -105,6 +105,14 @@ class TestTheDaySheet(SignOffTestCase):
         super().setUp()
         signoff.settings.CLINIC.SIGN_OFF_EMAILS = "owner@example.in"
         self.addCleanup(setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAILS", "")
+        # Sending is off for the clinic while it has no mail server. These
+        # tests are about the report itself, so they switch it back on — the
+        # assembling code has to keep being exercised, or the day it is turned
+        # on for real is the day anybody finds out it stopped working.
+        signoff.settings.CLINIC.SIGN_OFF_EMAIL_ENABLED = True
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAIL_ENABLED", False,
+        )
 
     def test_signing_off_sends_one_email(self):
         self._visit(upto=[VisitStatus.CONFIRMED])
@@ -181,6 +189,10 @@ class TestTheReportIsNotBlockingWhenMailFails(SignOffTestCase):
     def test_no_address_configured_still_closes_the_day(self):
         # A clinic that cannot open tomorrow because nobody set an email
         # address would be a worse system than one that says so and carries on.
+        signoff.settings.CLINIC.SIGN_OFF_EMAIL_ENABLED = True
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAIL_ENABLED", False,
+        )
         signoff.settings.CLINIC.SIGN_OFF_EMAILS = ""
         signoff.settings.CLINIC.CLINIC_EMAIL = ""
         self.addCleanup(
@@ -194,8 +206,20 @@ class TestTheReportIsNotBlockingWhenMailFails(SignOffTestCase):
         self.assertIn("SIGN_OFF_EMAILS", record.delivery_error)
 
     def test_a_send_failure_is_recorded_rather_than_raised(self):
+        signoff.settings.CLINIC.SIGN_OFF_EMAIL_ENABLED = True
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAIL_ENABLED", False,
+        )
         signoff.settings.CLINIC.SIGN_OFF_EMAILS = "owner@example.in"
         self.addCleanup(setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAILS", "")
+        # Sending is off for the clinic while it has no mail server. These
+        # tests are about the report itself, so they switch it back on — the
+        # assembling code has to keep being exercised, or the day it is turned
+        # on for real is the day anybody finds out it stopped working.
+        signoff.settings.CLINIC.SIGN_OFF_EMAIL_ENABLED = True
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAIL_ENABLED", False,
+        )
         self._visit(upto=[VisitStatus.CONFIRMED])
 
         with self.settings(EMAIL_BACKEND="django.core.mail.backends.dummy.DummyBackend"):
@@ -451,6 +475,10 @@ class TestTheClinicIsToldWhenNothingActuallyLeft(SignOffTestCase):
     """
 
     def test_the_console_backend_is_not_reported_as_delivery(self):
+        signoff.settings.CLINIC.SIGN_OFF_EMAIL_ENABLED = True
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAIL_ENABLED", False,
+        )
         self._visit(upto=[VisitStatus.CONFIRMED])
         with self.settings(
             EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend"
@@ -954,3 +982,98 @@ class TestTheCancelButtonIsGoneFromTheCard(SignOffTestCase):
         )
         visit.refresh_from_db()
         self.assertEqual(visit.status, VisitStatus.CANCELLED)
+
+
+class TestSendingIsSwitchedOffForNow(SignOffTestCase):
+    """
+    No mail server yet, so every sign-off ended with a warning about a report
+    that could not be sent — on the one action the receptionist performs daily,
+    about something she cannot fix.
+
+    Closing the day and reporting on it are separate switches. Silencing the
+    warning by switching the whole feature off would have taken the sweep and
+    the lock with it.
+    """
+
+    def test_the_default_is_not_to_send(self):
+        from config import clinic
+
+        self.assertFalse(clinic.SIGN_OFF_EMAIL_ENABLED)
+
+    def test_nothing_is_sent(self):
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        signoff.sign_off(self.yesterday, by_user=self.receptionist)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_the_day_still_closes(self):
+        visit = self._visit(upto=[VisitStatus.CONFIRMED])
+        record, created = signoff.sign_off(self.yesterday, by_user=self.receptionist)
+
+        self.assertTrue(created)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.NO_SHOW)
+        self.assertIsNone(signoff.is_due(now=MID_MORNING()))
+
+    def test_it_says_plainly_that_sending_is_off(self):
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        record, _ = signoff.sign_off(self.yesterday, by_user=self.receptionist)
+        self.assertIn("switched off", record.delivery_error)
+
+    def test_the_counts_are_still_worked_out(self):
+        # The report is built and thrown away rather than skipped. A reporting
+        # path that has not run for a month is one that no longer works, and
+        # the day it is switched on is the worst moment to find that out.
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        record, _ = signoff.sign_off(self.yesterday, by_user=self.receptionist)
+        self.assertEqual(record.no_show_count, 1)
+
+
+class TestSigningOffCannotManufactureItsOwnWork(SignOffTestCase):
+    """
+    A patient still showing as in a cabin is swept to CONSULTED — which creates
+    a receipt to generate *after* the sign-off has already checked there were
+    none. Left alone, the day closes and the work reappears on tomorrow's
+    unclosed list, which is exactly what the sign-off exists to prevent.
+    """
+
+    def test_a_patient_left_in_a_cabin_blocks_the_sign_off(self):
+        visit = self._visit(upto=[
+            VisitStatus.CONFIRMED, VisitStatus.ARRIVED, VisitStatus.IN_CABIN,
+        ])
+        self.client.post(reverse("reception_close_day"),
+                         {"date": self.yesterday.isoformat()})
+        self.assertFalse(DaySignOff.objects.exists())
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.IN_CABIN)
+
+    def test_a_booking_nobody_arrived_for_does_not_block_it(self):
+        # Those are removed by the sweep and need nothing pressed.
+        visit = self._visit(upto=[VisitStatus.CONFIRMED])
+        self.client.post(reverse("reception_close_day"),
+                         {"date": self.yesterday.isoformat()})
+        self.assertTrue(DaySignOff.objects.exists())
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.NO_SHOW)
+
+    def test_someone_who_arrived_but_never_went_in_is_removed(self):
+        # "not even sent to cabin" — nothing to bill, so nothing to press.
+        visit = self._visit(upto=[VisitStatus.CONFIRMED, VisitStatus.ARRIVED])
+        self.client.post(reverse("reception_close_day"),
+                         {"date": self.yesterday.isoformat()})
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CANCELLED)
+
+    def test_the_receptionist_is_not_warned_about_a_deliberate_setting(self):
+        # Sending being off is a setting, not a failure. Reporting it as one
+        # puts a warning on the single action she performs every day, about
+        # something she cannot do anything about.
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        response = self.client.post(
+            reverse("reception_close_day"),
+            {"date": self.yesterday.isoformat()}, follow=True,
+        )
+        said = list(response.context["messages"])
+        self.assertEqual(len(said), 1)
+        self.assertEqual(said[0].level_tag, "success")
+        self.assertIn("signed off", str(said[0]))
+        self.assertIn("switched off", str(said[0]))

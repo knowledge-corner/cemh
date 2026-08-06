@@ -89,6 +89,18 @@ def is_really_delivered():
     return not any(name in backend for name in UNDELIVERED_BACKENDS)
 
 
+def email_enabled():
+    """
+    Whether the sign-off should try to send the day sheet.
+
+    Separate from :func:`is_enabled`. Closing the day and reporting on it are
+    two different things, and the clinic wants the first without the second
+    until there is a mail server — switching the whole feature off to silence
+    one warning would take the sweep and the lock with it.
+    """
+    return bool(getattr(settings.CLINIC, "SIGN_OFF_EMAIL_ENABLED", False))
+
+
 def recipients():
     """Who the report goes to. Empty means nobody has configured it yet."""
     configured = getattr(settings.CLINIC, "SIGN_OFF_EMAILS", "") or ""
@@ -393,7 +405,22 @@ def sign_off(day, by_user=None, send=True, sweep_first=True):
 
     to = recipients()
     error = ""
-    if send and to:
+
+    # Temporarily not sending. There is no mail server yet, so every sign-off
+    # ended with a warning the receptionist could do nothing about — on the one
+    # action she is asked to perform every day.
+    #
+    # The report is still BUILT above and simply not handed to the mail layer,
+    # rather than the whole block being skipped: a reporting path that has not
+    # run for a month is a reporting path that no longer works, and the day this
+    # is switched back on is the worst moment to discover that.
+    if send and not email_enabled():
+        error = (
+            "The day sheet was not emailed — sending is switched off until the "
+            "clinic's mail server is set up. Nothing else about the sign-off "
+            "changes."
+        )
+    elif send and to:
         try:
             _send(report, to)
         except Exception as exc:                     # noqa: BLE001 — reported, not swallowed

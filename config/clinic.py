@@ -168,6 +168,21 @@ DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
 # Set to "0" to switch it off again without removing anything.
 DAY_SIGN_OFF_ENABLED = os.environ.get("DAY_SIGN_OFF_ENABLED", "1") == "1"
 
+# Whether the sign-off tries to email the day sheet at all.
+#
+# **Off, temporarily.** There is no mail server configured yet, so every
+# sign-off ended with a warning about a report that could not be sent — noise
+# on the one action the receptionist is being asked to perform daily, and noise
+# she cannot do anything about.
+#
+# Off, the day still sweeps, still records, still locks, and simply says so.
+# The report is built and thrown away rather than skipped, so the code that
+# assembles it keeps running and keeps being tested: a reporting path that has
+# not executed for a month is a reporting path that no longer works.
+#
+# Turn this on with EMAIL_HOST, at which point SIGN_OFF_EMAILS below applies.
+SIGN_OFF_EMAIL_ENABLED = os.environ.get("SIGN_OFF_EMAIL_ENABLED", "0") == "1"
+
 # Who receives the end-of-day sheet (KAN-48). Comma-separated.
 #
 # This report carries patient names against amounts, so the address matters:
