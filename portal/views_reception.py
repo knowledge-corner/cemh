@@ -255,6 +255,56 @@ def queue_board(request):
     return render(request, "portal/reception/_board_swap.html", _queue_context(request))
 
 
+def _sweep_only(request):
+    """
+    Clear everything left open before today, without the sign-off machinery.
+
+    What this button did before KAN-48, and what it does again while sign-off is
+    switched off. Every unfinished day at once, not the one date the sign-off
+    would have taken: the button says "close them off", and clearing one day
+    while leaving an older one behind would report success over a board that is
+    still wrong.
+
+    A consultation that has not been billed is still left alone. Money owed is a
+    real task, and sweeping the row away is how it stops being looked for — a
+    rule older than the sign-off, and not dependent on it.
+    """
+    closed, skipped = 0, 0
+    for visit in Visit.objects.unfinished_before():
+        target = signoff.SWEEP_TARGETS.get(visit.status)
+        if target is None:
+            skipped += 1
+            continue
+        try:
+            visit.transition_to(
+                target, by_user=request.user, note="Closed by the end-of-day sweep",
+            )
+        except InvalidTransition:
+            skipped += 1
+        else:
+            closed += 1
+            record(
+                request, AuditAction.UPDATE, obj=visit, patient=visit.patient,
+                description=f"End-of-day sweep closed visit as {visit.get_status_display()}",
+            )
+
+    if closed:
+        messages.success(
+            request,
+            f"Closed {closed} visit{'' if closed == 1 else 's'} left open from "
+            f"previous days.",
+        )
+    if skipped:
+        messages.warning(
+            request,
+            f"{skipped} still need attention — a consultation that has not been "
+            f"billed cannot simply be swept away.",
+        )
+    if not closed and not skipped:
+        messages.info(request, "Nothing was left open. The board is clear.")
+    return redirect("reception_home")
+
+
 @role_required(Role.RECEPTIONIST)
 def close_day(request):
     """
@@ -273,6 +323,14 @@ def close_day(request):
     if request.method != "POST":
         return redirect("reception_home")
 
+    if not signoff.is_enabled():
+        # Sign-off is switched off, so this is the plain end-of-day sweep it was
+        # before KAN-48 — clear the leftovers, no report, no record, and nothing
+        # said about signing anything off. The button still has to work: without
+        # it a visit left open overnight can never be cleared, and that is what
+        # makes today's board lie about who the doctor is seeing.
+        return _sweep_only(request)
+
     # Without a date, the oldest day still open — not simply yesterday. A visit
     # left over from the day before that would otherwise sit there while the
     # button above it reported success every time it was pressed, which is the
@@ -286,10 +344,10 @@ def close_day(request):
         )
 
     if day >= timezone.localdate():
-        # Signing off today would sweep patients who are still in the building.
+        # Sweeping today would close patients who are still in the building.
         messages.error(
             request,
-            "A day can only be signed off once it is over. Today's clinic is "
+            "A day can only be closed once it is over. Today's clinic is "
             "still running.",
         )
         return redirect("reception_home")

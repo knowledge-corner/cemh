@@ -56,7 +56,20 @@ def _yesterday_at(hour, minute=0):
 
 
 class SignOffTestCase(TestCase):
+    """
+    Sign-off is switched off for this clinic, so every test of it turns it on.
+
+    Deliberately not left on for the suite. The switch is the thing most likely
+    to be got wrong — honoured by the alert and forgotten by the rule
+    underneath, so a "disabled" feature still blocks somebody's morning — and a
+    suite that ran with it permanently on would never notice.
+    """
+
     def setUp(self):
+        signoff.settings.CLINIC.DAY_SIGN_OFF_ENABLED = True
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "DAY_SIGN_OFF_ENABLED", False,
+        )
         self.receptionist = make_receptionist()
         self.doctor = make_doctor()
         self.client.force_login(self.receptionist)
@@ -452,3 +465,167 @@ class TestTheClinicIsToldWhenNothingActuallyLeft(SignOffTestCase):
     def test_the_configured_address_is_the_clinics_own(self):
         # It carries patient names against amounts, so this is not a detail.
         self.assertEqual(signoff.recipients(), ["contact@cemhcare.com"])
+
+
+class TestSignOffCanBeSwitchedOff(TestCase):
+    """
+    Off at the clinic's request, until there is a mail server for the report.
+
+    The switch has to reach every part of it at once. Half-disabled — no alert
+    but arrivals still held, or no button but the morning still blocked — is
+    worse than either state, because nothing on the screen explains what is
+    stopping the receptionist.
+    """
+
+    def setUp(self):
+        # The shipped default. Set explicitly so this reads as the case under
+        # test rather than as whatever config happens to say today.
+        signoff.settings.CLINIC.DAY_SIGN_OFF_ENABLED = False
+        self.receptionist = make_receptionist()
+        self.doctor = make_doctor()
+        self.client.force_login(self.receptionist)
+        self.yesterday = timezone.localdate() - timedelta(days=1)
+
+        visit = make_visit(make_patient(), self.doctor, start=_yesterday_at(10))
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+        self.stale = visit
+
+    def test_the_default_is_off(self):
+        from config import clinic
+
+        self.assertFalse(clinic.DAY_SIGN_OFF_ENABLED)
+
+    def test_nothing_is_ever_due(self):
+        self.assertIsNone(signoff.is_due(now=MID_MORNING()))
+
+    def test_the_board_carries_no_sign_off_alert(self):
+        body = self.client.get(reverse("reception_home")).content.decode()
+        self.assertNotIn("has not been signed off", body)
+        self.assertNotIn("Sign off", body)
+        self.assertNotIn("day sheet", body)
+
+    def test_arrivals_are_not_held_up(self):
+        # The half-disabled case: no alert on screen, but the rule underneath
+        # still refusing. Nothing would explain the refusal.
+        today = make_visit(
+            make_patient(phone="9820077777"), self.doctor,
+            start=timezone.now() + timedelta(hours=2),
+        )
+        self.client.post(
+            reverse("reception_move_visit", args=[today.pk, "ARRIVED"]),
+            headers={"HX-Request": "true"},
+        )
+        today.refresh_from_db()
+        self.assertEqual(today.status, VisitStatus.ARRIVED)
+
+    def test_no_sign_off_is_recorded_and_no_report_sent(self):
+        self.client.post(reverse("reception_close_day"))
+        self.assertFalse(DaySignOff.objects.exists())
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_the_stale_sweep_still_clears_the_board(self):
+        # Older than the sign-off and not dependent on it. Without this the
+        # board can never be cleared, and it goes on lying about who the doctor
+        # is seeing.
+        self.client.post(reverse("reception_close_day"))
+        self.stale.refresh_from_db()
+        self.assertEqual(self.stale.status, VisitStatus.NO_SHOW)
+
+    def test_the_sweep_says_nothing_about_signing_off(self):
+        response = self.client.post(reverse("reception_close_day"), follow=True)
+        said = " ".join(str(m) for m in response.context["messages"])
+        self.assertNotIn("sign", said.lower())
+
+    def test_an_unbilled_consultation_is_still_not_swept_away(self):
+        visit = make_visit(
+            make_patient(phone="9820066666"), self.doctor, start=_yesterday_at(12),
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            visit.transition_to(status, by_user=self.receptionist)
+
+        self.client.post(reverse("reception_close_day"))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONSULTED)
+
+    def test_the_sweep_clears_every_open_day_not_just_one(self):
+        older = make_visit(
+            make_patient(phone="9820055555"), self.doctor,
+            start=timezone.now() - timedelta(days=4),
+        )
+        older.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+
+        self.client.post(reverse("reception_close_day"))
+        older.refresh_from_db()
+        self.stale.refresh_from_db()
+        self.assertEqual(older.status, VisitStatus.NO_SHOW)
+        self.assertEqual(self.stale.status, VisitStatus.NO_SHOW)
+
+    def test_the_scheduled_command_refuses_rather_than_mailing(self):
+        # A cron entry left in place after the switch was thrown would keep
+        # posting patient names and amounts to an address nobody expects them
+        # at any more.
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("sign_off_day", verbosity=0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_force_still_runs_it_for_a_one_off(self):
+        from django.core.management import call_command
+
+        call_command("sign_off_day", "--force",
+                     f"--date={self.yesterday:%Y-%m-%d}", verbosity=0)
+        self.assertTrue(DaySignOff.objects.filter(date=self.yesterday).exists())
+
+
+class TestTheSweepCanActuallyClearTheBoard(TestCase):
+    """
+    A visit that was paid for and never marked complete.
+
+    The sweep had no answer for BILLED, so such a visit stayed on the
+    "still open" strip for ever, and every press of Close them off reported it
+    as "a consultation that has not been billed" — which it plainly is not. The
+    board could never be cleared and the reason given for that was untrue.
+
+    Predates the sign-off; it was simply hidden behind the sign-off panel until
+    that was switched off.
+    """
+
+    def setUp(self):
+        signoff.settings.CLINIC.DAY_SIGN_OFF_ENABLED = False
+        self.receptionist = make_receptionist()
+        self.doctor = make_doctor()
+        self.client.force_login(self.receptionist)
+
+        self.paid = make_visit(
+            make_patient(), self.doctor, start=_yesterday_at(9),
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED,
+                       VisitStatus.BILLED):
+            self.paid.transition_to(status, by_user=self.receptionist)
+
+    def test_a_paid_visit_from_a_previous_day_is_closed(self):
+        self.client.post(reverse("reception_close_day"))
+        self.paid.refresh_from_db()
+        self.assertEqual(self.paid.status, VisitStatus.COMPLETED)
+
+    def test_the_board_clears(self):
+        self.client.post(reverse("reception_close_day"))
+        self.assertFalse(Visit.objects.unfinished_before().exists())
+
+    def test_what_is_left_behind_is_described_truthfully(self):
+        owed = make_visit(
+            make_patient(phone="9820033333"), self.doctor, start=_yesterday_at(11),
+        )
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            owed.transition_to(status, by_user=self.receptionist)
+
+        response = self.client.post(reverse("reception_close_day"), follow=True)
+        said = " ".join(str(m) for m in response.context["messages"])
+        self.assertIn("not been billed", said)
+        # One left, not two: the paid one went.
+        self.assertIn("1 still", said)

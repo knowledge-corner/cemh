@@ -155,6 +155,20 @@ WORKING_DAYS_DISPLAY = os.environ.get("WORKING_DAYS_DISPLAY", "Open all week")
 CURRENCY_SYMBOL = os.environ.get("CURRENCY_SYMBOL", "₹")
 DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
 
+# Whether the clinic day has to be signed off (KAN-48, KAN-49).
+#
+# **Off.** Turned off at the clinic's request until they are ready for it —
+# there is no mail server configured yet, so the one thing the sign-off is for
+# cannot happen, and until then it is a daily interruption that blocks the
+# morning without delivering the report it blocks for.
+#
+# Off, nothing about sign-offs appears: no alert, no held-up arrivals, no
+# button. The end-of-day sweep that clears yesterday's leftovers still works,
+# because that predates all of this and the board needs it.
+#
+# Set to "1" once EMAIL_HOST is configured and the clinic wants the day sheet.
+DAY_SIGN_OFF_ENABLED = os.environ.get("DAY_SIGN_OFF_ENABLED", "0") == "1"
+
 # Who receives the end-of-day sheet (KAN-48). Comma-separated.
 #
 # This report carries patient names against amounts, so the address matters:

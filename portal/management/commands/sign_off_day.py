@@ -35,8 +35,24 @@ class Command(BaseCommand):
             action="store_true",
             help="Sweep and record without sending. For a dry run on a copy.",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Run even though sign-off is switched off for this clinic.",
+        )
 
     def handle(self, *args, **options):
+        if not signoff.is_enabled() and not options["force"]:
+            # A schedule left in place after the feature was switched off would
+            # otherwise keep emailing patient names and amounts to an address
+            # nobody is expecting them at any more. Refused rather than run
+            # quietly, and said plainly enough to act on.
+            raise CommandError(
+                "Day sign-off is switched off for this clinic "
+                "(DAY_SIGN_OFF_ENABLED). Nothing was swept and no report was "
+                "sent. Turn it on, or pass --force for a one-off run."
+            )
+
         if options["date"]:
             try:
                 day = datetime.strptime(options["date"], "%Y-%m-%d").date()

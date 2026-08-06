@@ -44,12 +44,22 @@ SWEEP_AFTER_HOUR = 5
 #:
 #: A booking nobody confirmed lapsed; one the patient confirmed and then missed
 #: is a no-show, and the difference matters when the clinic later asks how often
-#: people fail to turn up. CONSULTED is absent on purpose — see the module note.
+#: people fail to turn up.
+#:
+#: BILLED closes as COMPLETED. The patient paid and went home yesterday; the
+#: only thing missing is somebody pressing the last button. Without this the
+#: visit sat on the "still open" strip for ever and each press of Close them off
+#: reported it as "a consultation that has not been billed" — which it plainly
+#: was not. A board that can never be cleared, giving an untrue reason.
+#:
+#: CONSULTED is absent on purpose — see the module note. That one really is
+#: money owed, and it is the one thing here that must survive the sweep.
 SWEEP_TARGETS = {
     VisitStatus.BOOKED: VisitStatus.CANCELLED,
     VisitStatus.CONFIRMED: VisitStatus.NO_SHOW,
     VisitStatus.ARRIVED: VisitStatus.CANCELLED,
     VisitStatus.IN_CABIN: VisitStatus.CONSULTED,
+    VisitStatus.BILLED: VisitStatus.COMPLETED,
 }
 
 SHEETS = ("billed", "cancelled", "no_show")
@@ -89,6 +99,21 @@ def recipients():
     return [fallback] if fallback else []
 
 
+def is_enabled():
+    """
+    Whether the clinic is being asked to sign its days off at all.
+
+    Off at the clinic's request. Everything KAN-48 and KAN-49 built stays here
+    and stays tested — this is a switch, not a deletion, because the feature is
+    wanted once there is a mail server for the report to go to.
+
+    Checked in one place so it cannot be honoured by the alert and forgotten by
+    the rule underneath it, which is how a "disabled" feature still blocks
+    somebody's morning.
+    """
+    return bool(getattr(settings.CLINIC, "DAY_SIGN_OFF_ENABLED", False))
+
+
 def is_due(day=None, now=None):
     """
     Is there a previous clinic day still waiting to be signed off?
@@ -96,7 +121,13 @@ def is_due(day=None, now=None):
     Answered from :class:`DaySignOff` rather than from the visits, because a day
     on which nothing needed billing and a day nobody closed look identical in
     the visit table — and only one of them is a problem.
+
+    Always ``None`` while the feature is switched off. Both the alert and the
+    hold on arrivals ask this one question, so one answer turns off both.
     """
+    if not is_enabled():
+        return None
+
     now = now or timezone.localtime()
     today = day or now.date()
 
