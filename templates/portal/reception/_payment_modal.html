@@ -31,6 +31,51 @@ same slot so validation errors land where the user is looking.
                 onclick="document.getElementById('modal-host').innerHTML = '';">Close</button>
       </div>
 
+    {% elif charge.balance <= 0 %}
+      {% comment %}
+      KAN-36. The removed full-bill page said this; the dialog did not, because
+      the page was where a settled bill was read. Showing the payment box on a
+      bill with nothing left on it invites a second payment the form then
+      refuses — an error for doing the only thing the screen offered.
+      {% endcomment %}
+      <div class="modal__body">
+        <div class="alert-strip alert-strip--success">
+          <div>
+            <span class="alert-strip__title">Nothing outstanding</span><br>
+            {{ clinic_currency }}{{ charge.total }} has been collected in full.
+          </div>
+        </div>
+        {% if payments %}
+          <table class="table" style="margin-top:1rem">
+            <tbody>
+              {% for payment in payments %}
+                <tr>
+                  <td>
+                    {{ payment.received_at|date:"j M, H:i" }}
+                    &middot; {{ payment.get_method_display }}
+                    {% if payment.receipt %}
+                      <br><span class="faint small mono">{{ payment.receipt.receipt_number }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="table__num">{{ clinic_currency }}{{ payment.amount }}</td>
+                  <td class="table__num">
+                    {% if payment.receipt %}
+                      <a class="btn btn--secondary"
+                         href="{% url 'print_receipt' payment.receipt.pk %}"
+                         target="_blank" rel="noopener">Reprint</a>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn--primary" autofocus
+                onclick="document.getElementById('modal-host').innerHTML = '';">Close</button>
+      </div>
+
     {% else %}
       <form method="post" action="{% url 'reception_generate_receipt' visit.pk %}"
             hx-post="{% url 'reception_generate_receipt' visit.pk %}"
@@ -62,12 +107,46 @@ same slot so validation errors land where the user is looking.
                   <td class="table__num">&minus; {{ clinic_currency }}{{ charge.discount }}</td>
                 </tr>
               {% endif %}
+              {% if payments %}
+                <tr>
+                  <td class="strong">Bill total</td>
+                  <td class="table__num strong">{{ clinic_currency }}{{ charge.total }}</td>
+                </tr>
+              {% endif %}
               <tr class="total-row">
                 <td class="strong">To collect</td>
                 <td class="table__num strong">{{ clinic_currency }}{{ charge.balance }}</td>
               </tr>
             </tbody>
           </table>
+
+          {% comment %}
+          KAN-36 took the full-bill page away, so what it carried and this did
+          not has to be here: what has already been taken against this bill.
+          Without it a part-paid visit shows a smaller "to collect" than the
+          doctor charged and nothing on the screen explains the difference,
+          which reads as the fee having been changed.
+          {% endcomment %}
+          {% if payments %}
+            <p class="field__label">Already taken</p>
+            <table class="table" style="margin-bottom:1rem">
+              <tbody>
+                {% for payment in payments %}
+                  <tr>
+                    <td>
+                      {{ payment.received_at|date:"j M, H:i" }}
+                      &middot; {{ payment.get_method_display }}
+                      {% if payment.reference %}&middot; <span class="mono">{{ payment.reference }}</span>{% endif %}
+                      {% if payment.receipt %}
+                        <br><span class="faint small mono">{{ payment.receipt.receipt_number }}</span>
+                      {% endif %}
+                    </td>
+                    <td class="table__num">{{ clinic_currency }}{{ payment.amount }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
 
           {% if form.non_field_errors %}
             <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
@@ -99,7 +178,6 @@ same slot so validation errors land where the user is looking.
         <div class="modal__footer">
           <button type="button" class="btn btn--secondary"
                   onclick="document.getElementById('modal-host').innerHTML = '';">Cancel</button>
-          <a class="btn btn--secondary" href="{% url 'reception_billing' visit.pk %}">Open full bill</a>
           <button type="submit" class="btn btn--primary">Confirm payment</button>
         </div>
       </form>

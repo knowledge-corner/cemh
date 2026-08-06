@@ -268,7 +268,7 @@ class TestTakingTheMoney(TestCase):
 
     def _pay(self, amount="800", method="CASH"):
         return self.client.post(
-            reverse("reception_billing", args=[self.visit.pk]),
+            reverse("reception_generate_receipt", args=[self.visit.pk]),
             {"amount": amount, "method": method, "reference": "", "notes": ""},
         )
 
@@ -292,7 +292,9 @@ class TestTakingTheMoney(TestCase):
         # What the receptionist sees once the fee is in: the payment box is
         # replaced by the settled notice, so there is nothing left to click.
         self._pay()
-        page = self.client.get(reverse("reception_billing", args=[self.visit.pk]))
+        page = self.client.get(
+            reverse("reception_generate_receipt", args=[self.visit.pk])
+        )
         self.assertContains(page, "Nothing outstanding")
 
     def test_a_payment_posted_at_a_settled_bill_is_refused(self):

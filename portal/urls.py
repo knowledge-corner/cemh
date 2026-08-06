@@ -72,8 +72,10 @@ urlpatterns = [
     path("reception/callbacks/<int:pk>/close/", views_calendar.close_callback,
          name="reception_close_callback"),
 
-    path("reception/billing/<int:pk>/", views_reception.billing, name="reception_billing"),
-    # Taking the fee in a pop-up on the board, rather than on the billing page.
+    # KAN-36 removed the standalone Full Bill page. Money is taken in the
+    # Generate receipt pop-up on the board and nowhere else — two screens
+    # writing payments against one charge is two places for a part payment to
+    # be recorded twice.
     path("reception/billing/<int:pk>/receipt/", views_reception.generate_receipt,
          name="reception_generate_receipt"),
     path("reception/billing/<int:pk>/complete/",

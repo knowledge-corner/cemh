@@ -156,10 +156,16 @@ class TestTheCardIsQuieter(TestCase):
         self.visit.refresh_from_db()
         self.assertEqual(self.visit.confirmation.changed_by, self.receptionist)
 
-    def test_the_waiting_time_is_not_shown(self):
-        # AC-6. It was also arithmetic that could read "-5 min".
+    def test_the_waiting_time_is_shown_again_and_is_never_negative(self):
+        # AC-6 removed this, on the grounds that it was "arithmetic that could
+        # read -5 min". KAN-34 asks for it back, so the arithmetic had to be
+        # fixed rather than the display argued about: move_back now gives up
+        # the stamp for the stage being left, and tests/test_models.py pins
+        # that. What AC-6 was really objecting to is what is checked here.
         self.visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
-        self.assertNotIn("Waiting", self._body())
+        body = self._body()
+        self.assertIn("Waiting", body)
+        self.assertNotIn("Waiting -", body)
 
     def test_cancelled_and_no_shows_are_not_tracked_on_the_board(self):
         self.visit.transition_to(VisitStatus.CANCELLED, by_user=self.receptionist)

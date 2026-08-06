@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Reception — {{ clinic_name }}{% endblock %}
 
@@ -75,14 +76,71 @@ the backstop rather than the mechanism.
 
 The refresh carries the doctor filter with it. Without that, the board would
 quietly widen back to all doctors half a minute after being filtered, which is
-worse than not having the filter at all.
+worse than not having the filter at all. Since KAN-33 it carries the search term
+for exactly the same reason.
 {% endcomment %}
+
+{% comment %}
+KAN-33. Finding one named patient among a morning of bookings.
+
+Collapsed to a button until it is wanted: this board's job is to be scannable at
+a glance, and a permanently open text box above four columns is one more thing
+between the receptionist and the queue.
+
+An ordinary GET form, with the filtering done on the server rather than by a
+script hiding cards. The term then lives in the URL, which is what lets the poll
+below carry it — a filter applied in the browser would silently undo itself
+thirty seconds later, between one glance at the screen and the next.
+{% endcomment %}
+{% if can_work_queue %}
+  <div class="qsearch{% if search %} is-open{% endif %}" id="queue-search">
+    <button class="btn btn--secondary qsearch__toggle" type="button"
+            aria-expanded="{% if search %}true{% else %}false{% endif %}"
+            aria-controls="queue-search-form">Find a patient</button>
+
+    <form method="get" class="qsearch__form" id="queue-search-form" role="search"
+          action="{% url 'reception_home' %}">
+      {% if chosen_doctor %}
+        <input type="hidden" name="doctor" value="{{ chosen_doctor.pk }}">
+      {% endif %}
+      <input class="input" type="search" name="q" value="{{ search }}"
+             placeholder="Name, patient ID or phone"
+             aria-label="Search today's appointments">
+      <button class="btn btn--primary" type="submit">Search</button>
+      {% if search %}
+        <a class="btn btn--secondary"
+           href="{% url 'reception_home' %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}">Clear</a>
+      {% endif %}
+    </form>
+
+    {% if search %}
+      {% comment %}
+      Said in words, because an empty Stage 1 and a Stage 1 with nothing
+      matching look identical — and one of them means the clinic has no
+      bookings left, which is a very different thing to tell a patient.
+      {% endcomment %}
+      <p class="qsearch__result faint small">
+        {% if matched %}
+          {{ matched }} appointment{{ matched|pluralize }} matching
+          &ldquo;{{ search }}&rdquo;. The other stages are not filtered.
+        {% else %}
+          Nothing in Stage 1 matches &ldquo;{{ search }}&rdquo;.
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+{% endif %}
+
 <div id="queue-board"
-     hx-get="{% url 'reception_board' %}{% if chosen_doctor %}?doctor={{ chosen_doctor.pk }}{% endif %}"
+     hx-get="{% url 'reception_board' %}?doctor={% if chosen_doctor %}{{ chosen_doctor.pk }}{% endif %}&amp;q={{ search|urlencode }}"
      hx-trigger="every 30s"
      hx-swap="innerHTML">
   {% include "portal/reception/_board.html" %}
 </div>
 
 <div id="modal-host"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'js/queue_search.js' %}" defer></script>
 {% endblock %}

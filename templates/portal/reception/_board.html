@@ -32,6 +32,22 @@ to be readable at a glance. They stay on the Bookings screen and in the record.
             <p class="pcard__meta">{{ visit.doctor.display_name }}</p>
             {% if visit.reason %}<p class="pcard__reason">{{ visit.reason }}</p>{% endif %}
 
+            {% comment %}
+            KAN-34. How long they have been sitting there — the thing the
+            receptionist is asked at the desk and otherwise has to work out from
+            the appointment time, which is the wrong number: a patient who came
+            forty minutes early has not been waiting since their slot.
+
+            Counted from arrival, and arrival is re-stamped each time, so a card
+            put back a stage and re-arrived starts again rather than showing the
+            hour it spent in a state it should never have been in.
+            {% endcomment %}
+            {% if visit.status == "ARRIVED" and visit.waiting_minutes is not None %}
+              <p class="pcard__waited{% if visit.waiting_minutes >= 30 %} pcard__waited--long{% endif %}">
+                Waiting {{ visit.waiting_minutes }} min
+              </p>
+            {% endif %}
+
             {% if visit.status == "CONSULTED" and visit.charge %}
               {% comment %}
               What to ask the patient for, on the card. Reception should not have

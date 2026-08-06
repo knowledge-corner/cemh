@@ -291,12 +291,17 @@ class TestBilling(TestCase):
         self.client.force_login(self.receptionist)
 
     def pay(self, amount):
-        return self.client.post(reverse("reception_billing", args=[self.visit.pk]), {
-            "amount": amount, "method": "CASH", "reference": "", "notes": "",
-        })
+        # KAN-36 left the Generate receipt pop-up as the only way money is
+        # taken. Same charge, same lock, same receipt — only the screen moved.
+        return self.client.post(
+            reverse("reception_generate_receipt", args=[self.visit.pk]), {
+                "amount": amount, "method": "CASH", "reference": "", "notes": "",
+            })
 
-    def test_billing_page_shows_what_is_owed(self):
-        response = self.client.get(reverse("reception_billing", args=[self.visit.pk]))
+    def test_the_receipt_dialog_shows_what_is_owed(self):
+        response = self.client.get(
+            reverse("reception_generate_receipt", args=[self.visit.pk])
+        )
         self.assertContains(response, "800")
         self.assertContains(response, self.patient.patient_id)
 
@@ -352,7 +357,9 @@ class TestBilling(TestCase):
     def test_a_patient_cannot_reach_billing(self):
         self.client.force_login(make_user())
         self.assertEqual(
-            self.client.get(reverse("reception_billing", args=[self.visit.pk])).status_code, 403
+            self.client.get(
+                reverse("reception_generate_receipt", args=[self.visit.pk])
+            ).status_code, 403
         )
 
 

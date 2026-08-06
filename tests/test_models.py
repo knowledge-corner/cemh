@@ -12,7 +12,8 @@ from audit.models import AccessLog, AuditAction
 from patients.models import Patient, allocate_patient_id
 
 from .factories import (
-    make_adult_patient, make_doctor, make_measurement, make_patient, make_visit,
+    make_adult_patient, make_doctor, make_measurement, make_patient,
+    make_receptionist, make_visit, today_at,
 )
 
 
@@ -200,3 +201,58 @@ class TestAuditLogIsAppendOnly(TestCase):
         entry = AccessLog.objects.create(action=AuditAction.VIEW, username="someone")
         with self.assertRaises(ValueError):
             entry.delete()
+
+
+class TestTheWaitingTimerSurvivesACorrection(TestCase):
+    """
+    KAN-34 — "timer resets if moved back".
+
+    An earlier ticket removed the waiting time from the card, noting it "could
+    read -5 min". That was not idle: ``move_back`` changes the status and
+    nothing else, so a visit put back out of the cabin kept ``entered_cabin_at``
+    and the timer stopped where it was. Send the patient in and back twice and
+    ``arrived_at`` is re-stamped later than that stale cabin time, so the
+    subtraction goes negative.
+
+    Both are the same bug — a stamp for a stage the visit is no longer in — and
+    both matter now the number is on the board again.
+    """
+
+    def setUp(self):
+        self.receptionist = make_receptionist()
+        self.doctor = make_doctor()
+        self.visit = make_visit(make_patient(), self.doctor, start=today_at(10))
+        self.visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+        self.visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
+
+    def test_the_timer_runs_while_the_patient_waits(self):
+        self.assertIsNotNone(self.visit.waiting_minutes)
+
+    def test_coming_back_out_of_the_cabin_restarts_the_clock(self):
+        self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.visit.move_back(by_user=self.receptionist)
+
+        self.assertEqual(self.visit.status, VisitStatus.ARRIVED)
+        # Still in the cabin as far as the record was concerned, so the timer
+        # was frozen at however long the mis-click lasted.
+        self.assertIsNone(self.visit.entered_cabin_at)
+
+    def test_the_timer_is_never_negative(self):
+        # The reported "-5 min": in and out of the cabin, back to confirmed,
+        # then arriving again re-stamps arrival *after* the stale cabin time.
+        self.visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.visit.move_back(by_user=self.receptionist)
+        self.visit.move_back(by_user=self.receptionist)
+        self.assertEqual(self.visit.status, VisitStatus.CONFIRMED)
+
+        self.visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
+        self.assertGreaterEqual(self.visit.waiting_minutes, 0)
+
+    def test_going_back_to_confirmed_forgets_the_arrival(self):
+        # They are not in the waiting room any more, so there is no wait to
+        # report. A leftover arrival time would put them back at the head of
+        # the queue when they next turn up.
+        self.visit.move_back(by_user=self.receptionist)
+        self.assertEqual(self.visit.status, VisitStatus.CONFIRMED)
+        self.assertIsNone(self.visit.arrived_at)
+        self.assertIsNone(self.visit.waiting_minutes)

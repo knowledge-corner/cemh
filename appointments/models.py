@@ -343,7 +343,28 @@ class Visit(models.Model):
 
         previous = self.status
         self.status = target
-        self.save(update_fields=["status", "updated_at"])
+        updated = ["status", "updated_at"]
+
+        # Give up the stamp for the stage being left (KAN-34). Without this a
+        # visit put back out of the cabin keeps entered_cabin_at, so the
+        # waiting timer freezes at however long the mis-click lasted — and on a
+        # second round trip arrived_at is re-stamped *later* than that stale
+        # cabin time, which is where the reported "-5 min" came from.
+        #
+        # It is also simply true: the visit is not in that stage any more, and
+        # a time recording when it entered a stage it has left is a fact about
+        # nothing.
+        forget = {
+            VisitStatus.ARRIVED: "arrived_at",
+            VisitStatus.IN_CABIN: "entered_cabin_at",
+            VisitStatus.CONSULTED: "consulted_at",
+            VisitStatus.COMPLETED: "completed_at",
+        }.get(previous)
+        if forget:
+            setattr(self, forget, None)
+            updated.append(forget)
+
+        self.save(update_fields=updated)
 
         VisitStatusEvent.objects.create(
             visit=self,

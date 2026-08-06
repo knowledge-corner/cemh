@@ -114,6 +114,38 @@ def _queue_context(request, day=None):
         if chosen_doctor:
             visits = visits.filter(doctor=chosen_doctor)
 
+    # KAN-33. Finding one named patient among a morning's bookings, without
+    # reading every card. Server-side rather than a script that hides rows,
+    # because the board reloads itself every thirty seconds and a filter applied
+    # in the browser would silently undo itself between one glance and the next.
+    #
+    # Scoped to Stage 1 on purpose: the other three stages are short, and a
+    # search that emptied the waiting room and the cabin would hide the patients
+    # the receptionist is in the middle of dealing with.
+    search = request.GET.get("q", "").strip()
+    # Read once. It is walked several times below, and the day's real size has
+    # to be known before any search narrows it: a header reading "2
+    # appointments" because somebody was searching would answer a different
+    # question from the one it asks.
+    visits = list(visits)
+    booked_today = len(visits)
+
+    if search:
+        needle = search.casefold()
+        keep = []
+        for visit in visits:
+            if STAGE_OF_STATUS.get(visit.status) != "appointments":
+                keep.append(visit)
+                continue
+            patient = visit.patient
+            haystack = " ".join(filter(None, (
+                patient.full_name, patient.patient_id,
+                patient.contact_phone, patient.guardian_name,
+            )))
+            if needle in haystack.casefold():
+                keep.append(visit)
+        visits = keep
+
     by_status = {}
     for visit in visits:
         by_status.setdefault(visit.status, []).append(visit)
@@ -134,7 +166,26 @@ def _queue_context(request, day=None):
     columns = []
     for key, label, statuses in QUEUE_COLUMNS:
         rows = [v for status in statuses for v in by_status.get(status, [])]
-        rows.sort(key=lambda v: v.scheduled_start)
+        if key == "waiting":
+            # KAN-34. Arrival order, not appointment time: the waiting room is
+            # a queue of people who turned up, and somebody who came early and
+            # has sat there an hour should not be below a later booking who
+            # walked in a minute ago. arrived_at is re-stamped on every arrival,
+            # so a card moved back and re-arrived takes its place at the end —
+            # which is where that patient actually is.
+            rows.sort(key=lambda v: v.arrived_at or v.scheduled_start)
+        elif key == "billing":
+            # KAN-36. Stage 4 reads backwards from the other three: it is a
+            # pile of work rather than a queue, and the money still to collect
+            # is what the receptionist is looking for. So unpaid "Consulted"
+            # cards come first, and within each group the newest is on top —
+            # the patient who just walked out of the cabin is the one standing
+            # at the desk.
+            rows.sort(
+                key=lambda v: (v.status != VisitStatus.CONSULTED, -v.scheduled_start.timestamp())
+            )
+        else:
+            rows.sort(key=lambda v: v.scheduled_start)
         columns.append({"key": key, "label": label, "visits": rows, "count": len(rows)})
 
     # Cancelled visits and no-shows are deliberately not on this board. They are
@@ -150,9 +201,16 @@ def _queue_context(request, day=None):
     return {
         "day": day,
         "columns": columns,
-        "total": len(visits),
+        "total": booked_today,
         "doctors": doctors,
         "chosen_doctor": chosen_doctor,
+        "search": search,
+        # How many of Stage 1 the search left standing, so "no matches" can be
+        # said rather than shown as an empty column that looks like a clinic
+        # with nothing booked.
+        "matched": sum(
+            column["count"] for column in columns if column["key"] == "appointments"
+        ) if search else None,
         # Doctors may read the board — they need to see who is waiting — but
         # only reception works it. Actions are hidden here and refused by the
         # view underneath, so this is presentation, not the access control.
@@ -788,21 +846,25 @@ def generate_receipt(request, pk):
     another screen and back lost the board — and, with it, whichever doctor
     filter she had set.
 
-    The full billing page is still there for anything harder: a part payment
-    that needs the history, or a visit somebody wants to read before taking
-    money for it.
+    Since KAN-36 this is the only way money is taken. The standalone billing
+    page is gone, so the one thing it carried and this did not — what has
+    already been taken against the bill — is shown here. Without it a
+    part-paid visit shows a smaller "to collect" than the doctor charged, and
+    nothing on screen accounts for the difference.
     """
     visit = get_object_or_404(
         Visit.objects.select_related("patient", "doctor", "charge"), pk=pk
     )
     charge = getattr(visit, "charge", None)
 
+    record_patient_view(request, visit.patient, "Opened billing for a visit")
+
     if charge is None:
         # Nothing to collect: the doctor has not set a fee. Said in the dialog
         # the user opened rather than as a 404, which would read as a bug.
         return HttpResponse(render_to_string(
             "portal/reception/_payment_modal.html",
-            {"visit": visit, "charge": None, "form": None},
+            {"visit": visit, "charge": None, "form": None, "payments": []},
             request=request,
         ))
 
@@ -831,47 +893,16 @@ def generate_receipt(request, pk):
 
     return HttpResponse(render_to_string(
         "portal/reception/_payment_modal.html",
-        {"visit": visit, "charge": charge, "form": form},
+        {
+            "visit": visit,
+            "charge": charge,
+            "form": form,
+            "payments": list(
+                charge.payments.select_related("receipt").order_by("received_at")
+            ),
+        },
         request=request,
     ))
-
-
-@role_required(Role.RECEPTIONIST)
-def billing(request, pk):
-    """
-    Settle one visit: show what the doctor charged, take the money, issue a
-    receipt, then release the prescription for printing.
-    """
-    visit = get_object_or_404(
-        Visit.objects.select_related("patient", "doctor"), pk=pk
-    )
-    record_patient_view(request, visit.patient, "Opened billing for a visit")
-
-    charge = getattr(visit, "charge", None)
-    prescription = getattr(visit, "prescription", None)
-
-    if request.method == "POST" and charge:
-        form = clinic_forms.PaymentForm(request.POST, charge=charge)
-        if form.is_valid():
-            if _take_payment(request, visit, charge, form) is None:
-                messages.info(
-                    request, "This bill was already settled; nothing further was taken."
-                )
-            return redirect("reception_billing", pk=visit.pk)
-    else:
-        initial = {}
-        if charge and charge.balance > 0:
-            initial["amount"] = charge.balance
-        form = clinic_forms.PaymentForm(initial=initial, charge=charge)
-
-    return render(request, "portal/reception/billing.html", {
-        "visit": visit,
-        "patient": visit.patient,
-        "charge": charge,
-        "prescription": prescription,
-        "form": form,
-        "payments": charge.payments.select_related("receipt", "received_by") if charge else [],
-    })
 
 
 @role_required(Role.RECEPTIONIST)

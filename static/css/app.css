@@ -845,6 +845,30 @@ p { margin: 0 0 .75rem; }
 .pcard__meta { margin: 0; font-size: .75rem; color: var(--text-muted); }
 .pcard__reason { margin: .25rem 0 0; font-size: .75rem; color: var(--text); }
 .pcard__amount { margin: .375rem 0 0; font-size: .8125rem; color: var(--brand-teal-dark); }
+
+/* The Stage 1 search (KAN-33).
+ *
+ * The plain form is the default and the collapsing is the enhancement, not the
+ * other way round: with no JavaScript the receptionist gets an ordinary search
+ * box that works, rather than a button that does nothing. The script adds
+ * .qsearch--enhanced, and only then does the box fold away behind it.
+ */
+.qsearch { margin-bottom: 1rem; }
+.qsearch__toggle { display: none; }
+.qsearch__form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.qsearch__form .input { flex: 1 1 16rem; min-width: 0; }
+.qsearch__result { margin: .5rem 0 0; }
+
+.qsearch--enhanced .qsearch__toggle { display: inline-flex; }
+.qsearch--enhanced .qsearch__form { display: none; }
+.qsearch--enhanced.is-open .qsearch__toggle { display: none; }
+.qsearch--enhanced.is-open .qsearch__form { display: flex; }
+
+/* How long they have sat there (KAN-34). Half an hour turns it amber — said in
+   a word as well as a colour, because a duration nobody can read without seeing
+   colour is not a duration. */
+.pcard__waited { margin: .375rem 0 0; font-size: .75rem; color: var(--text-muted); }
+.pcard__waited--long { color: var(--warning); font-weight: 600; }
 .pcard__actions { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .625rem; }
 .pcard__actions .btn { padding: .3125rem .625rem; font-size: .75rem; }
 
