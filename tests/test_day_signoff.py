@@ -29,6 +29,11 @@ from portal import services
 from .factories import make_doctor, make_patient, make_receptionist, make_visit
 
 
+#: What config/clinic.py ships with. Read rather than repeated, so a clinic
+#: changing its own address does not have to change a test to match.
+DEFAULT_SIGN_OFF = signoff.settings.CLINIC.SIGN_OFF_EMAILS
+
+
 def MID_MORNING():
     """
     A fixed time of day, well after the five-o'clock cutoff.
@@ -161,6 +166,11 @@ class TestTheReportIsNotBlockingWhenMailFails(SignOffTestCase):
     def test_no_address_configured_still_closes_the_day(self):
         # A clinic that cannot open tomorrow because nobody set an email
         # address would be a worse system than one that says so and carries on.
+        signoff.settings.CLINIC.SIGN_OFF_EMAILS = ""
+        signoff.settings.CLINIC.CLINIC_EMAIL = ""
+        self.addCleanup(
+            setattr, signoff.settings.CLINIC, "SIGN_OFF_EMAILS", DEFAULT_SIGN_OFF,
+        )
         self._visit(upto=[VisitStatus.CONFIRMED])
         record, created = signoff.sign_off(self.yesterday)
 
@@ -399,3 +409,46 @@ class TestTheSendButtonWaitsForTheCabin(TestCase):
         self.client.post(reverse("doctor_send_for_patient", args=[self.second.pk]))
         self.second.refresh_from_db()
         self.assertEqual(self.second.status, VisitStatus.ARRIVED)
+
+
+class TestTheClinicIsToldWhenNothingActuallyLeft(SignOffTestCase):
+    """
+    The most useful-sounding lie the system could tell.
+
+    The clinic's own docker-compose.yml runs the development settings, whose
+    mail backend prints to the container log. Django reports that as a
+    successful send, so the receptionist would be told "report sent to
+    contact@cemhcare.com" while nothing left the building — and nobody would
+    find out until somebody asked the accountant why no day sheets ever
+    arrived.
+    """
+
+    def test_the_console_backend_is_not_reported_as_delivery(self):
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        with self.settings(
+            EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend"
+        ):
+            record, _ = signoff.sign_off(self.yesterday)
+        self.assertIn("server log", record.delivery_error)
+        self.assertIn("cemhcare", record.delivery_error)
+
+    def test_the_day_is_still_signed_off(self):
+        # Saying so must not become another way to block the next morning.
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        with self.settings(
+            EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend"
+        ):
+            signoff.sign_off(self.yesterday)
+        self.assertTrue(DaySignOff.objects.filter(date=self.yesterday).exists())
+        self.assertIsNone(signoff.is_due(now=MID_MORNING()))
+
+    def test_a_real_backend_is_reported_as_delivery(self):
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        with self.settings(
+            EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+        ):
+            self.assertTrue(signoff.is_really_delivered())
+
+    def test_the_configured_address_is_the_clinics_own(self):
+        # It carries patient names against amounts, so this is not a detail.
+        self.assertEqual(signoff.recipients(), ["contact@cemhcare.com"])

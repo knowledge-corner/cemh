@@ -155,15 +155,18 @@ WORKING_DAYS_DISPLAY = os.environ.get("WORKING_DAYS_DISPLAY", "Open all week")
 CURRENCY_SYMBOL = os.environ.get("CURRENCY_SYMBOL", "₹")
 DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
 
-# Who receives the end-of-day sheet (KAN-48). Comma-separated; falls back to
-# CLINIC_EMAIL when empty.
+# Who receives the end-of-day sheet (KAN-48). Comma-separated.
 #
-# **Deliberately empty by default.** The report carries patient names against
-# amounts, so a guessed address would post patient data to whoever happens to
-# own it. Left unset, the day still signs off — the clinic is never blocked by
-# this — and the record says the report was not sent, so it is visible rather
-# than silently lost.
-SIGN_OFF_EMAILS = os.environ.get("SIGN_OFF_EMAILS", "")
+# This report carries patient names against amounts, so the address matters:
+# it must be a mailbox the clinic itself controls, never a personal or shared
+# one. contact@cemhcare.com is the clinic's own, which is why it is set here
+# rather than left to be guessed.
+#
+# Another clinic taking this codebase should change it or clear it. Cleared,
+# the day still signs off — the clinic is never blocked by this — and the
+# record says the report was not sent, so it is visible rather than silently
+# lost.
+SIGN_OFF_EMAILS = os.environ.get("SIGN_OFF_EMAILS", "contact@cemhcare.com")
 
 # ── Clinical defaults ─────────────────────────────────────────────────────────
 

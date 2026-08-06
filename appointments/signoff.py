@@ -60,6 +60,25 @@ COLUMNS = [
 ]
 
 
+#: Mail backends that accept a message and deliver it nowhere.
+#:
+#: The clinic's own docker-compose.yml runs the development settings, whose
+#: backend prints to the container log. Django reports that as a successful
+#: send, so without this check the receptionist is told "report sent to
+#: contact@cemhcare.com" while nothing left the building — and nobody finds out
+#: until the day somebody asks the accountant why no day sheets ever arrived.
+#:
+#: locmem is deliberately absent: it is the test backend, standing in for real
+#: delivery so the suite can assert what was sent.
+UNDELIVERED_BACKENDS = ("console", "dummy", "filebased")
+
+
+def is_really_delivered():
+    """False when the configured backend accepts mail and discards it."""
+    backend = getattr(settings, "EMAIL_BACKEND", "") or ""
+    return not any(name in backend for name in UNDELIVERED_BACKENDS)
+
+
 def recipients():
     """Who the report goes to. Empty means nobody has configured it yet."""
     configured = getattr(settings.CLINIC, "SIGN_OFF_EMAILS", "") or ""
@@ -232,6 +251,17 @@ def sign_off(day, by_user=None, send=True):
         except Exception as exc:                     # noqa: BLE001 — reported, not swallowed
             error = f"{type(exc).__name__}: {exc}"[:300]
             logger.exception("Sign-off report for %s could not be sent", day)
+        else:
+            if not is_really_delivered():
+                # Django reported success and the message went to the container
+                # log. Saying "sent" here would be the most useful-sounding lie
+                # the system could tell.
+                error = (
+                    "The report was written to the server log rather than "
+                    "emailed — this installation is running the development "
+                    "mail settings. Nothing reached "
+                    + ", ".join(to) + "."
+                )
     elif send and not to:
         error = (
             "No sign-off address is configured, so the report was not sent. "
