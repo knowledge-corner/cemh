@@ -253,7 +253,13 @@ def send_for_patient(request, pk):
             # AC-3: the cabin is occupied. Said plainly, and the patient stays
             # exactly where they were.
             messages.error(request, str(getattr(exc, "message", exc)))
+            return redirect("doctor_home")
         else:
             messages.success(request, f"{visit.patient.full_name} sent in.")
+            # Straight to the chart, not back to the queue: sending a patient
+            # in is the doctor saying they are ready for them right now, and
+            # the file is the next thing they need — not a second click on
+            # "Open" to get to it.
+            return redirect("doctor_patient_dashboard", patient_id=visit.patient.patient_id)
 
     return redirect("doctor_home")

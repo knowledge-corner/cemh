@@ -63,6 +63,21 @@ class TestDoctorCallsTheNextPatient(TestCase):
         self.first.refresh_from_db()
         self.assertEqual(self.first.status, VisitStatus.IN_CABIN)
 
+    def test_sending_a_patient_in_opens_their_file_directly(self):
+        # The doctor calling a patient in wants the chart, not a second click
+        # on "Open" to reach it.
+        response = self._send(self.first)
+        self.assertRedirects(
+            response,
+            reverse("doctor_patient_dashboard", args=[self.first.patient.patient_id]),
+        )
+
+    def test_a_refused_send_stays_on_the_queue(self):
+        # Nothing to open — the patient was not actually sent in.
+        self._send(self.first)
+        response = self._send(self.second)
+        self.assertRedirects(response, reverse("doctor_home"))
+
     def test_the_send_button_is_offered_on_the_doctors_queue(self):
         # FR-3: the doctor triggers this, not reception.
         response = self.client.get(reverse("doctor_home"))
