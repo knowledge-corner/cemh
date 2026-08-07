@@ -117,6 +117,7 @@ class TestReadingAFile(TestCase):
     def test_gender_is_read_loosely(self):
         for written, stored in (("Male", Sex.MALE), ("f", Sex.FEMALE),
                                 ("FEMALE", Sex.FEMALE),
+                                ("Prefer not to say", Sex.NOT_STATED),
                                 ("Prefer not to mention", Sex.NOT_STATED)):
             with self.subTest(gender=written):
                 result = parse(f"A,B,1990-04-23,{written},9820012345,,")

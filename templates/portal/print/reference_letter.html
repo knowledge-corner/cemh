@@ -9,7 +9,7 @@
 <dl class="sheet__patient">
   <div><dt>Patient</dt><dd>{{ patient.full_name }}</dd></div>
   <div><dt>{{ patient_id_label }}</dt><dd class="mono">{{ patient.patient_id }}</dd></div>
-  <div><dt>Age / Sex</dt><dd>{{ patient.age_display }} &middot; {{ patient.get_sex_display }}</dd></div>
+  <div><dt>Age / Gender</dt><dd>{{ patient.age_display }} &middot; {{ patient.get_sex_display }}</dd></div>
   <div><dt>Date</dt><dd>{{ letter.created_at|date:"j F Y" }}</dd></div>
 </dl>
 

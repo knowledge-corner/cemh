@@ -56,8 +56,8 @@ class TestTheFieldSet(TestCase):
         # migration to change a word the database never shows anybody.
         self.assertIn("Gender", self._body())
 
-    def test_prefer_not_to_mention_is_offered(self):
-        self.assertIn("Prefer not to mention", self._body())
+    def test_prefer_not_to_say_is_offered(self):
+        self.assertIn("Prefer not to say", self._body())
 
     def test_that_choice_actually_saves(self):
         self.client.post(reverse("reception_register_patient"), {

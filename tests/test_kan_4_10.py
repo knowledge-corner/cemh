@@ -83,6 +83,11 @@ class TestDoctorCallsTheNextPatient(TestCase):
         response = self.client.get(reverse("doctor_home"))
         self.assertContains(response, reverse("doctor_send_for_patient", args=[self.first.pk]))
 
+    def test_the_queue_says_gender_not_sex(self):
+        response = self.client.get(reverse("doctor_home"))
+        self.assertContains(response, "Age / Gender")
+        self.assertNotContains(response, "Age / Sex")
+
     def test_a_second_patient_is_refused_while_the_cabin_is_occupied(self):
         # AC-3.
         self._send(self.first)

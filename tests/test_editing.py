@@ -252,6 +252,13 @@ class TestPrescriptionWorkflow(EditingTestCase):
         response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
         self.assertContains(response, "Levothyroxine")
 
+    def test_the_printed_sheet_says_gender_not_sex(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        prescription = Prescription.objects.get()
+        response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
+        self.assertContains(response, "Age / Gender")
+        self.assertNotContains(response, "Age / Sex")
+
     def test_printing_records_it_and_is_reachable_without_a_visit(self):
         prescription = Prescription.objects.create(
             patient=self.patient, doctor=self.doctor,
@@ -371,6 +378,7 @@ class TestReferenceLetterWorkflow(EditingTestCase):
         response = self.client.get(reverse("print_reference_letter", args=[letter.pk]))
         self.assertContains(response, "The Principal, Green Valley School")
         self.assertContains(response, "fit to attend school")
+        self.assertContains(response, "Age / Gender")
 
     def test_printing_records_it(self):
         self._post()

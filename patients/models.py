@@ -68,7 +68,7 @@ class Sex(models.TextChoices):
     MALE = "M", "Male"
     FEMALE = "F", "Female"
     OTHER = "O", "Other"
-    NOT_STATED = "N", "Prefer not to mention"
+    NOT_STATED = "N", "Prefer not to say"
 
 
 class BloodGroup(models.TextChoices):

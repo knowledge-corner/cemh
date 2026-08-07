@@ -39,7 +39,7 @@ COLUMN_HELP = {
     "first_name": "Required",
     "last_name": "Required",
     "date_of_birth": "Required. YYYY-MM-DD, e.g. 1998-04-23",
-    "gender": "Required. Male, Female, Other, or Prefer not to mention",
+    "gender": "Required. Male, Female, Other, or Prefer not to say",
     "phone": "Required. 10 digits. +91 and spaces are fine",
     "guardian_name": "Required only if the patient is under 18",
     "guardian_relation": "Required only if the patient is under 18",
@@ -53,6 +53,7 @@ GENDER_WORDS = {
     "f": Sex.FEMALE, "female": Sex.FEMALE,
     "o": Sex.OTHER, "other": Sex.OTHER,
     "n": Sex.NOT_STATED,
+    "prefer not to say": Sex.NOT_STATED,
     "prefer not to mention": Sex.NOT_STATED,
     "not stated": Sex.NOT_STATED,
     "": Sex.NOT_STATED,
@@ -212,7 +213,7 @@ def parse(file_obj):
             result.problems.append(RowProblem(
                 number,
                 f"Gender '{value('gender')}' is not one of Male, Female, Other "
-                f"or Prefer not to mention.",
+                f"or Prefer not to say.",
             ))
             continue
 
