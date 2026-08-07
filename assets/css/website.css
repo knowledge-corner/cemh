@@ -664,6 +664,51 @@ textarea.wf__input { resize: vertical; }
   border: 0;
 }
 
+/* Doctor Contact */
+
+.doctor-contact{
+    display:grid;
+    grid-template-columns: 210px auto 24px;
+    align-items:center;
+    gap:8px;
+    margin-bottom:16px;
+}
+
+.doctor-name{
+    font-weight:700;
+    color:#1b1b1b;
+}
+
+.doctor-contact a[href^="tel"]{
+    color:#2f6f73;
+    text-decoration:none;
+}
+
+.doctor-contact a[href^="tel"]:hover{
+    text-decoration:underline;
+}
+
+/* WhatsApp Button */
+
+.wa-mini{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    background:#25D366;
+    color:#fff;
+    text-decoration:none;
+    font-size:13px;
+    transition:0.2s ease;
+}
+
+.wa-mini:hover{
+    background:#1EBE5D;
+    transform:scale(1.1);
+}
+
 @media (max-width: 900px) {
   .wf-map-frame { aspect-ratio: 3 / 2; }
 }
