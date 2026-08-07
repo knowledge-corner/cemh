@@ -1,0 +1,35 @@
+{% extends "portal/print/base_print.html" %}
+
+{% block title %}Reference letter — {{ patient.full_name }}{% endblock %}
+
+{% block sheet %}
+
+<h1 class="sheet__title">Reference letter</h1>
+
+<dl class="sheet__patient">
+  <div><dt>Patient</dt><dd>{{ patient.full_name }}</dd></div>
+  <div><dt>{{ patient_id_label }}</dt><dd class="mono">{{ patient.patient_id }}</dd></div>
+  <div><dt>Age / Sex</dt><dd>{{ patient.age_display }} &middot; {{ patient.get_sex_display }}</dd></div>
+  <div><dt>Date</dt><dd>{{ letter.created_at|date:"j F Y" }}</dd></div>
+</dl>
+
+<p class="strong" style="margin-top:1.5rem">To, {{ letter.to }}</p>
+
+<section class="sheet__section">
+  <p>{{ letter.note|linebreaksbr }}</p>
+</section>
+
+<footer class="sheet__sign">
+  {% if doctor_profile.signature %}
+    <img src="{{ doctor_profile.signature.url }}" alt="" class="sheet__signature">
+  {% endif %}
+  <p class="sheet__doctor">Dr. {{ letter.doctor.display_name }}</p>
+  {% if doctor_profile.qualification %}
+    <p class="sheet__qual">{{ doctor_profile.qualification }}</p>
+  {% endif %}
+  {% if doctor_profile.registration_number %}
+    <p class="sheet__reg">Reg. No. {{ doctor_profile.registration_number }}</p>
+  {% endif %}
+</footer>
+
+{% endblock %}

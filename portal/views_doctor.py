@@ -26,6 +26,9 @@ TABS = {
     "investigations": ("portal/doctor/_tab_investigations.html", services.investigations_context),
     "growth": ("portal/doctor/_tab_growth.html", services.growth_context),
     "prescriptions": ("portal/doctor/_tab_prescriptions.html", services.prescriptions_context),
+    "reference_letters": (
+        "portal/doctor/_tab_reference_letters.html", services.reference_letters_context,
+    ),
 }
 
 TAB_LABELS = [
@@ -34,6 +37,7 @@ TAB_LABELS = [
     ("investigations", "Investigations"),
     ("growth", "Growth Chart"),
     ("prescriptions", "Prescriptions"),
+    ("reference_letters", "Reference Letters"),
 ]
 
 

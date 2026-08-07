@@ -192,6 +192,39 @@ class Diagnosis(models.Model):
         return self.status == self.Status.ACTIVE
 
 
+class ReferenceLetter(models.Model):
+    """
+    A letter written for the patient — school, insurance, travel, fitness — in
+    the doctor's own words rather than a structured form.
+
+    Not tied to a visit: the request for one often has nothing to do with why
+    the patient was last seen, and can arrive well after the consultation it
+    concerns.
+    """
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="reference_letters")
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="reference_letters_issued"
+    )
+
+    to = models.CharField(max_length=200, help_text="Who this letter is addressed to.")
+    note = models.TextField(help_text="The body of the letter.")
+
+    #: A reprint changes nothing about the record — see Prescription.printed_at
+    #: for why this is set once and then left alone.
+    printed_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["patient", "-created_at"])]
+
+    def __str__(self):
+        return f"Reference letter — {self.patient.patient_id} to {self.to}"
+
+
 class FormDefinition(models.Model):
     """
     Describes the clinic-specific questions rendered into a record's ``extra``.

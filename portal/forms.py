@@ -21,7 +21,7 @@ from appointments import scheduling
 from appointments import weekdays as weekday_codes
 from appointments.models import Visit, VisitStatus
 from billing.models import Charge, Payment
-from clinical.models import ClinicalNote, Diagnosis, Investigation
+from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
 from patients.models import Patient, PatientHistory, age_in_years
 from pharmacy.models import Prescription, PrescriptionItem
 
@@ -189,6 +189,16 @@ class DiagnosisForm(StyledModelForm):
             "diagnosed_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
             "resolved_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
             "notes": forms.Textarea(attrs=TEXTAREA),
+        }
+
+
+class ReferenceLetterForm(StyledModelForm):
+    class Meta:
+        model = ReferenceLetter
+        fields = ["to", "note"]
+        widgets = {
+            "to": forms.TextInput(attrs=INPUT),
+            "note": forms.Textarea(attrs={**TEXTAREA, "rows": 10}),
         }
 
 

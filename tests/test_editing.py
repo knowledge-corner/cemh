@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from appointments.models import VisitStatus
 from audit.models import AccessLog, AuditAction
-from clinical.models import ClinicalNote, Diagnosis, Investigation
+from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
 from growth.models import Measurement
 from pharmacy.models import Prescription
 
@@ -47,7 +47,8 @@ class EditingTestCase(TestCase):
 
 class TestFormsOpen(EditingTestCase):
     def test_each_add_form_opens(self):
-        for kind in ("history", "diagnosis", "investigation", "measurement"):
+        for kind in ("history", "diagnosis", "investigation", "measurement",
+                     "reference_letter"):
             response = self.client.get(self.add_url(kind))
             self.assertEqual(response.status_code, 200, f"{kind} form failed to open")
             self.assertContains(response, "<form")
@@ -190,6 +191,101 @@ class TestPrescriptionWorkflow(EditingTestCase):
         ))
         prescription.refresh_from_db()
         self.assertTrue(prescription.is_generated)
+
+
+class TestReferenceLetterWorkflow(EditingTestCase):
+    """
+    A letter for school, insurance, travel or fitness — written in the
+    doctor's own words, not tied to a visit the way a note or prescription is,
+    since the request for one often has nothing to do with why the patient was
+    last seen.
+    """
+
+    def _post(self, **overrides):
+        payload = {"to": "The Principal, Green Valley School",
+                   "note": "This is to certify that the patient is fit to attend school."}
+        payload.update(overrides)
+        return self.client.post(self.add_url("reference_letter"), payload)
+
+    def test_no_open_visit_is_required(self):
+        # Unlike a note or prescription — the whole point of this record type.
+        response = self._post()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ReferenceLetter.objects.count(), 1)
+
+    def test_it_is_attached_to_the_patient_and_doctor(self):
+        self._post()
+        letter = ReferenceLetter.objects.get()
+        self.assertEqual(letter.patient, self.patient)
+        self.assertEqual(letter.doctor, self.doctor)
+        self.assertEqual(letter.to, "The Principal, Green Valley School")
+
+    def test_multiple_letters_can_be_added(self):
+        self._post(to="The Principal, Green Valley School")
+        self._post(to="ABC Insurance Co.")
+        self.assertEqual(ReferenceLetter.objects.count(), 2)
+
+    def test_editing_an_existing_letter_updates_it_not_duplicates_it(self):
+        self._post()
+        letter = ReferenceLetter.objects.get()
+        self.client.post(self.edit_url("reference_letter", letter.pk), {
+            "to": "The Principal, Green Valley School",
+            "note": "Revised: fit to attend school from Monday.",
+        })
+        letter.refresh_from_db()
+        self.assertEqual(ReferenceLetter.objects.count(), 1)
+        self.assertIn("Revised", letter.note)
+
+    def test_a_blank_note_is_refused(self):
+        response = self._post(note="")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<form")
+        self.assertEqual(ReferenceLetter.objects.count(), 0)
+
+    def test_the_letter_appears_on_its_own_tab(self):
+        self._post()
+        response = self.client.get(
+            reverse("doctor_patient_tab", args=[self.patient.patient_id, "reference_letters"])
+        )
+        self.assertContains(response, "The Principal, Green Valley School")
+
+    def test_the_tab_is_offered_next_to_prescriptions(self):
+        response = self.client.get(
+            reverse("doctor_patient_dashboard", args=[self.patient.patient_id])
+        )
+        tabs = [key for key, _label in response.context["tabs"]]
+        self.assertEqual(
+            tabs.index("reference_letters"), tabs.index("prescriptions") + 1,
+        )
+
+    def test_it_can_be_printed(self):
+        self._post()
+        letter = ReferenceLetter.objects.get()
+        response = self.client.get(reverse("print_reference_letter", args=[letter.pk]))
+        self.assertContains(response, "The Principal, Green Valley School")
+        self.assertContains(response, "fit to attend school")
+
+    def test_printing_records_it(self):
+        self._post()
+        letter = ReferenceLetter.objects.get()
+        self.client.get(reverse("print_reference_letter", args=[letter.pk]), {"mark": "1"})
+        letter.refresh_from_db()
+        self.assertIsNotNone(letter.printed_at)
+        self.assertTrue(
+            AccessLog.objects.filter(action=AuditAction.PRINT).exists()
+        )
+
+    def test_a_receptionist_can_print_but_not_edit(self):
+        self._post()
+        letter = ReferenceLetter.objects.get()
+        self.client.force_login(make_receptionist())
+        self.assertEqual(
+            self.client.get(reverse("print_reference_letter", args=[letter.pk])).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(self.add_url("reference_letter")).status_code, 403,
+        )
 
 
 class TestEditingIsAudited(EditingTestCase):

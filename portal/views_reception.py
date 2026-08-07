@@ -36,6 +36,7 @@ from appointments.models import (
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from billing.models import Charge, Payment, Receipt
+from clinical.models import ReferenceLetter
 from patients import importing, matching
 from patients.models import Patient
 
@@ -1271,6 +1272,37 @@ def print_prescription(request, pk):
         "prescription": prescription,
         "doctor_profile": getattr(visit.doctor, "doctor_profile", None),
         "items": prescription.items.all(),
+    })
+
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
+def print_reference_letter(request, pk):
+    """
+    Print-ready reference letter on the clinic's letterhead.
+
+    Not tied to a visit — see :class:`clinical.models.ReferenceLetter` — so
+    unlike a prescription this is reached straight from the doctor's own tab
+    rather than from a visit's billing screen.
+    """
+    letter = get_object_or_404(
+        ReferenceLetter.objects.select_related("patient", "doctor"), pk=pk
+    )
+
+    if letter.printed_at is None and (
+        request.method == "POST" or request.GET.get("mark")
+    ):
+        letter.printed_at = timezone.now()
+        letter.save(update_fields=["printed_at", "updated_at"])
+
+    record(
+        request, AuditAction.PRINT, obj=letter, patient=letter.patient,
+        description="Printed reference letter",
+    )
+
+    return render(request, "portal/print/reference_letter.html", {
+        "letter": letter,
+        "patient": letter.patient,
+        "doctor_profile": getattr(letter.doctor, "doctor_profile", None),
     })
 
 

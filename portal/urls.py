@@ -90,6 +90,8 @@ urlpatterns = [
 
     path("print/prescription/<int:pk>/", views_reception.print_prescription, name="print_prescription"),
     path("print/receipt/<int:pk>/", views_reception.print_receipt, name="print_receipt"),
+    path("print/reference-letter/<int:pk>/", views_reception.print_reference_letter,
+         name="print_reference_letter"),
 
     # There is deliberately no patient portal. Patients book by telephone or
     # WhatsApp from the public page; nothing about their record is online.

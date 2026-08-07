@@ -29,7 +29,7 @@ from accounts.permissions import role_required
 from appointments.models import VisitStatus
 from audit.services import record
 from audit.models import AuditAction
-from clinical.models import ClinicalNote, Diagnosis, Investigation
+from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
 from patients.models import Patient, PatientHistory
 from pharmacy.models import Prescription
 
@@ -107,6 +107,11 @@ def _attach_prescription(obj, patient, request):
     obj.doctor = request.user
 
 
+def _attach_reference_letter(obj, patient, request):
+    obj.patient = patient
+    obj.doctor = request.user
+
+
 def _measurement_model():
     from growth.models import Measurement
 
@@ -169,6 +174,14 @@ EDITABLE = {
         title="Edit prescription",
         add_title="New prescription",
         attach=_attach_prescription,
+    ),
+    "reference_letter": Editable(
+        model=lambda: ReferenceLetter,
+        form_class=lambda: clinic_forms.ReferenceLetterForm,
+        tab="reference_letters",
+        title="Edit reference letter",
+        add_title="New reference letter",
+        attach=_attach_reference_letter,
     ),
 }
 

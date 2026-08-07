@@ -1,6 +1,8 @@
 from django.contrib import admin
 
-from .models import ClinicalNote, Diagnosis, FormDefinition, Investigation
+from .models import (
+    ClinicalNote, Diagnosis, FormDefinition, Investigation, ReferenceLetter,
+)
 
 
 @admin.register(ClinicalNote)
@@ -40,6 +42,15 @@ class DiagnosisAdmin(admin.ModelAdmin):
     list_filter = ("status", "diagnosed_on")
     search_fields = ("patient__patient_id", "description", "icd10_code")
     autocomplete_fields = ("patient", "visit")
+
+
+@admin.register(ReferenceLetter)
+class ReferenceLetterAdmin(admin.ModelAdmin):
+    list_display = ("patient", "to", "doctor", "created_at", "printed_at")
+    list_filter = ("doctor", "created_at")
+    search_fields = ("patient__patient_id", "patient__first_name", "to")
+    autocomplete_fields = ("patient", "doctor")
+    readonly_fields = ("printed_at", "created_at", "updated_at")
 
 
 @admin.register(FormDefinition)

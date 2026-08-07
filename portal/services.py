@@ -15,7 +15,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from appointments.models import Visit, VisitStatus
-from clinical.models import ClinicalNote, Diagnosis, Investigation
+from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
 from pharmacy.models import Prescription, PrescriptionItem
 
 
@@ -156,6 +156,15 @@ def prescriptions_context(patient):
         .order_by("-created_at")
     )
     return {"patient": patient, "prescriptions": prescriptions}
+
+
+def reference_letters_context(patient):
+    letters = (
+        ReferenceLetter.objects.filter(patient=patient)
+        .select_related("doctor")
+        .order_by("-created_at")
+    )
+    return {"patient": patient, "reference_letters": letters}
 
 
 def growth_context(patient):

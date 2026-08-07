@@ -1,0 +1,37 @@
+{% comment %}Letters written for the patient — school, insurance, travel, fitness — newest first.{% endcomment %}
+
+<div class="section-head">
+  <h3>Reference Letters</h3>
+  {% include "portal/doctor/_edit_button.html" with kind="reference_letter" label="+ New reference letter" solid=1 %}
+</div>
+
+{% if reference_letters %}
+  <div class="stack">
+    {% for letter in reference_letters %}
+      <article class="card">
+        <div class="card__header">
+          <h3 class="card__title">To, {{ letter.to }}</h3>
+          <span>
+            <span class="faint small">{{ letter.created_at|date:"j F Y" }}</span>
+            <a class="btn-edit" target="_blank"
+               href="{% url 'print_reference_letter' letter.pk %}">Print</a>
+            {% include "portal/doctor/_edit_button.html" with kind="reference_letter" pk=letter.pk label="Edit" %}
+          </span>
+        </div>
+        <div class="card__body">
+          <p>{{ letter.note|linebreaksbr }}</p>
+          <p class="faint small" style="margin:.75rem 0 0">
+            Written by {{ letter.doctor.display_name }}
+            {% if letter.printed_at %} &middot; Printed{% endif %}
+          </p>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">✉️</div>
+    <div class="empty__title">No reference letters yet</div>
+    <div class="empty__hint">Letters written for school, insurance, travel or fitness will appear here.</div>
+  </div>
+{% endif %}
