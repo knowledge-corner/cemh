@@ -101,6 +101,13 @@ class TestUploadingMyOwnHours(OwnScheduleTestCase):
         self._confirm(HEADER + self._row(doctor_email="vikram@example.in"))
         self.assertFalse(ScheduleOverride.objects.filter(doctor=self.vikram).exists())
 
+    def test_a_retired_cabin_is_refused(self):
+        self.two.is_active = False
+        self.two.save()
+        response = self._check(HEADER + self._row(cabin="Cabin 2"))
+        self.assertContains(response, "retired")
+        self.assertEqual(ScheduleOverride.objects.count(), 0)
+
     def test_a_mixed_file_keeps_my_rows_and_refuses_the_rest(self):
         text = (
             HEADER

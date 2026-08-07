@@ -213,7 +213,12 @@ def parse(file_obj, replace=False):
         )
         if user.email
     }
-    cabins = {cabin.name.casefold(): cabin for cabin in Cabin.objects.all()}
+    # Retired cabins are kept, never deleted — see Cabin's own docstring — so
+    # a name that used to work still matches something. Looked up separately
+    # so a row naming one gets told it was retired rather than "no such cabin",
+    # which is what every other cabin picker in the app already restricts to.
+    cabins = {c.name.casefold(): c for c in Cabin.objects.filter(is_active=True)}
+    retired_cabins = {c.name.casefold(): c for c in Cabin.objects.filter(is_active=False)}
 
     # Everything already on the calendar, plus everything earlier rows in this
     # same file have claimed. Without the second half, two rows in one
@@ -267,11 +272,18 @@ def parse(file_obj, replace=False):
         cabin_name = value("cabin")
         cabin = cabins.get(cabin_name.casefold())
         if cabin is None:
-            result.problems.append(RowProblem(
-                number,
-                f"There is no cabin called '{cabin_name}'. Add it on the "
-                f"calendar first, or correct the spelling.",
-            ))
+            if cabin_name.casefold() in retired_cabins:
+                result.problems.append(RowProblem(
+                    number,
+                    f"'{cabin_name}' has been retired and can no longer be "
+                    f"scheduled into. Choose an active cabin.",
+                ))
+            else:
+                result.problems.append(RowProblem(
+                    number,
+                    f"There is no cabin called '{cabin_name}'. Add it on the "
+                    f"calendar first, or correct the spelling.",
+                ))
             continue
 
         # ── Dates ────────────────────────────────────────────────────────────

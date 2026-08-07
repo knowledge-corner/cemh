@@ -410,6 +410,29 @@ class TestRotaImport(CalendarReworkTestCase):
         self.assertContains(response, "has not set their password yet")
         self.assertEqual(ScheduleOverride.objects.count(), 0)
 
+    def test_an_inactive_doctor_cannot_be_given_hours_by_spreadsheet(self):
+        self.vikram.is_active = False
+        self.vikram.save()
+        response = self._check(HEADER + self._row(doctor_email="vikram@example.in"))
+        self.assertContains(response, "no longer an active doctor")
+        self.assertEqual(ScheduleOverride.objects.count(), 0)
+
+    def test_a_retired_cabin_is_refused(self):
+        # Every other cabin picker in the app already restricts to active
+        # cabins — see PatientForm-style querysets in portal.forms — the CSV
+        # importer is the one place that did not.
+        self.two.is_active = False
+        self.two.save()
+        response = self._check(HEADER + self._row(cabin="Cabin 2"))
+        self.assertContains(response, "retired")
+        self.assertEqual(ScheduleOverride.objects.count(), 0)
+
+    def test_an_unknown_cabin_still_says_no_such_cabin(self):
+        # Distinct from the retired case: this name was never real.
+        response = self._check(HEADER + self._row(cabin="Cabin 9"))
+        self.assertContains(response, "There is no cabin called")
+        self.assertNotContains(response, "retired")
+
 
 class TestReplaceMySchedule(CalendarReworkTestCase):
     """
