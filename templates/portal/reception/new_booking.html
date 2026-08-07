@@ -64,7 +64,19 @@
           {% for e in form.doctor.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
         </div>
 
-        <div class="field">
+        {% comment %}
+        KAN task #22. Checking this hides the date and the slot grid below —
+        neither means anything for somebody already standing at the desk. The
+        server finds today's earliest free slot itself rather than trusting
+        whatever the client last showed, so nothing here needs to disable the
+        other fields to be safe, only to avoid confusing the receptionist.
+        {% endcomment %}
+        <div class="field field--check">
+          {{ form.walk_in }}
+          <label class="field__label" for="{{ form.walk_in.id_for_label }}">{{ form.walk_in.label }}</label>
+        </div>
+
+        <div class="field" id="day-field">
           <label class="field__label" for="{{ form.day.id_for_label }}">Date</label>
           {{ form.day }}
           {% for e in form.day.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
@@ -83,7 +95,7 @@
     </div>
 
     {# ── 3. Slot ──────────────────────────────────────────────────── #}
-    <div class="card booking-grid__slots">
+    <div class="card booking-grid__slots" id="slot-card">
       <div class="card__header"><h2 class="card__title">3 &middot; Available times</h2></div>
       <div class="card__body">
         {{ form.slot }}
@@ -91,6 +103,10 @@
         <div id="slot-options">
           <p class="faint small" style="margin:0">Choose a doctor and date to see free times.</p>
         </div>
+        <p class="faint small" id="walk-in-note" hidden style="margin:0">
+          The earliest free slot with the chosen doctor today will be used, and
+          the patient goes straight into today's waiting room.
+        </p>
       </div>
     </div>
 
@@ -127,6 +143,26 @@
     doctor.addEventListener('change', refresh);
     day.addEventListener('change', refresh);
     if (doctor.value && day.value) refresh();
+  })();
+
+  // Walk-in: the date and the slot grid mean nothing for somebody already at
+  // the desk, so hide both and explain what happens instead. The server never
+  // trusts this either way — it always finds today's own earliest slot itself.
+  (function () {
+    const walkIn = document.getElementById('{{ form.walk_in.id_for_label }}');
+    const dayField = document.getElementById('day-field');
+    const slotOptions = document.getElementById('slot-options');
+    const walkInNote = document.getElementById('walk-in-note');
+    if (!walkIn) return;
+
+    function apply() {
+      dayField.hidden = walkIn.checked;
+      slotOptions.hidden = walkIn.checked;
+      walkInNote.hidden = !walkIn.checked;
+    }
+
+    walkIn.addEventListener('change', apply);
+    apply();
   })();
 </script>
 {% endblock %}

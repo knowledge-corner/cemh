@@ -423,20 +423,27 @@ class BookingForm(forms.Form):
     )
     day = forms.DateField(
         label="Date",
+        required=False,
         widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
         # `min` and `max` are set per instance in __init__ — the booking window
         # moves with the calendar, and a bound computed at import time would be
         # yesterday's by the following morning.
     )
-    slot = forms.DateTimeField(
-        widget=forms.HiddenInput,
-        error_messages={"required": "Choose a time."},
-    )
+    slot = forms.DateTimeField(required=False, widget=forms.HiddenInput)
     reason = forms.CharField(
         max_length=300, required=False,
         widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Thyroid review"}),
     )
     is_follow_up = forms.BooleanField(required=False, label="Follow-up visit")
+    #: KAN task #22. A patient standing at the desk with no appointment —
+    #: "day" and "slot" are required for everyone else, but this one is not
+    #: told to come back after picking a time; today's earliest free slot is
+    #: found for them, so those two fields are optional here instead and
+    #: filled in by clean().
+    walk_in = forms.BooleanField(
+        required=False,
+        label="Walk-in — see them today, as soon as a slot is free",
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -459,6 +466,26 @@ class BookingForm(forms.Form):
         slot = cleaned.get("slot")
         day = cleaned.get("day")
 
+        if cleaned.get("walk_in"):
+            if not doctor:
+                return cleaned
+            today = timezone.localdate()
+            free = scheduling.available_slots(doctor, today)
+            if not free:
+                self.add_error(
+                    "doctor",
+                    f"{doctor.display_name} has no free slot left today. Try "
+                    f"another doctor, or book ahead instead of a walk-in.",
+                )
+                return cleaned
+            cleaned["day"] = today
+            cleaned["slot"] = free[0][0]
+            return cleaned
+
+        if not day:
+            self.add_error("day", "Choose a date.")
+        if not slot:
+            self.add_error("slot", "Choose a time.")
         if not (doctor and slot and day):
             return cleaned
 
@@ -503,6 +530,7 @@ class BookingForm(forms.Form):
 
     def save(self, booked_by=None):
         slot = self.cleaned_data["slot"]
+        walk_in = self.cleaned_data.get("walk_in")
         return Visit.objects.create(
             patient=self.cleaned_data["patient"],
             doctor=self.cleaned_data["doctor"],
@@ -511,10 +539,13 @@ class BookingForm(forms.Form):
             reason=self.cleaned_data.get("reason", ""),
             is_follow_up=self.cleaned_data.get("is_follow_up", False),
             booked_by=booked_by,
-            # Every booking starts unconfirmed. The receptionist telephones the
-            # patient on the appointment day, and confirming is that call — so
-            # the board can show her who she still has to ring.
-            status=VisitStatus.BOOKED,
+            # Every booking starts unconfirmed, and the receptionist telephones
+            # the patient on the day to confirm — except a walk-in, who is
+            # standing at the desk right now. Landing them on BOOKED would put
+            # them behind a phone call that will never happen, so a walk-in
+            # goes straight into today's waiting room instead.
+            status=VisitStatus.ARRIVED if walk_in else VisitStatus.BOOKED,
+            arrived_at=timezone.now() if walk_in else None,
         )
 
 
