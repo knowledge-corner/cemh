@@ -33,6 +33,8 @@ urlpatterns = [
     # ── Doctors ──────────────────────────────────────────────────────────
     path("reception/doctors/", views_doctors.doctor_list, name="reception_doctors"),
     path("reception/doctors/add/", views_doctors.add_doctor, name="reception_add_doctor"),
+    path("reception/doctors/<int:pk>/edit/", views_doctors.edit_doctor,
+         name="reception_edit_doctor"),
     path("reception/doctors/<int:pk>/resend/", views_doctors.resend_invitation,
          name="reception_resend_invitation"),
     # Followed by the doctor from their email, so no sign-in required.

@@ -55,6 +55,8 @@
                 {% endif %}
               </td>
               <td class="row-actions">
+                <a class="btn btn--secondary"
+                   href="{% url 'reception_edit_doctor' doctor.pk %}">Edit</a>
                 {% if doctor.doctor_profile.is_pending %}
                   <form method="post" action="{% url 'reception_resend_invitation' doctor.pk %}">
                     {% csrf_token %}

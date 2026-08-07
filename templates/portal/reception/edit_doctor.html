@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Edit {{ doctor.display_name }} — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Edit {{ doctor.display_name }}</h1>
+    <p class="page-header__sub">{{ doctor.email }}</p>
+  </div>
+</div>
+
+<div class="card page--narrow">
+  <div class="card__body">
+    <form method="post">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <ul class="form-errors">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      <div class="form-grid">
+        {% for field in form %}
+          {% if field.name != "new_specialisation" %}
+            <div class="field">
+              <label class="field__label" for="{{ field.id_for_label }}">
+                {{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}
+              </label>
+              {{ field }}
+              {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+              {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+            </div>
+          {% endif %}
+        {% endfor %}
+
+        <div class="field" id="new-specialisation-field" hidden>
+          <label class="field__label" for="{{ form.new_specialisation.id_for_label }}">
+            {{ form.new_specialisation.label }} <span aria-hidden="true">*</span>
+          </label>
+          {{ form.new_specialisation }}
+          <div class="field__help">{{ form.new_specialisation.help_text }}</div>
+          {% for e in form.new_specialisation.errors %}
+            <div class="field__error">{{ e }}</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn--primary">Save changes</button>
+        <a class="btn btn--secondary" href="{% url 'reception_doctors' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/specialisation.js' %}" defer></script>
+{% endblock %}

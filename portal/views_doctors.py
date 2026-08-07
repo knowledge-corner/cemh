@@ -77,6 +77,33 @@ def add_doctor(request):
 
 
 @role_required(Role.RECEPTIONIST)
+def edit_doctor(request, pk):
+    """Correct a doctor's own details — name, phone, specialisation, and
+    what is printed on their prescriptions."""
+    doctor = get_object_or_404(
+        User.objects.select_related("doctor_profile__specialisation"),
+        pk=pk, role=Role.DOCTOR,
+    )
+
+    if request.method == "POST":
+        form = clinic_forms.DoctorEditForm(request.POST, doctor=doctor)
+        if form.is_valid():
+            form.save()
+            record(
+                request, AuditAction.UPDATE, obj=doctor,
+                description=f"Doctor {doctor.display_name}'s details updated",
+            )
+            messages.success(request, f"{doctor.display_name}'s details have been updated.")
+            return redirect("reception_doctors")
+    else:
+        form = clinic_forms.DoctorEditForm(doctor=doctor)
+
+    return render(request, "portal/reception/edit_doctor.html", {
+        "form": form, "doctor": doctor,
+    })
+
+
+@role_required(Role.RECEPTIONIST)
 def resend_invitation(request, pk):
     """
     Issue a fresh link (FR-6, AC-8).

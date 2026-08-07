@@ -1500,3 +1500,157 @@ class DoctorForm(forms.Form):
             qualification=self.cleaned_data.get("qualification", ""),
         )
         return user
+
+
+class DoctorEditForm(forms.Form):
+    """
+    Correcting a doctor's own details after they have already been added.
+
+    Not the add-doctor form reused: that one also creates the login account
+    and sends an invitation, neither of which applies here. Email is left out
+    on purpose — it is how the doctor signs in, and changing it is a bigger
+    action than fixing a misspelt qualification; that belongs with account
+    recovery, not this screen.
+
+    The specialisation "choose or add one" behaviour mirrors ``DoctorForm``'s
+    rather than sharing it — the two forms save completely different things,
+    and the small duplication reads more clearly than a shared base built for
+    two callers.
+    """
+
+    full_name = forms.CharField(
+        label="Doctor's name",
+        max_length=150,
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Vrushali Kulkarni"}),
+    )
+    phone = forms.CharField(
+        label="Contact number", max_length=15, required=False,
+        widget=forms.TextInput(attrs=INPUT),
+    )
+
+    ADD_NEW = "__new__"
+
+    specialisation = forms.ChoiceField(
+        label="Specialisation",
+        widget=forms.Select(attrs={**INPUT, "id": "id_specialisation"}),
+    )
+    new_specialisation = forms.CharField(
+        label="New specialisation",
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            **INPUT, "id": "id_new_specialisation",
+            "placeholder": "e.g. Reproductive Endocrinology",
+        }),
+        help_text="Added to the list for everyone, so check it is not already "
+                  "there under another spelling.",
+    )
+    registration_number = forms.CharField(
+        label="Medical council registration number", max_length=50, required=False,
+        widget=forms.TextInput(attrs=INPUT),
+        help_text="Printed on prescriptions.",
+    )
+    qualification = forms.CharField(
+        label="Qualification", max_length=200, required=False,
+        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. MBBS, MD, DM"}),
+    )
+
+    def __init__(self, *args, doctor=None, **kwargs):
+        self.doctor = doctor
+        super().__init__(*args, **kwargs)
+
+        current = getattr(doctor, "doctor_profile", None)
+        choices = [("", "Select a specialisation")]
+        # The doctor's current specialisation stays selectable even if it has
+        # since been retired — an edit that silently dropped it the moment
+        # somebody else retired the option would look like data loss.
+        seen_active = set()
+        for s in Specialisation.objects.filter(is_active=True):
+            choices.append((str(s.pk), s.name))
+            seen_active.add(s.pk)
+        if current and current.specialisation_id and current.specialisation_id not in seen_active:
+            choices.append((str(current.specialisation_id), f"{current.specialisation.name} (retired)"))
+        choices.append((self.ADD_NEW, "+ Add a new specialisation..."))
+        self.fields["specialisation"].choices = choices
+
+        if not self.is_bound and doctor is not None:
+            name = doctor.get_full_name() or doctor.first_name
+            self.initial.setdefault("full_name", name)
+            self.initial.setdefault("phone", doctor.phone)
+            if current:
+                self.initial.setdefault(
+                    "specialisation",
+                    str(current.specialisation_id) if current.specialisation_id else "",
+                )
+                self.initial.setdefault("registration_number", current.registration_number)
+                self.initial.setdefault("qualification", current.qualification)
+
+    def clean_new_specialisation(self):
+        return " ".join((self.cleaned_data.get("new_specialisation") or "").split())
+
+    def clean_phone(self):
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if phone:
+            phone_validator(phone)
+        return phone
+
+    def clean(self):
+        cleaned = super().clean()
+        chosen = cleaned.get("specialisation")
+        typed = (cleaned.get("new_specialisation") or "").strip()
+
+        if chosen != self.ADD_NEW:
+            cleaned["new_specialisation"] = ""
+            return cleaned
+
+        if not typed:
+            self.add_error(
+                "new_specialisation",
+                "Type the specialisation you want to add, or choose one from "
+                "the list.",
+            )
+            return cleaned
+
+        existing = Specialisation.objects.filter(name__iexact=typed).first()
+        if existing:
+            if not existing.is_active:
+                self.add_error(
+                    "new_specialisation",
+                    f"'{existing.name}' already exists but has been retired. "
+                    f"Bring it back from the admin rather than adding it twice.",
+                )
+            else:
+                cleaned["specialisation"] = str(existing.pk)
+                cleaned["new_specialisation"] = ""
+
+        return cleaned
+
+    def _resolve_specialisation(self, by=None):
+        chosen = self.cleaned_data["specialisation"]
+        if chosen != self.ADD_NEW:
+            return Specialisation.objects.get(pk=chosen)
+
+        name = self.cleaned_data["new_specialisation"].strip()
+        existing = Specialisation.objects.filter(name__iexact=name).first()
+        if existing:
+            return existing
+        return Specialisation.objects.create(name=name, created_by=by)
+
+    @transaction.atomic
+    def save(self):
+        """Update the account and its profile in place."""
+        name = self.cleaned_data["full_name"].strip()
+        first, _, last = name.partition(" ")
+
+        self.doctor.first_name = first
+        self.doctor.last_name = last.strip()
+        self.doctor.phone = self.cleaned_data.get("phone", "")
+        self.doctor.save(update_fields=["first_name", "last_name", "phone"])
+
+        profile, _ = DoctorProfile.objects.get_or_create(user=self.doctor)
+        profile.specialisation = self._resolve_specialisation()
+        profile.registration_number = self.cleaned_data.get("registration_number", "")
+        profile.qualification = self.cleaned_data.get("qualification", "")
+        profile.save(update_fields=["specialisation", "registration_number", "qualification"])
+
+        return self.doctor
