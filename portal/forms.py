@@ -564,7 +564,8 @@ def measurement_form_class():
             model = Measurement
             fields = [
                 "measured_on", "height_cm", "weight_kg", "head_circumference_cm",
-                "waist_cm", "puberty_stage", "mother_height_cm", "father_height_cm", "notes",
+                "waist_cm", "puberty_stage", "bone_age_years",
+                "mother_height_cm", "father_height_cm", "notes",
             ]
             widgets = {
                 "measured_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
@@ -572,6 +573,7 @@ def measurement_form_class():
             }
             help_texts = {
                 "mother_height_cm": "Used to compute the mid-parental target height.",
+                "bone_age_years": "From an X-ray, e.g. 8.3 for 8 years 3 months.",
             }
 
     return MeasurementForm

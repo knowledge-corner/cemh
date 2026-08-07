@@ -224,12 +224,33 @@ def growth_context(patient):
         if not points:
             continue
 
+        # Bone age is read against height, not weight or BMI — plotted as a
+        # second position for the same height reading, at the bone-age x
+        # rather than the chronological one. That is what shows whether a
+        # child's height is ordinary for their skeletal age even though it
+        # looks short or tall for their birth-certificate age.
+        bone_age_points = []
+        if indicator == ref.HEIGHT_FOR_AGE:
+            for measurement in measurements:
+                if measurement.bone_age_years is None or measurement.height_cm is None:
+                    continue
+                bone_age_points.append({
+                    "month": round(float(measurement.bone_age_years) * 12, 2),
+                    "value": float(measurement.height_cm),
+                    "chronological_month": round(measurement.age_months, 2),
+                    "bone_age_years": float(measurement.bone_age_years),
+                    "date": measurement.measured_on.isoformat(),
+                })
+
         # Draw the reference curves well either side of the patient's own data.
         # A growth chart is read by seeing where a child sits relative to the
         # whole family of centiles, so a narrow window either side of their
-        # points would defeat the purpose.
-        min_month = max(0, min(p["month"] for p in points) - 24)
-        max_month = max(p["month"] for p in points) + 24
+        # points would defeat the purpose. Bone-age points can fall outside the
+        # chronological range entirely — an advanced or delayed bone age is
+        # the whole reason to look — so they widen the window too.
+        all_months = [p["month"] for p in points] + [p["month"] for p in bone_age_points]
+        min_month = max(0, min(all_months) - 24)
+        max_month = max(all_months) + 24
         step = 1.0 if (max_month - min_month) <= 60 else 3.0
 
         curves = ref.reference_curves(indicator, patient.sex, min_month, max_month, step=step)
@@ -245,6 +266,28 @@ def growth_context(patient):
         # the adult-equivalent overweight and obesity cut-offs. They are kept
         # apart from the curves so the chart can label them for what they are.
         cutoffs = ref.cutoff_curves(indicator, patient.sex, min_month, max_month, step=step)
+
+        # Mid-parental target height: a flat line across the height chart
+        # rather than a single point, since it is a target for the whole
+        # span being looked at, not a reading tied to one age. Uses the same
+        # non-centile-line mechanism as the BMI cut-offs above rather than a
+        # new one — a horizontal reference line is a horizontal reference
+        # line regardless of which chart it belongs to.
+        if indicator == ref.HEIGHT_FOR_AGE:
+            target_height = None
+            for measurement in reversed(list(measurements)):
+                if measurement.mid_parental_height_cm is not None:
+                    target_height = float(measurement.mid_parental_height_cm)
+                    break
+            if target_height is not None:
+                cutoffs = dict(cutoffs)
+                cutoffs["MPH"] = {
+                    "label": "Mid-parental target",
+                    "points": [
+                        {"month": min_month, "value": target_height},
+                        {"month": max_month, "value": target_height},
+                    ],
+                }
 
         # For BMI the IAP tables print centiles only up to the 50th, then the
         # two cut-off lines. So above the median a centile band is not what the
@@ -275,6 +318,7 @@ def growth_context(patient):
                     {"key": key, "label": line["label"], "points": line["points"]}
                     for key, line in sorted(cutoffs.items())
                 ],
+                "bone_age_points": bone_age_points,
                 "latest": points[-1],
                 "sources": sources,
             }

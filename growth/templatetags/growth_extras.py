@@ -26,5 +26,9 @@ def chart_json(chart):
         # Reference lines that are not centiles — the IAP BMI chart's
         # adult-equivalent overweight and obesity cut-offs. Empty elsewhere.
         "cutoffs": chart.get("cutoffs", []),
+        # A second reading of the same height, positioned at the bone-age x
+        # rather than the chronological one. Only the height chart ever has
+        # any; empty elsewhere.
+        "bone_age_points": chart.get("bone_age_points", []),
     }
     return mark_safe(escape(json.dumps(payload, separators=(",", ":"))))

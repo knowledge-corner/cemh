@@ -1165,6 +1165,9 @@ p { margin: 0 0 .75rem; }
 .appt__side { display: flex; flex-direction: column; align-items: flex-end; gap: .375rem; }
 
 .modal--narrow { max-width: 520px; }
+.modal--wide { max-width: min(92vw, 980px); }
+.modal--wide .modal__body { max-height: 80vh; }
+.chart-box__canvas--zoomed { height: 68vh; }
 
 /* ── Utilities ─────────────────────────────────────────────────────────── */
 

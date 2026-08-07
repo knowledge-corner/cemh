@@ -18,7 +18,10 @@ class MeasurementAdmin(admin.ModelAdmin):
             "fields": ("height_cm", "weight_kg", "bmi_display", "head_circumference_cm", "waist_cm"),
         }),
         ("Puberty & parental heights", {
-            "fields": ("puberty_stage", "mother_height_cm", "father_height_cm", "mid_parental_height_cm"),
+            "fields": (
+                "puberty_stage", "bone_age_years",
+                "mother_height_cm", "father_height_cm", "mid_parental_height_cm",
+            ),
         }),
         ("Other", {"fields": ("notes", "created_at")}),
     )

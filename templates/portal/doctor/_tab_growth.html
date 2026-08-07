@@ -42,6 +42,20 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
         {% if mid_parental_height %}
           <div><span class="faint small">Mid-parental target</span><br><strong>{{ mid_parental_height }} cm</strong></div>
         {% endif %}
+        {% if latest_measurement.bone_age_years %}
+          <div>
+            <span class="faint small">Bone age</span><br>
+            <strong>{{ latest_measurement.bone_age_years }}y</strong>
+            <span class="faint small">
+              vs chronological {{ latest_measurement.age_years|floatformat:1 }}y
+              {% if latest_measurement.bone_age_delta_years > 0 %}
+                ({{ latest_measurement.bone_age_delta_years }}y advanced)
+              {% elif latest_measurement.bone_age_delta_years < 0 %}
+                ({{ latest_measurement.bone_age_delta_years }}y delayed)
+              {% endif %}
+            </span>
+          </div>
+        {% endif %}
         {% if latest_measurement.puberty_stage %}
           <div><span class="faint small">Puberty</span><br><strong>Tanner {{ latest_measurement.puberty_stage }}</strong></div>
         {% endif %}
@@ -55,7 +69,13 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
   <div class="chart-grid" id="growth-charts">
     {% for chart in charts %}
       <div class="chart-box">
-        <p class="chart-box__title">{{ chart.label }}</p>
+        <div class="section-head" style="margin-bottom:0">
+          <p class="chart-box__title" style="margin:0">{{ chart.label }}</p>
+          <button type="button" class="btn-edit"
+                  onclick="openGrowthChartZoom('growth-chart-{{ forloop.counter }}', '{{ chart.label|escapejs }}');">
+            ⤢ Zoom
+          </button>
+        </div>
         <p class="chart-box__latest">
           Latest: <strong>{{ chart.latest.value }} {{ chart.unit }}</strong>
           {% comment %}
@@ -151,7 +171,8 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
         <thead>
           <tr>
             <th>Date</th><th>Age</th><th class="table__num">Height</th>
-            <th class="table__num">Weight</th><th class="table__num">BMI</th><th>Puberty</th><th></th>
+            <th class="table__num">Weight</th><th class="table__num">BMI</th>
+            <th class="table__num">Bone age</th><th>Puberty</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -162,6 +183,7 @@ over HTMX, the initialiser runs on insertion rather than on DOMContentLoaded.
               <td class="table__num">{{ m.height_cm|default:"—" }}</td>
               <td class="table__num">{{ m.weight_kg|default:"—" }}</td>
               <td class="table__num">{{ m.bmi|default:"—" }}</td>
+              <td class="table__num">{{ m.bone_age_years|default:"—" }}</td>
               <td>{% if m.puberty_stage %}Tanner {{ m.puberty_stage }}{% else %}—{% endif %}</td>
               <td class="row-actions">
                 {% include "portal/doctor/_edit_button.html" with kind="measurement" pk=m.pk label="Edit" %}

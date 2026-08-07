@@ -104,6 +104,30 @@ class TestSaving(EditingTestCase):
         self.assertEqual(measurement.height_cm, Decimal("123.1"))
         self.assertEqual(measurement.mid_parental_height_cm, Decimal("165.0"))
 
+    def test_a_measurement_with_no_bone_age_is_still_fine(self):
+        # bone_age_years is optional — most measurements never have an X-ray
+        # behind them, so leaving it out of the post (as the form does) must
+        # not be refused.
+        self.client.post(self.add_url("measurement"), {
+            "measured_on": timezone.localdate().isoformat(),
+            "height_cm": "123.1", "weight_kg": "23.60",
+            "head_circumference_cm": "", "waist_cm": "", "puberty_stage": "",
+            "mother_height_cm": "", "father_height_cm": "", "notes": "",
+        })
+        measurement = Measurement.objects.get()
+        self.assertIsNone(measurement.bone_age_years)
+
+    def test_a_bone_age_is_persisted(self):
+        self.client.post(self.add_url("measurement"), {
+            "measured_on": timezone.localdate().isoformat(),
+            "height_cm": "123.1", "weight_kg": "23.60",
+            "head_circumference_cm": "", "waist_cm": "", "puberty_stage": "",
+            "bone_age_years": "8.3",
+            "mother_height_cm": "", "father_height_cm": "", "notes": "",
+        })
+        measurement = Measurement.objects.get()
+        self.assertEqual(measurement.bone_age_years, Decimal("8.3"))
+
     def test_editing_history_updates_the_existing_record(self):
         make_history(self.patient, allergies="")
         self.client.post(self.add_url("history"), {

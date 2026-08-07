@@ -189,6 +189,24 @@ class TestMeasurement(TestCase):
         m = make_measurement(patient, measured_on=timezone.localdate() - timedelta(days=365))
         self.assertAlmostEqual(m.age_years, patient.age_years - 1, places=0)
 
+    def test_bone_age_delta_is_none_without_a_bone_age(self):
+        m = make_measurement(make_patient(), bone_age_years=None)
+        self.assertIsNone(m.bone_age_delta_years)
+
+    def test_bone_age_delta_is_positive_when_advanced(self):
+        patient = make_patient(
+            date_of_birth=timezone.localdate() - timedelta(days=int(8 * 365.25)),
+        )
+        m = make_measurement(patient, bone_age_years=Decimal("9.5"))
+        self.assertGreater(m.bone_age_delta_years, Decimal("0"))
+
+    def test_bone_age_delta_is_negative_when_delayed(self):
+        patient = make_patient(
+            date_of_birth=timezone.localdate() - timedelta(days=int(8 * 365.25)),
+        )
+        m = make_measurement(patient, bone_age_years=Decimal("6.5"))
+        self.assertLess(m.bone_age_delta_years, Decimal("0"))
+
 
 class TestAuditLogIsAppendOnly(TestCase):
     def test_entries_cannot_be_modified(self):

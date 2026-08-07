@@ -57,6 +57,15 @@ class Measurement(models.Model):
 
     puberty_stage = models.CharField(max_length=1, choices=PubertyStage.choices, blank=True)
 
+    #: From an X-ray reading (e.g. Greulich-Pyle), in decimal years — 8.3 for
+    #: "8 years 3 months". Recorded per measurement, like everything else here,
+    #: because a child is X-rayed only occasionally and the reading belongs to
+    #: whichever visit ordered it, not to the patient generally.
+    bone_age_years = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text="From an X-ray reading, e.g. 8.3 for 8 years 3 months.",
+    )
+
     # Parental heights change rarely but are needed to compute the child's
     # target height, so they are recorded against the measurement that used them.
     mother_height_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
@@ -101,6 +110,19 @@ class Measurement(models.Model):
     @property
     def age_years(self):
         return self.age_days / 365.25
+
+    @property
+    def bone_age_delta_years(self):
+        """
+        Bone age minus chronological age, at the time of this measurement.
+
+        Positive means advanced (skeleton reading older than the birthday
+        says), negative means delayed. ``None`` unless a bone age was
+        actually recorded — most measurements never have one.
+        """
+        if self.bone_age_years is None:
+            return None
+        return round(Decimal(self.bone_age_years) - Decimal(str(round(self.age_years, 1))), 1)
 
     @property
     def mid_parental_height_cm(self):

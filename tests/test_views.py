@@ -253,6 +253,61 @@ class TestDashboardTabs(TestCase):
     def test_growth_tab_without_measurements_shows_an_empty_state(self):
         self.assertContains(self._tab("growth"), "No measurements recorded")
 
+    def test_each_chart_offers_a_zoom_button(self):
+        make_measurement(self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"))
+        response = self._tab("growth")
+        self.assertContains(response, "openGrowthChartZoom('growth-chart-1'")
+        self.assertContains(response, "openGrowthChartZoom('growth-chart-2'")
+
+    def test_growth_tab_shows_a_recorded_bone_age(self):
+        make_measurement(
+            self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"),
+            bone_age_years=Decimal("8.3"),
+        )
+        response = self._tab("growth")
+        self.assertContains(response, "Bone age")
+        self.assertContains(response, "8.3")
+
+    def test_bone_age_is_plotted_on_the_height_chart_only(self):
+        make_measurement(
+            self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"),
+            bone_age_years=Decimal("8.3"),
+        )
+        response = self._tab("growth")
+        content = response.content.decode()
+
+        # A non-empty bone_age_points list appears exactly once, on the
+        # height chart's own data-chart JSON — never on weight's or BMI's.
+        self.assertEqual(content.count('&quot;bone_age_points&quot;:[{'), 1)
+        # 8.3 years is 99.6 months — round-tripped through the chart JSON.
+        self.assertIn('&quot;month&quot;:99.6', content)
+
+    def test_mid_parental_target_is_a_line_on_the_height_chart(self):
+        make_measurement(
+            self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"),
+            mother_height_cm=Decimal("152"), father_height_cm=Decimal("165"),
+        )
+        response = self._tab("growth")
+        content = response.content.decode()
+
+        self.assertEqual(content.count('&quot;key&quot;:&quot;MPH&quot;'), 1)
+        self.assertIn('&quot;label&quot;:&quot;Mid-parental target&quot;', content)
+        # Boy: (152 + 165 + 13) / 2 = 165.0.
+        self.assertIn('&quot;value&quot;:165.0', content)
+
+    def test_no_mid_parental_line_without_both_parental_heights(self):
+        make_measurement(self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"))
+        response = self._tab("growth")
+        self.assertNotIn("MPH", response.content.decode())
+
+    def test_growth_tab_shows_no_bone_age_comparison_when_none_was_recorded(self):
+        # "Bone age" itself still appears as the history table's column
+        # header regardless — this checks the summary stat specifically,
+        # which is conditional on a value actually being recorded.
+        make_measurement(self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"))
+        response = self._tab("growth")
+        self.assertNotContains(response, "vs chronological")
+
     def test_tab_requires_the_doctor_role(self):
         self.client.force_login(make_receptionist())
         self.assertEqual(self._tab("summary").status_code, 403)
