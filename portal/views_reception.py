@@ -670,7 +670,9 @@ def bookings(request):
     # The tab is also where the day is signed off, so it has to survive the list
     # emptying — that is the moment the button appears. Without this the last
     # receipt made the tab vanish and took the only way to sign off with it.
-    pending_day = signoff.is_due() if signoff.is_enabled() else None
+    # day_to_close (not is_due) so a fully-billed today can still be signed off,
+    # not only an unsigned previous day.
+    pending_day = signoff.day_to_close() if signoff.is_enabled() else None
     tabs = list(BOOKING_TABS)
     if unclosed or pending_day:
         tabs.append(UNCLOSED_TAB)
@@ -694,7 +696,9 @@ def bookings(request):
         # Every previous day is accounted for, so the day itself can be signed
         # off. Offered here as well as on the board because this is where the
         # receptionist has just finished the work that makes it possible.
-        "can_sign_off": signoff.is_enabled() and not unclosed,
+        # bool(pending_day) so the button never shows before there is an actual
+        # day to attach it to (e.g. an empty list before any visit exists).
+        "can_sign_off": signoff.is_enabled() and not unclosed and bool(pending_day),
         "pending_day": pending_day,
         "today_rows": today_rows,
         "ahead_rows": ahead_rows,

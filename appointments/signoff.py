@@ -291,6 +291,37 @@ def can_close(day=None):
     return not today.filter(status=VisitStatus.CONSULTED).exists()
 
 
+def day_to_close(now=None):
+    """
+    The day the receptionist can sign off right now, or ``None``.
+
+    ``is_due`` only ever answers about a *previous* day, because it exists to
+    raise an alert about a day left open overnight. That left a gap: a
+    receptionist who bills every patient before leaving has no previous day
+    outstanding and no unclosed visits either, so the tab — and the sign-off
+    button living on it — never appeared, and today itself could never be
+    closed.
+
+    This tries the previous-day answer first, and only when that is silent
+    does it check whether *today* is itself finished enough (``can_close``)
+    to be signed off early. A day already signed off, or a day with no
+    visits at all, is never offered.
+    """
+    if not is_enabled():
+        return None
+
+    pending = is_due(now=now)
+    if pending is not None:
+        return pending
+
+    today = (now or timezone.localtime()).date()
+    if DaySignOff.objects.filter(date=today).exists():
+        return None
+    if not Visit.objects.filter(scheduled_start__date=today).exists():
+        return None
+    return today if can_close(today) else None
+
+
 def _rows(day):
     """The day's visits, split into the three sheets the ticket names."""
     visits = (

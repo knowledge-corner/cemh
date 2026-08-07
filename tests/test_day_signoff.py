@@ -1186,3 +1186,87 @@ class TestTheTabAppearsAsSoonAsSomebodyIsConsulted(SignOffTestCase):
 
         response = self.client.get(reverse("reception_bookings"))
         self.assertEqual(response.context["unclosed_count"], 0)
+
+
+class TestTodayCanBeSignedOffOnceEverybodyIsCheckedOut(SignOffTestCase):
+    """
+    is_due() only ever answers about a *previous* day left open overnight, so
+    a receptionist who bills every one of today's patients before leaving —
+    nothing unclosed, no previous day pending either — had no way to reach the
+    tab at all. The button she needed was never offered, on the one day it was
+    actually reachable.
+
+    day_to_close() is the fix: it falls back to *today* once nothing previous
+    is outstanding, provided today is actually finished (nobody in a cabin,
+    nothing left unbilled).
+    """
+
+    def _bill(self, visit):
+        self.client.post(
+            reverse("reception_generate_receipt", args=[visit.pk]),
+            {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
+        )
+
+    def _today_billed(self, hour=11):
+        visit = make_visit(make_patient(), self.doctor, start=today_at(hour))
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            visit.transition_to(status, by_user=self.receptionist)
+        Charge.objects.create(
+            visit=visit, patient=visit.patient,
+            consultation_fee=Decimal("800"), set_by=self.doctor,
+        )
+        self._bill(visit)
+        return visit
+
+    def test_the_tab_still_appears_once_the_last_patient_is_billed(self):
+        self._today_billed()
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertEqual(response.context["unclosed_count"], 0)
+        self.assertIn("unclosed", [key for key, _ in response.context["tabs"]])
+
+    def test_the_sign_off_button_is_offered_for_today(self):
+        self._today_billed()
+        response = self.client.get(
+            reverse("reception_bookings"), {"tab": "unclosed"},
+        )
+        self.assertTrue(response.context["can_sign_off"])
+        self.assertEqual(response.context["pending_day"], timezone.localdate())
+
+    def test_pressing_it_actually_signs_today_off(self):
+        self._today_billed()
+        response = self.client.post(
+            reverse("reception_close_day"),
+            {"date": timezone.localdate().isoformat()},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            DaySignOff.objects.filter(date=timezone.localdate()).exists()
+        )
+
+    def test_a_patient_still_in_the_cabin_withholds_the_button(self):
+        self._today_billed()
+        other = make_visit(make_patient(phone="9820093939"), self.doctor,
+                            start=today_at(15))
+        for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED,
+                       VisitStatus.IN_CABIN):
+            other.transition_to(status, by_user=self.receptionist)
+
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertFalse(response.context["can_sign_off"])
+        self.assertIsNone(response.context["pending_day"])
+
+    def test_a_day_with_no_visits_at_all_offers_nothing(self):
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertIsNone(response.context["pending_day"])
+        self.assertNotIn("unclosed", [key for key, _ in response.context["tabs"]])
+
+    def test_a_day_already_signed_off_is_not_offered_again(self):
+        visit = self._today_billed()
+        self.client.post(
+            reverse("reception_close_day"),
+            {"date": timezone.localdate().isoformat()},
+        )
+        response = self.client.get(reverse("reception_bookings"))
+        self.assertIsNone(response.context["pending_day"])
