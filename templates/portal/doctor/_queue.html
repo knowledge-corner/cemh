@@ -8,9 +8,17 @@ empty list with somebody already waiting outside the door.
 
 <div class="card__header">
   <h2 class="card__title">Patient queue</h2>
-  <span class="badge {% if queue %}badge--teal{% else %}badge--grey{% endif %}">
-    {{ queue|length }} waiting
-  </span>
+  <div style="display:flex; gap:.5rem; align-items:center">
+    <span class="badge {% if queue %}badge--teal{% else %}badge--grey{% endif %}">
+      {{ queue|length }} waiting
+    </span>
+    <a href="#" class="badge {% if unconfirmed_count %}badge--warning{% else %}badge--grey{% endif %}"
+       style="cursor:pointer; text-decoration:none"
+       hx-get="{% url 'doctor_unconfirmed_appointments' %}"
+       hx-target="#modal-host" hx-swap="innerHTML">
+      {{ unconfirmed_count }} unconfirmed
+    </a>
+  </div>
 </div>
 
 {% if queue %}

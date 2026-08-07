@@ -69,6 +69,10 @@ def _visible_tabs(patient):
         yield key, label
 
 
+def _unconfirmed_count(doctor):
+    return Visit.objects.filter(doctor=doctor, status=VisitStatus.BOOKED).count()
+
+
 @role_required(Role.DOCTOR)
 def doctor_home(request):
     """Today's queue, plus the patient-ID box the doctor types into."""
@@ -86,15 +90,12 @@ def doctor_home(request):
             f"No patient found matching “{query}”. Try typing part of their name.",
         )
 
-    unconfirmed_count = Visit.objects.filter(
-        doctor=request.user, status=VisitStatus.BOOKED,
-    ).count()
     return render(
         request,
         "portal/doctor/home.html",
         {
             "queue": services.todays_queue(request.user), "query": query,
-            "unconfirmed_count": unconfirmed_count,
+            "unconfirmed_count": _unconfirmed_count(request.user),
         },
     )
 
@@ -106,11 +107,16 @@ def doctor_queue(request):
 
     The queue used to sit still until somebody pressed F5, so a patient sent
     through from reception did not appear at all — the doctor had no way of
-    knowing anybody was waiting.
+    knowing anybody was waiting. The unconfirmed count sits in this same
+    header, so it is refreshed on the same 15-second poll rather than only
+    ever matching what was true when the page first loaded.
     """
     return render(
         request, "portal/doctor/_queue.html",
-        {"queue": services.todays_queue(request.user)},
+        {
+            "queue": services.todays_queue(request.user),
+            "unconfirmed_count": _unconfirmed_count(request.user),
+        },
     )
 
 

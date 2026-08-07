@@ -180,9 +180,18 @@ class TestBookedNotConfirmedFromTodaysClinic(TestCase):
         self.receptionist = make_receptionist()
         self.client.force_login(self.doctor)
 
-    def test_the_button_is_on_the_home_page(self):
+    def test_the_link_is_on_the_home_page(self):
         response = self.client.get(reverse("doctor_home"))
         self.assertContains(response, reverse("doctor_unconfirmed_appointments"))
+
+    def test_the_link_sits_beside_the_waiting_count(self):
+        # Both badges live in the same queue-card header, next to each other.
+        response = self.client.get(reverse("doctor_home"))
+        body = response.content.decode()
+        self.assertLess(
+            body.index("waiting"),
+            body.index(reverse("doctor_unconfirmed_appointments")),
+        )
 
     def test_a_booked_visit_is_listed(self):
         patient = make_patient()
@@ -210,14 +219,23 @@ class TestBookedNotConfirmedFromTodaysClinic(TestCase):
         response = self.client.get(reverse("doctor_unconfirmed_appointments"))
         self.assertContains(response, "Nothing of yours is waiting on a confirmation call")
 
-    def test_the_count_on_the_button_matches_this_doctors_own(self):
+    def test_the_count_on_the_link_matches_this_doctors_own(self):
         other = make_doctor(username="dr3", email="dr3@example.in")
         make_visit(make_patient(), self.doctor, start=later_today())
         make_visit(make_patient(phone="9820011133"), other, start=later_today())
 
         response = self.client.get(reverse("doctor_home"))
         self.assertEqual(response.context["unconfirmed_count"], 1)
-        self.assertContains(response, "Booked, not confirmed (1)")
+        self.assertContains(response, "1 unconfirmed")
+
+    def test_the_polled_queue_fragment_carries_the_same_count(self):
+        # _queue.html is swapped in wholesale every 15s, so the count has to be
+        # refreshed by that same view or it goes stale the moment reception
+        # confirms or adds a booking.
+        make_visit(make_patient(), self.doctor, start=later_today())
+        response = self.client.get(reverse("doctor_queue"))
+        self.assertEqual(response.context["unconfirmed_count"], 1)
+        self.assertContains(response, "1 unconfirmed")
 
     def test_a_receptionist_cannot_open_this_doctors_pop_up(self):
         self.client.force_login(self.receptionist)
