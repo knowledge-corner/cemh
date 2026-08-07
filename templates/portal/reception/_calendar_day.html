@@ -49,15 +49,19 @@ form — quietly, and in the direction that puts a patient in front of nobody.
             ({% if absence.whole_day %}all day{% else %}{{ absence.start_time|time:"H:i" }}–{{ absence.end_time|time:"H:i" }}{% endif %})
             {% if absence.reason %}&middot; {{ absence.reason }}{% endif %}
           </span>
-          {% if not is_doctor_view %}
-            <form method="post"
-                  action="{% url 'reception_delete_calendar_entry' 'leave' absence.pk %}"
-                  onsubmit="return confirm('{{ absence.doctor.display_name|escapejs }} is back in on {{ anchor|date:'j M'|escapejs }}?');">
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{{ request.get_full_path }}">
-              <button class="btn btn--secondary" type="submit">Not away after all</button>
-            </form>
-          {% endif %}
+          {% comment %}
+          A doctor only ever sees their own leave here — the calendar already
+          scopes their whole view to themselves (see _visible_doctors) — so
+          this needs no extra ownership check, unlike the delete endpoint it
+          posts to, which checks regardless of what this screen shows.
+          {% endcomment %}
+          <form method="post"
+                action="{% url 'reception_delete_calendar_entry' 'leave' absence.pk %}"
+                onsubmit="return confirm('{{ absence.doctor.display_name|escapejs }} is back in on {{ anchor|date:'j M'|escapejs }}?');">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn--secondary" type="submit">Not away after all</button>
+          </form>
         </div>
       {% endfor %}
     </div>
@@ -118,7 +122,15 @@ form — quietly, and in the direction that puts a patient in front of nobody.
                     <p class="badge badge--warning">Away — recorded as leave</p>
                   {% endif %}
 
-                  {% if not is_doctor_view and entry.is_editable %}
+                  {% if entry.is_editable %}
+                    {% comment %}
+                    A doctor only ever sees their own entries here (see
+                    _visible_doctors), so no per-entry ownership check is
+                    needed on top of is_doctor_view — the endpoint these post
+                    to checks regardless. "Remove every week" is left out for
+                    a doctor: re-uploading a schedule is the tool for changing
+                    the whole pattern, this is for one event.
+                    {% endcomment %}
                     <div class="sitting__actions">
                       {% if entry.is_recurring %}
                         {% comment %}
@@ -137,14 +149,16 @@ form — quietly, and in the direction that puts a patient in front of nobody.
                             Off this {{ anchor|date:"l" }}
                           </button>
                         </form>
-                        <form method="post"
-                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
-                              onsubmit="return confirm('Remove {{ entry.doctor.display_name|escapejs }} from every {{ anchor|date:'l'|escapejs }}? This removes the whole weekly pattern, not just {{ anchor|date:'j M'|escapejs }}.');">
-                          {% csrf_token %}
-                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <input type="hidden" name="scope" value="series">
-                          <button class="btn btn--secondary" type="submit">Remove every week</button>
-                        </form>
+                        {% if not is_doctor_view %}
+                          <form method="post"
+                                action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
+                                onsubmit="return confirm('Remove {{ entry.doctor.display_name|escapejs }} from every {{ anchor|date:'l'|escapejs }}? This removes the whole weekly pattern, not just {{ anchor|date:'j M'|escapejs }}.');">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <input type="hidden" name="scope" value="series">
+                            <button class="btn btn--secondary" type="submit">Remove every week</button>
+                          </form>
+                        {% endif %}
                       {% else %}
                         <form method="post"
                               action="{% url 'reception_delete_calendar_entry' 'override' entry.pk %}"

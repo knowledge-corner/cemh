@@ -378,7 +378,7 @@ def import_holidays(request):
 
 # ── Deleting, which is how leave is recorded (FR-15, FR-16) ──────────────────
 
-@role_required(Role.RECEPTIONIST)
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def delete_calendar_entry(request, kind, pk):
     """
     Remove working hours — for one date, or the whole weekly pattern.
@@ -389,11 +389,31 @@ def delete_calendar_entry(request, kind, pk):
     is every other week too — so that case writes a :class:`DoctorLeave` for the
     date instead. That both answers FR-16 and leaves the positive record the
     ticket says is missing.
+
+    A doctor reaching this is editing their own calendar, not reception's: the
+    calendar already shows them only their own entries (see
+    ``_visible_doctors``), and the querysets below are additionally scoped to
+    ``request.user`` so a crafted request against somebody else's pk 404s
+    exactly as if it did not exist, rather than saying whose it really is. A
+    clinic holiday is never a doctor's to remove, and the whole weekly pattern
+    is left to re-uploading a schedule — this is one event, not a series.
     """
     if request.method != "POST":
         return redirect("reception_calendar")
 
     scope = request.POST.get("scope", "series")
+    is_doctor = _is_doctor(request.user)
+
+    if is_doctor:
+        if kind not in ("override", "schedule", "leave"):
+            return redirect("reception_calendar")
+        if kind == "schedule" and scope == "series":
+            messages.error(
+                request,
+                "Removing your whole weekly pattern isn't available here — "
+                "upload a corrected schedule instead.",
+            )
+            return _back(request)
 
     if kind == "holiday":
         holiday = get_object_or_404(ClinicHoliday, pk=pk)
@@ -404,7 +424,8 @@ def delete_calendar_entry(request, kind, pk):
         return _back(request)
 
     if kind == "leave":
-        leave = get_object_or_404(DoctorLeave, pk=pk)
+        leave_qs = DoctorLeave.objects.filter(doctor=request.user) if is_doctor else DoctorLeave.objects.all()
+        leave = get_object_or_404(leave_qs, pk=pk)
         description = str(leave)
         leave.delete()
         record(request, AuditAction.DELETE, description=f"Leave removed: {description}")
@@ -412,7 +433,11 @@ def delete_calendar_entry(request, kind, pk):
         return _back(request)
 
     if kind == "override":
-        override = get_object_or_404(ScheduleOverride, pk=pk)
+        override_qs = (
+            ScheduleOverride.objects.filter(doctor=request.user)
+            if is_doctor else ScheduleOverride.objects.all()
+        )
+        override = get_object_or_404(override_qs, pk=pk)
         description = str(override)
         override.delete()
         record(request, AuditAction.DELETE, description=f"Hours removed: {description}")
@@ -422,7 +447,11 @@ def delete_calendar_entry(request, kind, pk):
     if kind != "schedule":
         return redirect("reception_calendar")
 
-    sitting = get_object_or_404(DoctorSchedule, pk=pk)
+    schedule_qs = (
+        DoctorSchedule.objects.filter(doctor=request.user)
+        if is_doctor else DoctorSchedule.objects.all()
+    )
+    sitting = get_object_or_404(schedule_qs, pk=pk)
 
     if scope == "series":
         description = str(sitting)

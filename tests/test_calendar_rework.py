@@ -716,13 +716,18 @@ class TestRecordingLeave(CalendarReworkTestCase):
         self.client.post(remove, {"next": "/calendar/"})
         self.assertEqual(DoctorLeave.objects.count(), 0)
 
-    def test_a_doctor_sees_no_remove_button(self):
+    def test_a_doctor_sees_the_remove_button_on_their_own_leave(self):
+        # Superseded by the doctor-scoped calendar-edit feature (see
+        # test_doctor_calendar_edit.py): a doctor may cancel their own
+        # mis-marked leave, the same as reception can. They only ever see
+        # their own leave here anyway — the calendar already scopes their
+        # whole view to themselves.
         self._record()
         self.client.force_login(self.asha)
         response = self.client.get(reverse("reception_calendar"),
                                    {"view": "day", "date": self.day.isoformat()})
         self.assertContains(response, "Away today")
-        self.assertNotContains(response, "Not away after all")
+        self.assertContains(response, "Not away after all")
 
     def test_leave_is_allowed_on_top_of_working_hours(self):
         # That is the entire point of recording it. A conflict check here would

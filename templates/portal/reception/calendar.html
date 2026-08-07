@@ -35,6 +35,7 @@ it.
       {% endcomment %}
       <a class="btn btn--secondary" href="{% url 'doctor_import_schedule' %}">Upload my schedule</a>
       <a class="btn btn--secondary" href="{% url 'doctor_home' %}">Today's clinic</a>
+      <a class="btn btn--secondary" href="{% url 'doctor_analytics' %}">Analytics</a>
       <a class="btn btn--primary" href="{% url 'doctor_register_patient' %}">New patient</a>
     {% else %}
       <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>

@@ -343,13 +343,19 @@ class TestDoctorScoping(CalendarTestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(ScheduleOverride.objects.exists())
 
-    def test_a_doctor_cannot_delete_hours(self):
+    def test_a_doctor_cannot_delete_their_whole_weekly_pattern_from_here(self):
+        # Superseded by the doctor-scoped calendar-edit feature: a doctor may
+        # now remove their own single-day entries (see
+        # test_doctor_calendar_edit.py), but the whole weekly pattern is still
+        # out of reach from this screen — re-uploading a schedule is the tool
+        # for that. Refused with a message now rather than a flat 403, since
+        # the endpoint is no longer closed to doctors altogether.
         sitting = DoctorSchedule.objects.get(doctor=self.asha)
         response = self.client.post(
             reverse("reception_delete_calendar_entry", args=["schedule", sitting.pk]),
             {"scope": "series"},
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertNotEqual(response.status_code, 200)
         self.assertTrue(DoctorSchedule.objects.filter(pk=sitting.pk).exists())
 
 
