@@ -8,12 +8,29 @@
 <div class="page-header">
   <div>
     <h1 class="page-header__title">Edit {{ doctor.display_name }}</h1>
-    <p class="page-header__sub">{{ doctor.email }}</p>
+    <p class="page-header__sub">
+      Signs in as <span class="mono">{{ doctor.username }}</span>
+    </p>
   </div>
 </div>
 
 <div class="card page--narrow">
   <div class="card__body">
+    {% comment %}
+    Said plainly rather than left to be discovered: the email field below can
+    be changed, and doing so does not change this. A receptionist who has just
+    corrected an address and then wonders why the doctor still logs in the
+    same way should not have to ask.
+    {% endcomment %}
+    <div class="alert-strip alert-strip--info" style="margin-bottom:1rem">
+      <div>
+        <span class="alert-strip__title">Email is not the sign-in name</span><br>
+        {{ doctor.display_name }} signs in with the username above, not their
+        email — changing the address below only changes where notifications
+        and a re-sent invitation go.
+      </div>
+    </div>
+
     <form method="post">
       {% csrf_token %}
 

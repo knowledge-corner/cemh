@@ -29,6 +29,7 @@ class DoctorEditTestCase(TestCase):
     def _payload(self, **overrides):
         payload = {
             "full_name": "Vrushali Kulkarni",
+            "email": "vrushali@example.in",
             "phone": "9820011111",
             "specialisation": str(self.specialisation.pk),
             "new_specialisation": "",
@@ -69,7 +70,15 @@ class TestOpeningTheEditScreen(DoctorEditTestCase):
     def test_the_form_is_pre_filled(self):
         response = self.client.get(reverse("reception_edit_doctor", args=[self.doctor.pk]))
         self.assertContains(response, "Vrushali Kulkarni")
+        self.assertContains(response, "vrushali@example.in")
         self.assertContains(response, "MMC-999")
+
+    def test_the_username_is_shown_but_not_as_an_editable_field(self):
+        # Reception needs to be able to tell the doctor what they actually
+        # sign in with — the username, not the email above it.
+        response = self.client.get(reverse("reception_edit_doctor", args=[self.doctor.pk]))
+        self.assertContains(response, self.doctor.username)
+        self.assertNotContains(response, 'name="username"')
 
     def test_a_missing_doctor_profile_does_not_break_the_page(self):
         # A doctor added under an older flow, or mid-invitation, may not have
@@ -108,12 +117,33 @@ class TestSavingChanges(DoctorEditTestCase):
         self.doctor.doctor_profile.refresh_from_db()
         self.assertEqual(self.doctor.doctor_profile.specialisation.name, "Test New Field")
 
-    def test_the_email_cannot_be_changed_from_this_form(self):
-        # There is no email field on this form at all — posting one anyway
-        # (e.g. a hand-crafted request) must not touch the login address.
-        self._edit(email="somebody-else@example.in")
+    def test_the_email_can_be_changed(self):
+        self._edit(email="vrushali.new@example.in")
+        self.doctor.refresh_from_db()
+        self.assertEqual(self.doctor.email, "vrushali.new@example.in")
+
+    def test_changing_the_email_does_not_change_the_username(self):
+        # The email is where the invitation and notifications go; the
+        # username, generated once when the doctor was added, is what they
+        # actually sign in with, and the two are not meant to track each
+        # other — see the note on DoctorEditForm.
+        username_before = self.doctor.username
+        self._edit(email="vrushali.new@example.in")
+        self.doctor.refresh_from_db()
+        self.assertEqual(self.doctor.username, username_before)
+
+    def test_a_duplicate_email_is_refused(self):
+        other = make_doctor(username="drother", email="other@example.in")
+        response = self._edit(email="other@example.in")
+        self.assertContains(response, "already registered")
         self.doctor.refresh_from_db()
         self.assertEqual(self.doctor.email, "vrushali@example.in")
+
+    def test_saving_without_touching_the_email_is_not_a_duplicate_of_itself(self):
+        # The uniqueness check has to exclude this doctor's own row, or
+        # saving any other field trips over the address already being theirs.
+        response = self._edit(full_name="Vrushali Rao")
+        self.assertRedirects(response, reverse("reception_doctors"))
 
     def test_it_redirects_to_the_doctors_list(self):
         response = self._edit()

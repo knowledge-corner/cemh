@@ -1538,10 +1538,15 @@ class DoctorEditForm(forms.Form):
     Correcting a doctor's own details after they have already been added.
 
     Not the add-doctor form reused: that one also creates the login account
-    and sends an invitation, neither of which applies here. Email is left out
-    on purpose — it is how the doctor signs in, and changing it is a bigger
-    action than fixing a misspelt qualification; that belongs with account
-    recovery, not this screen.
+    and sends an invitation, neither of which applies here.
+
+    Email is editable — a doctor asking to correct or change their address is
+    routine. It is *not* what they sign in with, though: sign-in uses the
+    ``username`` Django gave the account when it was added (derived once from
+    the email at that moment, e.g. "vrushali" from vrushali@example.in), and
+    it does not change when the email later does. It is shown read-only on the
+    edit screen for exactly that reason — changing the address here would
+    otherwise look like it should change how they log in, and it does not.
 
     The specialisation "choose or add one" behaviour mirrors ``DoctorForm``'s
     rather than sharing it — the two forms save completely different things,
@@ -1553,6 +1558,12 @@ class DoctorEditForm(forms.Form):
         label="Doctor's name",
         max_length=150,
         widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Vrushali Kulkarni"}),
+    )
+    email = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs=INPUT),
+        help_text="Where the set-password link and any notifications go. "
+                  "Not what they sign in with — see the username above.",
     )
     phone = forms.CharField(
         label="Contact number", max_length=15, required=False,
@@ -1607,6 +1618,7 @@ class DoctorEditForm(forms.Form):
         if not self.is_bound and doctor is not None:
             name = doctor.get_full_name() or doctor.first_name
             self.initial.setdefault("full_name", name)
+            self.initial.setdefault("email", doctor.email)
             self.initial.setdefault("phone", doctor.phone)
             if current:
                 self.initial.setdefault(
@@ -1624,6 +1636,19 @@ class DoctorEditForm(forms.Form):
         if phone:
             phone_validator(phone)
         return phone
+
+    def clean_email(self):
+        # Excludes this doctor's own row — otherwise saving the form without
+        # touching the address would trip over itself.
+        email = self.cleaned_data["email"].strip().lower()
+        clash = User.objects.filter(email__iexact=email)
+        if self.doctor is not None:
+            clash = clash.exclude(pk=self.doctor.pk)
+        if clash.exists():
+            raise forms.ValidationError(
+                "Somebody is already registered with that email address."
+            )
+        return email
 
     def clean(self):
         cleaned = super().clean()
@@ -1675,8 +1700,9 @@ class DoctorEditForm(forms.Form):
 
         self.doctor.first_name = first
         self.doctor.last_name = last.strip()
+        self.doctor.email = self.cleaned_data["email"]
         self.doctor.phone = self.cleaned_data.get("phone", "")
-        self.doctor.save(update_fields=["first_name", "last_name", "phone"])
+        self.doctor.save(update_fields=["first_name", "last_name", "email", "phone"])
 
         profile, _ = DoctorProfile.objects.get_or_create(user=self.doctor)
         profile.specialisation = self._resolve_specialisation()
