@@ -99,12 +99,20 @@ def _attach_note(obj, patient, request):
 
 
 def _attach_prescription(obj, patient, request):
-    visit = patient.visits.active().order_by("-scheduled_start").first()
-    if visit is None:
-        raise Http404("There is no open visit to attach a prescription to.")
-    obj.visit = visit
+    """
+    A prescription no longer needs an open visit — a doctor can write one for
+    a patient at any time, printing it themselves rather than routing it
+    through reception.
+
+    Where a visit *is* open, still attach to it if that visit does not already
+    have one: reception's own per-visit print reads ``visit.prescription`` as
+    a single object, so at most one prescription may belong to any one visit.
+    """
     obj.patient = patient
     obj.doctor = request.user
+    visit = patient.visits.active().order_by("-scheduled_start").first()
+    if visit is not None and getattr(visit, "prescription", None) is None:
+        obj.visit = visit
 
 
 def _attach_reference_letter(obj, patient, request):
@@ -293,11 +301,13 @@ def edit_record(request, patient_id, kind, pk=None):
 @role_required(Role.DOCTOR)
 def complete_consultation(request, patient_id):
     """
-    End the consultation: record the fee, issue the prescription, hand over.
+    End the consultation: record the fee and the work done, move the visit on.
 
-    This is the trigger the clinic described — one action that sets the fee,
-    releases the prescription for printing and moves the visit to CONSULTED, so
-    the patient appears on reception's billing list with everything they need.
+    Prescriptions and reference letters are the doctor's own documents now —
+    written, edited and printed from their own tabs, independently of this
+    action — so this is just the fee, exactly what the clinic asked for:
+    "enter fees and work done". It still moves the visit to CONSULTED, which
+    is what puts the patient on reception's billing list.
     """
     patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
     visit = (
@@ -311,10 +321,10 @@ def complete_consultation(request, patient_id):
         raise Http404("This patient is not currently in the cabin.")
 
     # KAN-5 FR-2 and AC-3. Only the doctor who has the patient in front of them
-    # may end the consultation: the fee, the prescription and the signature on
-    # the record all belong to whoever saw the patient, and this action sets all
-    # three at once. Said plainly rather than raising a 404 — every doctor can
-    # already see the whole board, so there is nothing to conceal here.
+    # may end the consultation: the fee and the signature on the record both
+    # belong to whoever saw the patient. Said plainly rather than raising a
+    # 404 — every doctor can already see the whole board, so there is nothing
+    # to conceal here.
     if visit.doctor_id != request.user.id:
         return _blocked(
             request,
@@ -324,7 +334,6 @@ def complete_consultation(request, patient_id):
         )
 
     charge = getattr(visit, "charge", None)
-    prescription = getattr(visit, "prescription", None)
 
     if request.method == "POST":
         form = clinic_forms.ChargeForm(request.POST, instance=charge)
@@ -336,21 +345,13 @@ def complete_consultation(request, patient_id):
                 charge.set_by = request.user
                 charge.save()
 
-                # Issue whatever prescription exists; an empty one is still the
-                # signal that the consultation is over.
-                if prescription is None:
-                    prescription = Prescription.objects.create(
-                        visit=visit, patient=patient, doctor=request.user
-                    )
-                prescription.generate()
-
                 visit.transition_to(VisitStatus.CONSULTED, by_user=request.user)
 
             record(
                 request, AuditAction.UPDATE, obj=visit, patient=patient,
-                description="Consultation completed; fee and prescription sent to reception",
+                description="Consultation completed; fee recorded",
             )
-            return HttpResponse(_refreshed_panels(request, patient, "prescriptions"))
+            return HttpResponse(_refreshed_panels(request, patient, "summary"))
     else:
         initial = {}
         if charge is None:
@@ -364,7 +365,6 @@ def complete_consultation(request, patient_id):
             "patient": patient,
             "visit": visit,
             "form": form,
-            "prescription": prescription,
             "action": request.path,
         },
     )

@@ -89,6 +89,8 @@ urlpatterns = [
          views_reception.complete_visit, name="reception_complete_visit"),
 
     path("print/prescription/<int:pk>/", views_reception.print_prescription, name="print_prescription"),
+    path("print/prescription-record/<int:pk>/", views_reception.print_prescription_record,
+         name="print_prescription_record"),
     path("print/receipt/<int:pk>/", views_reception.print_receipt, name="print_receipt"),
     path("print/reference-letter/<int:pk>/", views_reception.print_reference_letter,
          name="print_reference_letter"),

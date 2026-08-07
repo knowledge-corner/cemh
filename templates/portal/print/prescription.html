@@ -10,7 +10,7 @@
   <div><dt>Patient</dt><dd>{{ patient.full_name }}</dd></div>
   <div><dt>{{ patient_id_label }}</dt><dd class="mono">{{ patient.patient_id }}</dd></div>
   <div><dt>Age / Sex</dt><dd>{{ patient.age_display }} &middot; {{ patient.get_sex_display }}</dd></div>
-  <div><dt>Date</dt><dd>{{ visit.scheduled_start|date:"j F Y" }}</dd></div>
+  <div><dt>Date</dt><dd>{{ display_date|date:"j F Y" }}</dd></div>
 </dl>
 
 {% if patient.history.allergies %}
@@ -45,10 +45,10 @@
   {% endif %}
 </div>
 
-{% if prescription.advice %}
+{% if printed_note %}
   <section class="sheet__section">
-    <h2>Advice</h2>
-    <p>{{ prescription.advice|linebreaksbr }}</p>
+    <h2>Notes</h2>
+    <p>{{ printed_note|linebreaksbr }}</p>
   </section>
 {% endif %}
 
@@ -59,10 +59,15 @@
   </section>
 {% endif %}
 
-{% if prescription.follow_up_date %}
+{% if prescription.tentative_follow_up_date %}
   <section class="sheet__section">
     <h2>Follow-up</h2>
-    <p>{{ prescription.follow_up_date|date:"j F Y" }}{% if prescription.follow_up_notes %} — {{ prescription.follow_up_notes }}{% endif %}</p>
+    <p>
+      Tentative date: <strong>{{ prescription.tentative_follow_up_date|date:"j F Y" }}</strong>
+      ({{ prescription.follow_up_number }} {{ prescription.get_follow_up_unit_display|lower }} from today).
+      This date is approximate — please confirm your appointment with reception before visiting.
+    </p>
+    {% if prescription.follow_up_notes %}<p>{{ prescription.follow_up_notes }}</p>{% endif %}
   </section>
 {% endif %}
 
@@ -70,7 +75,7 @@
   {% if doctor_profile.signature %}
     <img src="{{ doctor_profile.signature.url }}" alt="" class="sheet__signature">
   {% endif %}
-  <p class="sheet__doctor">Dr. {{ visit.doctor.display_name }}</p>
+  <p class="sheet__doctor">Dr. {{ prescription.doctor.display_name }}</p>
   {% if doctor_profile.qualification %}
     <p class="sheet__qual">{{ doctor_profile.qualification }}</p>
   {% endif %}

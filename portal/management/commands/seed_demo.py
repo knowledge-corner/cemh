@@ -204,7 +204,7 @@ class Command(BaseCommand):
         prescription = Prescription.objects.create(
             visit=visit, patient=patient, doctor=doctor,
             advice="Continue daily walking. Maintain current diet.",
-            follow_up_date=today + timedelta(days=90),
+            follow_up_number=3, follow_up_unit=Prescription.FollowUpUnit.MONTH,
         )
         PrescriptionItem.objects.create(
             prescription=prescription, drug_name="Metformin", strength="500 mg",
@@ -511,7 +511,7 @@ class Command(BaseCommand):
             prescription = Prescription.objects.create(
                 visit=visit, patient=patient, doctor=doctor,
                 advice="Diet and activity advice reinforced.",
-                follow_up_date=when + timedelta(days=180),
+                follow_up_number=6, follow_up_unit=Prescription.FollowUpUnit.MONTH,
                 generated_at=timezone.make_aware(
                     timezone.datetime.combine(when, timezone.datetime.min.time())
                 ) + timedelta(hours=11),

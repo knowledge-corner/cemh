@@ -10,7 +10,7 @@ class PrescriptionItemInline(admin.TabularInline):
 
 @admin.register(Prescription)
 class PrescriptionAdmin(admin.ModelAdmin):
-    list_display = ("patient", "doctor", "created_at", "generated_at", "follow_up_date")
+    list_display = ("patient", "doctor", "created_at", "generated_at", "tentative_follow_up_date")
     list_filter = ("doctor", "created_at")
     search_fields = ("patient__patient_id", "patient__first_name", "patient__last_name")
     autocomplete_fields = ("visit", "patient", "doctor")

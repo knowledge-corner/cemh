@@ -235,7 +235,7 @@ class TestConsultationHandover(TestCase):
             reverse("doctor_complete_consultation", args=[self.patient.patient_id]), payload
         )
 
-    def test_completing_sets_fee_issues_prescription_and_moves_the_visit(self):
+    def test_completing_sets_the_fee_and_moves_the_visit(self):
         response = self.complete()
         self.assertEqual(response.status_code, 200)
 
@@ -246,8 +246,11 @@ class TestConsultationHandover(TestCase):
         self.assertEqual(charge.total, Decimal("800"))
         self.assertEqual(charge.set_by, self.doctor)
 
-        prescription = Prescription.objects.get(visit=self.visit)
-        self.assertTrue(prescription.is_generated)
+    def test_completing_does_not_create_or_send_a_prescription(self):
+        # Prescriptions are the doctor's own document now, written and printed
+        # from their own tab — completing a consultation is fee-only.
+        self.complete()
+        self.assertFalse(Prescription.objects.exists())
 
     def test_a_discount_reduces_what_reception_collects(self):
         self.complete(consultation_fee="800", discount="200")

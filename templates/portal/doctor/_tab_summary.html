@@ -140,7 +140,7 @@ the visit history grouped into the time bands clinicians actually think in.
                 <td class="nowrap">{{ visit.scheduled_start|date:"j M Y" }}</td>
                 <td class="nowrap">{{ visit.doctor.display_name }}</td>
                 <td>{{ visit.reason|default:"—" }}</td>
-                <td>{{ visit.note.assessment|default:"—"|truncatechars:70 }}</td>
+                <td>{{ visit.note.clinical_notes|default:visit.note.assessment|default:"—"|truncatechars:70 }}</td>
                 <td>{% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}</td>
               </tr>
             {% endfor %}

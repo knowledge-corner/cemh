@@ -1,4 +1,11 @@
-{% comment %}Prescriptions issued at each visit, newest first.{% endcomment %}
+{% comment %}
+Prescriptions, newest first. Written, edited and printed here — reception
+does not print these any more, except for one already sent to them (see
+"Send to reception" below), which still prints from Stage 4 unchanged.
+
+Not tied to a visit: a doctor can write one for a patient at any time, so a
+patient can carry more than one, each independently editable and printable.
+{% endcomment %}
 
 <div class="section-head">
   <h3>Prescriptions</h3>
@@ -13,19 +20,24 @@
           <h3 class="card__title">{{ prescription.created_at|date:"j F Y" }}</h3>
           <span>
             {% if prescription.is_generated %}
-              <span class="badge badge--success">Issued</span>
+              <span class="badge badge--success">Sent to reception</span>
             {% else %}
-              <span class="badge badge--warning">Draft</span>
+              <span class="badge badge--warning">Not sent to reception</span>
+            {% endif %}
+            <a class="btn-edit" target="_blank"
+               href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
+            {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
+            {% if not prescription.is_generated %}
               {% comment %}
-              Finalising is the handover to reception, so it is a deliberate
-              second action rather than a side effect of saving.
+              Sending to reception is optional now that the doctor prints
+              directly — this is only for a prescription reception should
+              also be able to print from Stage 4 alongside the receipt.
               {% endcomment %}
               <button type="button" class="btn-edit btn-edit--solid"
                       hx-post="{% url 'doctor_generate_prescription' patient.patient_id prescription.pk %}"
                       hx-target="#modal-host"
                       hx-swap="innerHTML">Send to reception</button>
             {% endif %}
-            {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
           </span>
         </div>
         <div class="card__body">
@@ -56,15 +68,16 @@
             <p class="faint">No medication on this prescription.</p>
           {% endif %}
 
-          {% if prescription.advice %}
-            <h4 style="margin-top:1rem">Advice</h4><p>{{ prescription.advice|linebreaksbr }}</p>
+          {% if prescription.printed_note %}
+            <h4 style="margin-top:1rem">Notes</h4><p>{{ prescription.printed_note|linebreaksbr }}</p>
           {% endif %}
           {% if prescription.investigations_advised %}
             <h4>Investigations advised</h4><p>{{ prescription.investigations_advised|linebreaksbr }}</p>
           {% endif %}
-          {% if prescription.follow_up_date %}
+          {% if prescription.tentative_follow_up_date %}
             <p class="small muted">
-              <strong>Follow-up:</strong> {{ prescription.follow_up_date|date:"j F Y" }}
+              <strong>Follow-up:</strong> {{ prescription.tentative_follow_up_date|date:"j F Y" }}
+              ({{ prescription.follow_up_number }} {{ prescription.get_follow_up_unit_display|lower }} from today, tentative)
               {% if prescription.follow_up_notes %} — {{ prescription.follow_up_notes }}{% endif %}
             </p>
           {% endif %}
@@ -78,6 +91,6 @@
   <div class="empty">
     <div class="empty__icon">℞</div>
     <div class="empty__title">No prescriptions yet</div>
-    <div class="empty__hint">Prescriptions generated at the end of a consultation will appear here.</div>
+    <div class="empty__hint">Prescriptions written for this patient will appear here.</div>
   </div>
 {% endif %}

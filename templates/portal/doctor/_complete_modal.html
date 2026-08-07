@@ -1,6 +1,7 @@
 {% comment %}
-End-of-consultation dialog: the fee and the prescription go to reception
-together, in one action.
+End-of-consultation dialog: fee and work done, nothing else. Prescriptions and
+reference letters are written, edited and printed on their own tabs — this
+only records what is owed and moves the visit to reception's billing list.
 {% endcomment %}
 
 <div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
@@ -18,8 +19,9 @@ together, in one action.
 
       <div class="modal__body">
         <p class="muted" style="margin-bottom:1rem">
-          {{ patient.full_name }} will move to reception's billing list with the fee below
-          and the prescription for this visit.
+          {{ patient.full_name }} will move to reception's billing list with the fee below.
+          Print a prescription or a reference letter from their own tabs first, if either is needed —
+          reception does not print them.
         </p>
 
         {% comment %}
@@ -42,27 +44,12 @@ together, in one action.
             </div>
           {% endfor %}
         </div>
-
-        <div class="alert-strip {% if prescription and prescription.items.exists %}alert-strip--info{% else %}alert-strip--warning{% endif %}"
-             style="margin-top:1rem">
-          <div>
-            {% if prescription and prescription.items.exists %}
-              <span class="alert-strip__title">Prescription ready</span><br>
-              {{ prescription.items.count }} medication line{{ prescription.items.count|pluralize }}
-              will be released for printing.
-            {% else %}
-              <span class="alert-strip__title">No medication added</span><br>
-              You can still finish — reception will receive an advice-only prescription.
-              Add medication first from the Prescriptions tab if that is not what you want.
-            {% endif %}
-          </div>
-        </div>
       </div>
 
       <div class="modal__footer">
         <button type="button" class="btn btn--secondary"
                 onclick="document.getElementById('modal-host').innerHTML = '';">Cancel</button>
-        <button type="submit" class="btn btn--primary">Send to reception</button>
+        <button type="submit" class="btn btn--primary">Complete consultation</button>
       </div>
     </form>
 

@@ -27,8 +27,12 @@ class ClinicalNote(models.Model):
     """
     What the doctor recorded during one consultation.
 
-    Follows the familiar complaint / examination / assessment / plan structure
-    so a note reads the way a paper file does.
+    Two boxes: ``clinical_notes`` is the doctor's own reference and is never
+    printed; ``prescription_note`` is what appears on the printed prescription
+    for this same visit. Older notes still carry the earlier complaint /
+    examination / assessment / plan structure — those fields are kept, and
+    shown read-only, so nothing already written is lost; the form just does
+    not offer them for a new note any more.
     """
 
     visit = models.OneToOneField(Visit, on_delete=models.CASCADE, related_name="note")
@@ -37,6 +41,15 @@ class ClinicalNote(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="authored_notes"
     )
 
+    clinical_notes = models.TextField(
+        blank=True, help_text="The doctor's own reference. Never printed."
+    )
+    prescription_note = models.TextField(
+        blank=True, help_text="Printed on the prescription written for this visit."
+    )
+
+    #: Superseded by the two fields above. Kept for notes written before this
+    #: change, and still shown where a note actually has content in them.
     complaints = models.TextField(blank=True, help_text="What the patient reports today.")
     examination = models.TextField(blank=True, help_text="Findings on examination.")
     assessment = models.TextField(blank=True, help_text="Clinical impression.")
@@ -74,8 +87,15 @@ class ClinicalNote(models.Model):
         return ""
 
     @property
+    def has_legacy_content(self):
+        """Whether this note carries the pre-simplification fields."""
+        return any([self.complaints, self.examination, self.assessment, self.plan])
+
+    @property
     def is_empty(self):
-        return not any([self.complaints, self.examination, self.assessment, self.plan])
+        return not any([
+            self.clinical_notes, self.prescription_note, self.has_legacy_content,
+        ])
 
 
 class InvestigationCategory(models.TextChoices):

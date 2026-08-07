@@ -1,11 +1,20 @@
 """
 Prescriptions.
 
-When the doctor finishes a consultation they generate the prescription. That
-act is what hands the patient over to the receptionist — who prints it, takes
-the fee and issues a receipt — so ``generated_at`` is a workflow signal, not
-just a timestamp.
+Printing moved to the doctor's own tab: the doctor writes, edits and prints a
+prescription without needing reception at all. ``generated_at`` stays as the
+one remaining reception-facing signal — a doctor who explicitly sends a
+prescription to reception (still available on the tab) is still marking it
+printable from Stage 4 alongside the receipt, exactly as before.
+
+A prescription is not required to belong to a visit any more: a doctor can
+write one for a patient at any time, not only while a consultation is open.
+Where a visit *is* open, a new prescription still attaches to it (at most one
+per visit, since reception's per-visit print still reads ``visit.prescription``
+as a single object).
 """
+
+import calendar
 
 from django.conf import settings
 from django.db import models
@@ -15,20 +24,48 @@ from appointments.models import Visit
 from patients.models import Patient
 
 
-class Prescription(models.Model):
-    """The medication and advice issued at one visit."""
+def add_months_or_years(base_date, number, unit):
+    """
+    ``base_date`` plus ``number`` months or years, without a third-party
+    dependency — a day past the end of the target month clamps to the last
+    day of it (31 Jan + 1 month lands on 28/29 Feb, not into March).
+    """
+    if unit == Prescription.FollowUpUnit.YEAR:
+        year = base_date.year + number
+        day = min(base_date.day, calendar.monthrange(year, base_date.month)[1])
+        return base_date.replace(year=year, day=day)
 
-    visit = models.OneToOneField(Visit, on_delete=models.CASCADE, related_name="prescription")
+    month_index = base_date.month - 1 + number
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(base_date.day, calendar.monthrange(year, month)[1])
+    return base_date.replace(year=year, month=month, day=day)
+
+
+class Prescription(models.Model):
+    """The medication and advice issued at one visit, or standing alone."""
+
+    class FollowUpUnit(models.TextChoices):
+        MONTH = "MONTH", "Month(s)"
+        YEAR = "YEAR", "Year(s)"
+
+    visit = models.OneToOneField(
+        Visit, on_delete=models.CASCADE, related_name="prescription", null=True, blank=True,
+    )
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="prescriptions")
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="prescriptions_issued"
     )
 
+    #: Superseded by ClinicalNote.prescription_note, which is what the print
+    #: view now shows. Kept on the model, off the form, so older prescriptions
+    #: that already carry advice text do not lose it.
     advice = models.TextField(blank=True, help_text="Diet, activity and general advice.")
     investigations_advised = models.TextField(
         blank=True, help_text="Tests to be done before the next visit."
     )
-    follow_up_date = models.DateField(null=True, blank=True)
+    follow_up_number = models.PositiveSmallIntegerField(null=True, blank=True)
+    follow_up_unit = models.CharField(max_length=10, choices=FollowUpUnit.choices, blank=True)
     follow_up_notes = models.CharField(max_length=300, blank=True)
 
     #: Set when the doctor finalises the prescription. Until then it is a
@@ -49,6 +86,22 @@ class Prescription(models.Model):
     @property
     def is_generated(self):
         return self.generated_at is not None
+
+    @property
+    def tentative_follow_up_date(self):
+        """
+        The printed follow-up date, reckoned from the day the prescription was
+        written — not from whenever it happens to be reprinted — since a
+        reprint weeks later should not silently push the follow-up window out.
+
+        ``None`` when no follow-up was set, so the print sheet can leave the
+        whole section out rather than printing an empty date.
+        """
+        if not self.follow_up_number or not self.follow_up_unit:
+            return None
+        return add_months_or_years(
+            self.created_at.date(), self.follow_up_number, self.follow_up_unit
+        )
 
     def generate(self):
         """Finalise the prescription and release it to the receptionist."""

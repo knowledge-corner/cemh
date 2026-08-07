@@ -16,8 +16,12 @@ class ClinicalNoteAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {"fields": ("visit", "patient", "author")}),
-        ("Consultation", {"fields": ("complaints", "examination", "assessment", "plan")}),
+        ("Consultation", {"fields": ("clinical_notes", "prescription_note")}),
         ("Vitals", {"fields": ("systolic_bp", "diastolic_bp", "pulse", "temperature_c")}),
+        ("Earlier format", {
+            "classes": ("collapse",),
+            "fields": ("complaints", "examination", "assessment", "plan"),
+        }),
         ("Clinic-specific fields", {"classes": ("collapse",), "fields": ("extra", "form_version")}),
         ("Record", {"classes": ("collapse",), "fields": ("created_at", "updated_at")}),
     )

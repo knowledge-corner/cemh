@@ -39,6 +39,7 @@ from billing.models import Charge, Payment, Receipt
 from clinical.models import ReferenceLetter
 from patients import importing, matching
 from patients.models import Patient
+from pharmacy.models import Prescription
 
 from . import forms as clinic_forms
 
@@ -1241,14 +1242,23 @@ def complete_visit(request, pk):
 
 # ── Printing ──────────────────────────────────────────────────────────────────
 
-@role_required(Role.RECEPTIONIST, Role.DOCTOR)
-def print_prescription(request, pk):
-    """Print-ready prescription on the clinic's letterhead."""
-    visit = get_object_or_404(Visit.objects.select_related("patient", "doctor"), pk=pk)
-    prescription = getattr(visit, "prescription", None)
-    if prescription is None:
-        return HttpResponse("No prescription has been issued for this visit.", status=404)
+def _printed_note(prescription):
+    """
+    What goes in the print sheet's Notes section.
 
+    The doctor now writes this on the Clinical Notes tab, against the same
+    visit the prescription belongs to — see ``ClinicalNote.prescription_note``
+    — since Prescription's own ``advice`` field is no longer shown on the
+    prescription form. Older prescriptions that already carry ``advice``
+    text still print it.
+    """
+    note = getattr(prescription.visit, "note", None) if prescription.visit_id else None
+    if note is not None and note.prescription_note:
+        return note.prescription_note
+    return prescription.advice
+
+
+def _mark_printed(request, prescription):
     # KAN-8 FR-6: a reprint changes nothing. ``printed_at`` records that the
     # document reached paper at all, so it is stamped once and then left alone —
     # otherwise every reprint would edit a settled record, and "when was this
@@ -1261,6 +1271,16 @@ def print_prescription(request, pk):
         prescription.printed_at = timezone.now()
         prescription.save(update_fields=["printed_at", "updated_at"])
 
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
+def print_prescription(request, pk):
+    """Print-ready prescription on the clinic's letterhead, reached from a visit."""
+    visit = get_object_or_404(Visit.objects.select_related("patient", "doctor"), pk=pk)
+    prescription = getattr(visit, "prescription", None)
+    if prescription is None:
+        return HttpResponse("No prescription has been issued for this visit.", status=404)
+
+    _mark_printed(request, prescription)
     record(
         request, AuditAction.PRINT, obj=prescription, patient=visit.patient,
         description="Printed prescription",
@@ -1272,6 +1292,39 @@ def print_prescription(request, pk):
         "prescription": prescription,
         "doctor_profile": getattr(visit.doctor, "doctor_profile", None),
         "items": prescription.items.all(),
+        "display_date": visit.scheduled_start,
+        "printed_note": _printed_note(prescription),
+    })
+
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
+def print_prescription_record(request, pk):
+    """
+    Print-ready prescription reached by its own id, not a visit's.
+
+    ``print_prescription`` above is reception's unchanged route — one
+    prescription per visit, printed from Stage 4 alongside the receipt. This
+    is the doctor's own route: a prescription no longer needs a visit at all,
+    so there is no visit id to key the URL on.
+    """
+    prescription = get_object_or_404(
+        Prescription.objects.select_related("patient", "doctor", "visit"), pk=pk
+    )
+
+    _mark_printed(request, prescription)
+    record(
+        request, AuditAction.PRINT, obj=prescription, patient=prescription.patient,
+        description="Printed prescription",
+    )
+
+    return render(request, "portal/print/prescription.html", {
+        "visit": prescription.visit,
+        "patient": prescription.patient,
+        "prescription": prescription,
+        "doctor_profile": getattr(prescription.doctor, "doctor_profile", None),
+        "items": prescription.items.all(),
+        "display_date": prescription.visit.scheduled_start if prescription.visit else prescription.created_at,
+        "printed_note": _printed_note(prescription),
     })
 
 

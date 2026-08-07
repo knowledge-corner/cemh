@@ -151,10 +151,17 @@ def investigations_context(patient):
 def prescriptions_context(patient):
     prescriptions = (
         Prescription.objects.filter(patient=patient)
-        .select_related("doctor", "visit")
+        .select_related("doctor", "visit__note")
         .prefetch_related(Prefetch("items", queryset=PrescriptionItem.objects.order_by("order", "id")))
         .order_by("-created_at")
     )
+    # What the tab shows and what gets printed must agree, so it is computed
+    # once here rather than being worked out again by the template.
+    for prescription in prescriptions:
+        note = getattr(prescription.visit, "note", None) if prescription.visit_id else None
+        prescription.printed_note = (
+            note.prescription_note if note and note.prescription_note else prescription.advice
+        )
     return {"patient": patient, "prescriptions": prescriptions}
 
 

@@ -1,6 +1,9 @@
 {% comment %}
-Clinical notes, newest first. Each note reads the way the paper file did:
-complaints, examination, assessment, plan.
+Clinical notes, newest first. Two boxes: the doctor's own reference, and what
+gets printed on the prescription written for the same visit. Notes recorded
+before this change still show their original complaint / examination /
+assessment / plan structure, read-only — nothing already written is hidden,
+the form just does not collect that shape any more.
 {% endcomment %}
 
 <div class="section-head">
@@ -29,17 +32,29 @@ complaints, examination, assessment, plan.
             </p>
           {% endif %}
 
-          {% if note.complaints %}
-            <h4>Complaints</h4><p>{{ note.complaints|linebreaksbr }}</p>
+          {% if note.clinical_notes %}
+            <h4>Clinical notes</h4><p>{{ note.clinical_notes|linebreaksbr }}</p>
           {% endif %}
-          {% if note.examination %}
-            <h4>Examination</h4><p>{{ note.examination|linebreaksbr }}</p>
+          {% if note.prescription_note %}
+            <h4>Notes to print on prescription</h4><p>{{ note.prescription_note|linebreaksbr }}</p>
           {% endif %}
-          {% if note.assessment %}
-            <h4>Assessment</h4><p>{{ note.assessment|linebreaksbr }}</p>
-          {% endif %}
-          {% if note.plan %}
-            <h4>Plan</h4><p>{{ note.plan|linebreaksbr }}</p>
+
+          {% if note.has_legacy_content %}
+            <div class="faint small" style="margin:.75rem 0 .375rem">
+              Recorded before this screen was simplified —
+            </div>
+            {% if note.complaints %}
+              <h4>Complaints</h4><p>{{ note.complaints|linebreaksbr }}</p>
+            {% endif %}
+            {% if note.examination %}
+              <h4>Examination</h4><p>{{ note.examination|linebreaksbr }}</p>
+            {% endif %}
+            {% if note.assessment %}
+              <h4>Assessment</h4><p>{{ note.assessment|linebreaksbr }}</p>
+            {% endif %}
+            {% if note.plan %}
+              <h4>Plan</h4><p>{{ note.plan|linebreaksbr }}</p>
+            {% endif %}
           {% endif %}
 
           {% if note.extra %}

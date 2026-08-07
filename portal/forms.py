@@ -219,28 +219,60 @@ class InvestigationForm(StyledModelForm):
 
 
 class ClinicalNoteForm(StyledModelForm):
+    """
+    Two boxes only: what the doctor wants on record for themselves, and what
+    should go on the printed prescription for this visit. The older complaint
+    / examination / assessment / plan / vitals fields still exist on the
+    model — see :class:`clinical.models.ClinicalNote` — but are not offered
+    here any more.
+    """
+
     class Meta:
         model = ClinicalNote
-        fields = [
-            "complaints", "examination", "assessment", "plan",
-            "systolic_bp", "diastolic_bp", "pulse", "temperature_c",
-        ]
+        fields = ["clinical_notes", "prescription_note"]
         widgets = {
-            "complaints": forms.Textarea(attrs=TEXTAREA),
-            "examination": forms.Textarea(attrs=TEXTAREA),
-            "assessment": forms.Textarea(attrs=TEXTAREA),
-            "plan": forms.Textarea(attrs=TEXTAREA),
+            "clinical_notes": forms.Textarea(attrs=TEXTAREA),
+            "prescription_note": forms.Textarea(attrs=TEXTAREA),
+        }
+        labels = {
+            "clinical_notes": "Clinical notes (doctor reference)",
+            "prescription_note": "Notes to print on prescription",
         }
 
 
+#: Displayed as a dropdown rather than typed, per the clinic's request — a
+#: number this small is quicker to pick than to type correctly every time.
+FOLLOW_UP_NUMBER_CHOICES = [("", "—")] + [(n, n) for n in range(1, 13)]
+
+
 class PrescriptionForm(StyledModelForm):
+    """
+    Advice no longer lives here — see ``ClinicalNoteForm.prescription_note``,
+    which is what the printed prescription now shows for the visit it was
+    written on. The follow-up date became "in N months/years" because a
+    doctor thinks in a duration, not a calendar date, at the point they set it
+    — the print sheet works the calendar date out from today.
+    """
+
+    follow_up_number = forms.TypedChoiceField(
+        choices=FOLLOW_UP_NUMBER_CHOICES, coerce=int, required=False, empty_value=None,
+        widget=forms.Select(attrs=INPUT),
+    )
+
     class Meta:
         model = Prescription
-        fields = ["advice", "investigations_advised", "follow_up_date", "follow_up_notes"]
+        fields = [
+            "investigations_advised", "follow_up_number", "follow_up_unit", "follow_up_notes",
+        ]
         widgets = {
-            "advice": forms.Textarea(attrs=TEXTAREA),
             "investigations_advised": forms.Textarea(attrs=TEXTAREA),
-            "follow_up_date": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
+            "follow_up_unit": forms.Select(attrs=INPUT),
+            "follow_up_notes": forms.TextInput(attrs=INPUT),
+        }
+        labels = {
+            "follow_up_number": "Follow up after",
+            "follow_up_unit": " ",
+            "follow_up_notes": "Follow-up notes",
         }
 
 
@@ -273,6 +305,7 @@ class ChargeForm(StyledModelForm):
             "consultation_fee": "Consultation fee",
             "procedure_fee": "Procedure / other charges",
             "discount": "Discount",
+            "notes": "Work done",
         }
         help_texts = {
             "notes": "Required if the visit is being made free of charge.",

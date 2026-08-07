@@ -142,4 +142,25 @@ body.printable {
   body.printable { background: #fff; padding: 0; }
   .print-toolbar { display: none !important; }
   .sheet { box-shadow: none; margin: 0; max-width: none; min-height: 0; }
+
+  /*
+   * A long prescription (or any other sheet) can run to a second printed
+   * page. Fixed positioning under print repeats an element identically on
+   * every page the browser paginates into, so the doctor's signature block
+   * is there to sign on each one rather than only on the last — without
+   * knowing in advance how many pages a given prescription will need.
+   *
+   * The extra bottom padding on .sheet keeps flowing content (the
+   * medication table, notes) from running underneath the fixed block on
+   * whichever page turns out to be the last.
+   */
+  .sheet { padding-bottom: 42mm; }
+  .sheet__sign {
+    position: fixed;
+    bottom: 12mm;
+    left: 16mm;
+    right: 16mm;
+    margin-top: 0;
+    padding-top: 0;
+  }
 }

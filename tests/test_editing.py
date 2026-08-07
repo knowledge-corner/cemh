@@ -16,7 +16,7 @@ from appointments.models import VisitStatus
 from audit.models import AccessLog, AuditAction
 from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
 from growth.models import Measurement
-from pharmacy.models import Prescription
+from pharmacy.models import Prescription, add_months_or_years
 
 from .factories import (
     make_doctor, make_history, make_measurement, make_patient, make_receptionist,
@@ -147,13 +147,36 @@ class TestSaving(EditingTestCase):
     def test_adding_a_note_attaches_it_to_the_open_visit(self):
         visit = self.open_visit()
         self.client.post(self.add_url("note"), {
-            "complaints": "Short stature", "examination": "Height 123 cm",
-            "assessment": "Below 3rd centile", "plan": "Bone age",
-            "systolic_bp": "", "diastolic_bp": "", "pulse": "", "temperature_c": "",
+            "clinical_notes": "Short stature, plan bone age.",
+            "prescription_note": "Continue calcium and vitamin D as advised.",
         })
         note = ClinicalNote.objects.get()
         self.assertEqual(note.visit, visit)
         self.assertEqual(note.author, self.doctor)
+
+    def test_the_note_form_offers_only_the_two_boxes(self):
+        # The clinic asked for exactly two text boxes — nothing about
+        # complaints, examination, assessment, plan or vitals any more.
+        self.open_visit()
+        response = self.client.get(self.add_url("note"))
+        for legacy_field in ("complaints", "examination", "assessment",
+                              "systolic_bp", "diastolic_bp", "temperature_c"):
+            self.assertNotContains(response, f'name="{legacy_field}"')
+        self.assertContains(response, 'name="clinical_notes"')
+        self.assertContains(response, 'name="prescription_note"')
+
+    def test_a_note_written_before_the_change_still_shows_its_old_content(self):
+        # Non-destructive: nothing already on record disappears from view.
+        visit = self.open_visit()
+        ClinicalNote.objects.create(
+            visit=visit, patient=self.patient, author=self.doctor,
+            complaints="Fatigue", assessment="Hypothyroid, uncontrolled",
+        )
+        response = self.client.get(
+            reverse("doctor_patient_tab", args=[self.patient.patient_id, "notes"])
+        )
+        self.assertContains(response, "Fatigue")
+        self.assertContains(response, "Hypothyroid, uncontrolled")
 
     def test_invalid_form_redisplays_rather_than_saving(self):
         response = self.client.post(self.add_url("diagnosis"), {
@@ -166,20 +189,51 @@ class TestSaving(EditingTestCase):
 
 
 class TestPrescriptionWorkflow(EditingTestCase):
-    def test_new_prescription_starts_as_a_draft(self):
-        self.open_visit()
-        self.client.post(self.add_url("prescription"), {
-            "advice": "Reduce sugar", "investigations_advised": "",
-            "follow_up_date": "", "follow_up_notes": "",
+    def _item_formset(self, **overrides):
+        payload = {
             "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0",
             "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000",
             "items-0-drug_name": "Levothyroxine", "items-0-strength": "50 mcg",
             "items-0-dosage": "1 tablet", "items-0-frequency": "Once daily",
             "items-0-duration": "3 months", "items-0-instructions": "Before breakfast",
-        })
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_new_prescription_starts_as_a_draft(self):
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), self._item_formset(
+            investigations_advised="", follow_up_number="", follow_up_unit="",
+            follow_up_notes="",
+        ))
         prescription = Prescription.objects.get()
         self.assertFalse(prescription.is_generated, "Must not auto-issue on save")
         self.assertEqual(prescription.items.count(), 1)
+
+    def test_a_prescription_can_be_created_without_an_open_visit(self):
+        # The whole point of this change: no consultation needs to be open.
+        response = self.client.post(self.add_url("prescription"), self._item_formset())
+        self.assertEqual(response.status_code, 200)
+        prescription = Prescription.objects.get()
+        self.assertIsNone(prescription.visit)
+        self.assertEqual(prescription.patient, self.patient)
+        self.assertEqual(prescription.doctor, self.doctor)
+
+    def test_a_patient_can_carry_more_than_one_prescription(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        self.assertEqual(Prescription.objects.filter(patient=self.patient).count(), 2)
+
+    def test_editing_an_existing_prescription_updates_it_not_duplicates_it(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        prescription = Prescription.objects.get()
+        self.client.post(
+            self.edit_url("prescription", prescription.pk),
+            self._item_formset(investigations_advised="Repeat TSH in 6 weeks"),
+        )
+        prescription.refresh_from_db()
+        self.assertEqual(Prescription.objects.count(), 1)
+        self.assertEqual(prescription.investigations_advised, "Repeat TSH in 6 weeks")
 
     def test_sending_to_reception_marks_it_generated(self):
         visit = self.open_visit()
@@ -191,6 +245,59 @@ class TestPrescriptionWorkflow(EditingTestCase):
         ))
         prescription.refresh_from_db()
         self.assertTrue(prescription.is_generated)
+
+    def test_it_can_be_printed_from_its_own_tab(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        prescription = Prescription.objects.get()
+        response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
+        self.assertContains(response, "Levothyroxine")
+
+    def test_printing_records_it_and_is_reachable_without_a_visit(self):
+        prescription = Prescription.objects.create(
+            patient=self.patient, doctor=self.doctor,
+        )
+        response = self.client.get(
+            reverse("print_prescription_record", args=[prescription.pk]), {"mark": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        prescription.refresh_from_db()
+        self.assertIsNotNone(prescription.printed_at)
+
+    def test_the_follow_up_dropdowns_compute_a_tentative_date(self):
+        self.client.post(self.add_url("prescription"), self._item_formset(
+            follow_up_number="3", follow_up_unit="MONTH",
+        ))
+        prescription = Prescription.objects.get()
+        expected = add_months_or_years(prescription.created_at.date(), 3, "MONTH")
+        self.assertEqual(prescription.tentative_follow_up_date, expected)
+
+    def test_no_follow_up_chosen_means_no_tentative_date(self):
+        self.client.post(self.add_url("prescription"), self._item_formset(
+            follow_up_number="", follow_up_unit="",
+        ))
+        prescription = Prescription.objects.get()
+        self.assertIsNone(prescription.tentative_follow_up_date)
+
+    def test_the_printed_sheet_shows_the_tentative_date_and_a_confirm_message(self):
+        self.client.post(self.add_url("prescription"), self._item_formset(
+            follow_up_number="2", follow_up_unit="YEAR",
+        ))
+        prescription = Prescription.objects.get()
+        response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
+        self.assertContains(response, "Tentative date")
+        self.assertContains(response, "please confirm")
+        self.assertContains(response, prescription.tentative_follow_up_date.strftime("%-d %B %Y"))
+
+    def test_the_prescription_note_from_clinical_notes_appears_on_the_print(self):
+        visit = self.open_visit()
+        ClinicalNote.objects.create(
+            visit=visit, patient=self.patient, author=self.doctor,
+            prescription_note="Avoid dairy for two weeks.",
+        )
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        prescription = Prescription.objects.filter(visit=visit).get()
+        response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
+        self.assertContains(response, "Avoid dairy for two weeks.")
 
 
 class TestReferenceLetterWorkflow(EditingTestCase):
