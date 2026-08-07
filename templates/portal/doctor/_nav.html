@@ -1,8 +1,8 @@
 {% comment %}
-The doctor's own nav bar, shared across their screens — Today's clinic, the
-calendar, and registering a patient. One template so the three cannot drift
-apart, and `nav_active` names the screen already on-screen so it is not also
-offered as somewhere to go.
+The doctor's own nav bar, shared across their four screens — Today's clinic,
+the calendar, registering a patient, and Analytics. One template so the four
+cannot drift apart, and `nav_active` names the screen already on-screen so it
+is not also offered as somewhere to go.
 {% endcomment %}
 
 <nav class="toolbar" aria-label="Doctor">
@@ -12,6 +12,9 @@ offered as somewhere to go.
     {% endif %}
     {% if nav_active != "calendar" %}
       <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Calendar</a>
+    {% endif %}
+    {% if nav_active != "analytics" %}
+      <a class="btn btn--secondary" href="{% url 'doctor_analytics' %}">Analytics</a>
     {% endif %}
     {% if nav_active != "register" %}
       <a class="btn btn--primary" href="{% url 'doctor_register_patient' %}">New patient</a>

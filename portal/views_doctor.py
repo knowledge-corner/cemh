@@ -6,10 +6,14 @@ dashboard's tabs are loaded over HTMX so switching between clinical notes and
 the growth chart does not reload the whole file.
 """
 
+import csv
+
+from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from accounts.permissions import role_required
 from accounts.models import Role
@@ -19,6 +23,7 @@ from audit.services import record, record_patient_view
 from patients import matching
 from patients.models import Patient
 
+from . import analytics
 from . import forms as clinic_forms
 from . import services
 
@@ -309,5 +314,89 @@ def send_for_patient(request, pk):
             # the file is the next thing they need — not a second click on
             # "Open" to get to it.
             return redirect("doctor_patient_dashboard", patient_id=visit.patient.patient_id)
+
+
+@role_required(Role.DOCTOR)
+def analytics_view(request):
+    """
+    Research on the clinic's own patients: a filtered download, and a
+    dashboard built from the same filters.
+
+    Every filter is optional. Leaving all of them blank is not an error state
+    — it is "every patient the clinic has", which is what the dashboard and
+    the CSV both show until the doctor narrows them.
+    """
+    tab = request.GET.get("tab", "dashboard")
+    if tab not in ("dashboard", "download"):
+        tab = "dashboard"
+
+    chosen = analytics.parse_filters(request.GET)
+    patients = analytics.filtered_patients(chosen)
+    visits = analytics.visits_for(patients, chosen)
+
+    context = {
+        "tab": tab,
+        "filters": chosen,
+        "filter_qs": analytics.filter_querystring(request.GET),
+        **analytics.filter_options(),
+    }
+
+    if tab == "dashboard":
+        context.update(analytics.dashboard_stats(patients, visits, chosen))
+    else:
+        context["download_count"] = patients.count()
+
+    return render(request, "portal/doctor/analytics.html", context)
+
+
+@role_required(Role.DOCTOR)
+def analytics_export(request):
+    """
+    The filtered patient set as a CSV, one row per patient.
+
+    Written straight to the response rather than built in memory, the same
+    reason reception's own bookings export is: a doctor pulling years of
+    history should not be limited by how much of it fits in RAM.
+    """
+    chosen = analytics.parse_filters(request.GET)
+    patients = analytics.filtered_patients(chosen).select_related().order_by(
+        "last_name", "first_name"
+    )
+
+    response = HttpResponse(content_type="text/csv")
+    stamp = timezone.localdate().strftime("%Y-%m-%d")
+    response["Content-Disposition"] = f'attachment; filename="patient-analysis-{stamp}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        settings.CLINIC.PATIENT_ID_LABEL, "Name", "Age", "Gender", "Phone",
+        "Active diagnoses", "Visit count", "Last visit",
+    ])
+
+    count = 0
+    for patient in patients.iterator(chunk_size=200):
+        diagnoses = ", ".join(
+            d.description for d in patient.diagnoses.filter(status="ACTIVE")[:5]
+        )
+        patient_visits = patient.visits.order_by("-scheduled_start")
+        last_visit = patient_visits.first()
+        writer.writerow([
+            patient.patient_id,
+            patient.full_name,
+            patient.age_years,
+            patient.get_sex_display(),
+            patient.phone,
+            diagnoses,
+            patient_visits.count(),
+            timezone.localtime(last_visit.scheduled_start).strftime("%Y-%m-%d")
+            if last_visit else "",
+        ])
+        count += 1
+
+    record(
+        request, AuditAction.PRINT,
+        description=f"Exported {count} patients from Analytics to CSV",
+    )
+    return response
 
     return redirect("doctor_home")

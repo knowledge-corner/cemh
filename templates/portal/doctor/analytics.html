@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Analytics</h1>
+    <p class="page-header__sub">
+      Research across the clinic's own patients — filter by condition, age, gender,
+      doctor or specialisation, then download the list or read it as a dashboard.
+    </p>
+  </div>
+</div>
+
+{% include "portal/doctor/_nav.html" with nav_active="analytics" %}
+
+{% comment %}
+One filter form for both sub-tabs, so a doctor narrowing to "hypothyroid,
+female, 18–45" sees that same set whether they then choose to download it or
+read the dashboard — the two must never silently disagree about what is
+being counted. Plain GET parameters, so a filtered view can be bookmarked and
+the CSV export can be built from exactly the querystring on screen.
+{% endcomment %}
+<form method="get" class="filters"
+      style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+  <input type="hidden" name="tab" value="{{ tab }}">
+
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-condition">Condition</label>
+    <input class="input" type="text" id="a-condition" name="condition"
+           value="{{ filters.condition }}" placeholder="e.g. thyroid, PCOS">
+  </div>
+
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-status">Diagnosis status</label>
+    <select class="input" id="a-status" name="diagnosis_status">
+      <option value="">Any</option>
+      {% for value, label in diagnosis_status_choices %}
+        <option value="{{ value }}" {% if filters.diagnosis_status == value %}selected{% endif %}>
+          {{ label }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-sex">Gender</label>
+    <select class="input" id="a-sex" name="sex">
+      <option value="">Any</option>
+      {% for value, label in sex_choices %}
+        <option value="{{ value }}" {% if filters.sex == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-age-min">Age from</label>
+    <input class="input" type="number" min="0" max="120" id="a-age-min" name="age_min"
+           value="{{ filters.age_min|default_if_none:'' }}" style="width:5.5rem">
+  </div>
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-age-max">Age to</label>
+    <input class="input" type="number" min="0" max="120" id="a-age-max" name="age_max"
+           value="{{ filters.age_max|default_if_none:'' }}" style="width:5.5rem">
+  </div>
+
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-from">Visits from</label>
+    <input class="input" type="date" id="a-from" name="date_from" value="{{ filters.date_from|date:'Y-m-d' }}">
+  </div>
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-to">Visits to</label>
+    <input class="input" type="date" id="a-to" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}">
+  </div>
+
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-doctor">Doctor</label>
+    <select class="input" id="a-doctor" name="doctor">
+      <option value="">All doctors</option>
+      {% for d in doctors %}
+        <option value="{{ d.pk }}" {% if filters.doctor == d.pk %}selected{% endif %}>
+          {{ d.display_name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field" style="margin:0">
+    <label class="field__label" for="a-specialisation">Specialisation</label>
+    <select class="input" id="a-specialisation" name="specialisation">
+      <option value="">All specialisations</option>
+      {% for s in specialisations %}
+        <option value="{{ s.pk }}" {% if filters.specialisation == s.pk %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button class="btn btn--primary" type="submit">Filter</button>
+  <a class="btn btn--secondary" href="?tab={{ tab }}">Clear</a>
+</form>
+
+<div class="tabs" role="tablist">
+  <a class="tab" role="tab" href="?tab=dashboard{% if filter_qs %}&{{ filter_qs }}{% endif %}"
+     aria-selected="{% if tab == 'dashboard' %}true{% else %}false{% endif %}">Dashboard</a>
+  <a class="tab" role="tab" href="?tab=download{% if filter_qs %}&{{ filter_qs }}{% endif %}"
+     aria-selected="{% if tab == 'download' %}true{% else %}false{% endif %}">Download</a>
+</div>
+
+<div class="tab-panel">
+  {% if tab == 'dashboard' %}
+
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-tile__value">{{ patient_count }}</div>
+        <div class="stat-tile__label">Patients matching filters</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile__value">{{ visit_count }}</div>
+        <div class="stat-tile__label">Visits matching filters</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile__value">{{ total_patients }}</div>
+        <div class="stat-tile__label">Total patients in the clinic</div>
+      </div>
+    </div>
+
+    {% if patient_count == 0 %}
+      <div class="empty">
+        <div class="empty__icon">🔍</div>
+        <div class="empty__title">Nothing matches those filters</div>
+        <div class="empty__hint">Widen them, or clear the filters to see every patient.</div>
+      </div>
+    {% else %}
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Age distribution</h2></div>
+        <div class="card__body">
+          <div class="bar-list">
+            {% for row in age_distribution %}
+              <div class="bar-list__row">
+                <span class="bar-list__label">{{ row.label }}</span>
+                <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
+                <span class="bar-list__count">{{ row.count }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Gender distribution</h2></div>
+        <div class="card__body">
+          <div class="bar-list">
+            {% for row in sex_distribution %}
+              <div class="bar-list__row">
+                <span class="bar-list__label">{{ row.label }}</span>
+                <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
+                <span class="bar-list__count">{{ row.count }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Top conditions</h2></div>
+        <div class="card__body">
+          {% if top_conditions %}
+            <div class="bar-list">
+              {% for row in top_conditions %}
+                <div class="bar-list__row">
+                  <span class="bar-list__label" title="{{ row.label }}">{{ row.label }}</span>
+                  <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
+                  <span class="bar-list__count">{{ row.count }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="faint small" style="margin:0">No diagnoses recorded for this set.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Visits over time</h2></div>
+        <div class="card__body">
+          {% if visits_over_time %}
+            <div class="bar-list">
+              {% for row in visits_over_time %}
+                <div class="bar-list__row">
+                  <span class="bar-list__label">{{ row.label }}</span>
+                  <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
+                  <span class="bar-list__count">{{ row.count }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="faint small" style="margin:0">No visits recorded for this set.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header"><h2 class="card__title">Visit outcomes</h2></div>
+        <div class="card__body">
+          {% if visit_outcomes %}
+            <div class="bar-list">
+              {% for row in visit_outcomes %}
+                <div class="bar-list__row">
+                  <span class="bar-list__label">{{ row.label }}</span>
+                  <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
+                  <span class="bar-list__count">{{ row.count }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="faint small" style="margin:0">No visits recorded for this set.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+  {% else %}
+
+    {% comment %}
+    Download. One row per patient rather than per visit — this is "who are my
+    hypothyroid patients", not a billing ledger, and reception's bookings
+    export already covers the visit-by-visit view of the diary.
+    {% endcomment %}
+    <div class="card">
+      <div class="card__body">
+        <p style="margin:0 0 .75rem">
+          <strong>{{ download_count }}</strong> patient{{ download_count|pluralize }}
+          match{{ download_count|pluralize:"es," }} these filters.
+        </p>
+        <a class="btn btn--primary"
+           href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download CSV</a>
+      </div>
+    </div>
+
+  {% endif %}
+</div>
+
+{% endblock %}
