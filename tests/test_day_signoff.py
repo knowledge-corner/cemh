@@ -183,6 +183,25 @@ class TestTheDaySheet(SignOffTestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(len(mail.outbox), 1)
 
+    def test_a_walk_in_is_tagged_in_its_sheet(self):
+        # Item #5 of the walk-in note: the day sheet says which kind each row
+        # was, the same as the doctor's queue does.
+        visit = self._visit(upto=[VisitStatus.CONFIRMED])
+        visit.is_walk_in = True
+        visit.save(update_fields=["is_walk_in"])
+
+        signoff.sign_off(self.yesterday, by_user=self.receptionist)
+        sheets = {n: c for n, c, _t in mail.outbox[0].attachments}
+        no_show = next(c for n, c in sheets.items() if "no_show" in n)
+        self.assertIn("Walk-in", no_show)
+
+    def test_an_ordinary_appointment_is_tagged_too(self):
+        self._visit(upto=[VisitStatus.CONFIRMED])
+        signoff.sign_off(self.yesterday, by_user=self.receptionist)
+        sheets = {n: c for n, c, _t in mail.outbox[0].attachments}
+        no_show = next(c for n, c in sheets.items() if "no_show" in n)
+        self.assertIn("Appointment", no_show)
+
 
 class TestTheReportIsNotBlockingWhenMailFails(SignOffTestCase):
 
@@ -255,6 +274,21 @@ class TestWhatTheSweepTouches(SignOffTestCase):
         signoff.sign_off(self.yesterday)
         visit.refresh_from_db()
         self.assertEqual(visit.status, VisitStatus.NO_SHOW)
+
+    def test_a_walk_in_left_waiting_is_cancelled_the_same_as_any_other(self):
+        # Item #6 of the walk-in note. The sweep works from status alone
+        # (SWEEP_TARGETS), never from how the visit was created, so a walk-in
+        # stuck at ARRIVED — never called into a cabin, Stage 3 — is swept
+        # exactly like a phone booking left the same way.
+        patient = make_patient()
+        visit = make_visit(
+            patient, self.doctor, start=_yesterday_at(10),
+            status=VisitStatus.ARRIVED, is_walk_in=True,
+        )
+        signoff.sign_off(self.yesterday)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CANCELLED)
+        self.assertTrue(visit.is_walk_in)
 
     def test_an_unbilled_consultation_is_never_swept_away(self):
         # The rule this whole module exists to protect. Sweeping it destroys

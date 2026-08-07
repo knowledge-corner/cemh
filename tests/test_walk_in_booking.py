@@ -54,6 +54,25 @@ class TestTakingAWalkIn(WalkInTestCase):
         self.assertEqual(visit.status, VisitStatus.ARRIVED)
         self.assertIsNotNone(visit.arrived_at)
 
+    def test_the_visit_is_flagged_as_a_walk_in(self):
+        # Recorded rather than inferred from status or timing, so it is still
+        # identifiable after it moves through the board, the doctor's queue,
+        # or a sign-off day sheet.
+        self._walk_in()
+        self.assertTrue(Visit.objects.get().is_walk_in)
+
+    def test_an_ordinary_booking_is_not_flagged(self):
+        from datetime import timedelta
+        from appointments import scheduling
+
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        slot, _ = scheduling.available_slots(self.doctor, tomorrow)[0]
+        self.client.post(reverse("reception_new_booking"), {
+            "patient": self.patient.pk, "doctor": self.doctor.pk,
+            "day": tomorrow.isoformat(), "slot": slot.isoformat(),
+        })
+        self.assertFalse(Visit.objects.get().is_walk_in)
+
     def test_it_appears_on_the_waiting_room_queryset(self):
         self._walk_in()
         self.assertEqual(Visit.objects.waiting_room().count(), 1)
@@ -139,3 +158,42 @@ class TestOrdinaryBookingsStillRequireADateAndSlot(WalkInTestCase):
         })
         self.assertEqual(Visit.objects.count(), 0)
         self.assertContains(response, "Choose a time.")
+
+
+class TestAWalkInCanBeMovedBackToStage1(WalkInTestCase):
+    """
+    Item #5 of the walk-in note: a walk-in enters Stage 2 directly but can
+    still be moved back to Stage 1.
+
+    No special-casing needed for this — Visit.previous_status is derived
+    purely from the current status (BACKWARD_TRANSITIONS), never from how the
+    visit got there, so a walk-in created straight at ARRIVED already works
+    the same as any other visit reaching ARRIVED the ordinary way. This pins
+    that down rather than leaving it to accident.
+    """
+
+    def test_the_walk_in_offers_a_way_back(self):
+        self._walk_in()
+        visit = Visit.objects.get()
+        self.assertEqual(visit.previous_status, VisitStatus.CONFIRMED)
+
+    def test_moving_it_back_lands_on_confirmed(self):
+        self._walk_in()
+        visit = Visit.objects.get()
+        visit.move_back(by_user=self.receptionist)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONFIRMED)
+
+    def test_the_walk_in_flag_survives_being_moved_back(self):
+        self._walk_in()
+        visit = Visit.objects.get()
+        visit.move_back(by_user=self.receptionist)
+        visit.refresh_from_db()
+        self.assertTrue(visit.is_walk_in)
+
+    def test_the_board_button_moves_it_back(self):
+        self._walk_in()
+        visit = Visit.objects.get()
+        self.client.post(reverse("reception_move_visit_back", args=[visit.pk]))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONFIRMED)

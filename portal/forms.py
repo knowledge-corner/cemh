@@ -546,6 +546,7 @@ class BookingForm(forms.Form):
             # goes straight into today's waiting room instead.
             status=VisitStatus.ARRIVED if walk_in else VisitStatus.BOOKED,
             arrived_at=timezone.now() if walk_in else None,
+            is_walk_in=bool(walk_in),
         )
 
 

@@ -39,7 +39,20 @@ empty list with somebody already waiting outside the door.
         {% for visit in queue %}
           <tr {% if visit.status == "IN_CABIN" %}class="queue__row--in-cabin"{% endif %}>
             <td class="queue__time">{{ visit.scheduled_start|time:"H:i" }}</td>
-            <td class="queue__name">{{ visit.patient.full_name }}</td>
+            <td class="queue__name">
+              {{ visit.patient.full_name }}
+              {% comment %}
+              Every row tagged, walk-in or not — the same pattern the Status
+              column already uses. A walk-in still has to be told apart once
+              it has moved through the queue, so this is stored on the visit
+              rather than guessed from timing.
+              {% endcomment %}
+              {% if visit.is_walk_in %}
+                <span class="badge badge--info">Walk-in</span>
+              {% else %}
+                <span class="badge badge--grey">Appointment</span>
+              {% endif %}
+            </td>
             <td class="queue__uhid">{{ visit.patient.patient_id }}</td>
             <td class="nowrap">{{ visit.patient.age_display }} &middot; {{ visit.patient.get_sex_display }}</td>
             <td>{{ visit.reason|default:"—" }}</td>

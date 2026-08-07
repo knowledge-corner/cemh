@@ -163,6 +163,12 @@ class Visit(models.Model):
         max_length=300, blank=True, help_text="Why the patient is coming in."
     )
     is_follow_up = models.BooleanField(default=False)
+    #: Booked with no prior appointment, standing at the desk — see
+    #: BookingForm's walk-in option. Recorded rather than inferred (e.g. from
+    #: status or timing), so a walk-in is still identifiable after it has
+    #: moved through the board, appeared in the doctor's queue, or been swept
+    #: into a day sheet.
+    is_walk_in = models.BooleanField(default=False)
 
     booked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

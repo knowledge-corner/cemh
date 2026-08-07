@@ -65,7 +65,7 @@ SWEEP_TARGETS = {
 SHEETS = ("billed", "cancelled", "no_show")
 
 COLUMNS = [
-    "time", "patient_id", "patient", "doctor", "status",
+    "time", "patient_id", "patient", "doctor", "type", "status",
     "charged", "collected", "outstanding", "receipt",
 ]
 
@@ -343,6 +343,7 @@ def _rows(day):
             "patient_id": visit.patient.patient_id,
             "patient": visit.patient.full_name,
             "doctor": visit.doctor.display_name,
+            "type": "Walk-in" if visit.is_walk_in else "Appointment",
             "status": visit.get_status_display(),
             "charged": charge.total if charge else "",
             "collected": paid if charge else "",

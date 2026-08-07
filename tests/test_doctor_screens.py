@@ -167,6 +167,33 @@ class TestTheQueueRefreshesItself(TestCase):
         self.assertNotContains(self.client.get(reverse("doctor_queue")), patient.patient_id)
 
 
+class TestTheQueueTagsWalkIns(TestCase):
+    """Item #5 of the walk-in note: every row says which kind it is."""
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.client.force_login(self.doctor)
+
+    def test_a_walk_in_is_tagged(self):
+        patient = make_patient()
+        make_visit(
+            patient, self.doctor, start=later_today(),
+            status=VisitStatus.ARRIVED, is_walk_in=True,
+        )
+        response = self.client.get(reverse("doctor_queue"))
+        self.assertContains(response, "Walk-in")
+
+    def test_an_ordinary_appointment_is_tagged_too(self):
+        patient = make_patient()
+        make_visit(
+            patient, self.doctor, start=later_today(),
+            status=VisitStatus.ARRIVED, is_walk_in=False,
+        )
+        response = self.client.get(reverse("doctor_queue"))
+        self.assertContains(response, "Appointment")
+        self.assertNotContains(response, "Walk-in")
+
+
 class TestBookedNotConfirmedFromTodaysClinic(TestCase):
     """
     Booked and Confirmed share a column on the board, and the queue below only
