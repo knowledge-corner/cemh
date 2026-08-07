@@ -383,13 +383,21 @@ class TestRotaImport(CalendarReworkTestCase):
 
     # ── Who may do it ────────────────────────────────────────────────────────
 
-    def test_a_doctor_may_not_import_a_rota(self):
+    def test_a_doctor_may_not_import_another_doctors_rota(self):
+        # Reception's own importer manages any doctor's hours — a doctor has
+        # their own version of this, fenced to their own email; see
+        # test_own_schedule_upload.py.
         self.client.force_login(self.asha)
         self.assertEqual(
             self.client.get(reverse("reception_import_schedules")).status_code, 403
         )
+
+    def test_a_doctor_can_still_get_the_blank_template(self):
+        # The template is just column headings and instructions — a doctor
+        # needs the same file to fill in their own upload.
+        self.client.force_login(self.asha)
         self.assertEqual(
-            self.client.get(reverse("reception_schedule_template")).status_code, 403
+            self.client.get(reverse("reception_schedule_template")).status_code, 200
         )
 
     def test_a_pending_doctor_cannot_be_given_hours_by_spreadsheet(self):
@@ -401,6 +409,121 @@ class TestRotaImport(CalendarReworkTestCase):
         response = self._check(HEADER + self._row(doctor_email="vikram@example.in"))
         self.assertContains(response, "has not set their password yet")
         self.assertEqual(ScheduleOverride.objects.count(), 0)
+
+
+class TestReplaceMySchedule(CalendarReworkTestCase):
+    """
+    "Replace my schedule for these dates" — the CSV re-upload used to be
+    refused outright the moment a new time overlapped hours the doctor
+    already had that day, so changing a time meant deleting the old entries
+    by hand first. This is that gap closed.
+    """
+
+    def _row(self, **overrides):
+        row = {
+            "doctor_email": "asha@example.in", "cabin": "Cabin 1",
+            "start_date": "01-09-2026", "end_date": "04-09-2026",  # Tue–Fri
+            "days": "M-T-W-Th-F", "start_time": "10:00", "end_time": "13:00",
+        }
+        row.update(overrides)
+        return ",".join(row[name] for name in schedules_csv.COLUMNS) + "\n"
+
+    def _check(self, text, replace=False):
+        payload = {"file": _upload(text)}
+        if replace:
+            payload["replace"] = "1"
+        return self.client.post(reverse("reception_import_schedules"), payload)
+
+    def _confirm(self, text, replace=False):
+        payload = {"file": _upload(text), "confirm": "1"}
+        if replace:
+            payload["replace"] = "1"
+        return self.client.post(
+            reverse("reception_import_schedules"), payload, follow=True,
+        )
+
+    def test_without_replace_a_changed_time_is_refused(self):
+        # The gap this feature closes, pinned first as the failure it is.
+        self._confirm(HEADER + self._row(start_time="10:00", end_time="13:00"))
+        response = self._check(
+            HEADER + self._row(start_time="11:00", end_time="14:00", days="M-T-W-Th-F-Sa"),
+        )
+        self.assertContains(response, "already")
+        self.assertEqual(
+            ScheduleOverride.objects.filter(start_time="10:00:00").count(), 4,
+        )
+
+    def test_replace_lets_the_new_time_through(self):
+        self._confirm(HEADER + self._row(start_time="10:00", end_time="13:00"))
+        self._confirm(
+            HEADER + self._row(start_time="11:00", end_time="14:00",
+                               days="M-T-W-Th-F-Sa", end_date="05-09-2026"),
+            replace=True,
+        )
+        self.assertEqual(ScheduleOverride.objects.filter(start_time="10:00:00").count(), 0)
+        self.assertEqual(ScheduleOverride.objects.filter(start_time="11:00:00").count(), 5)
+
+    def test_replace_only_touches_dates_the_new_file_mentions(self):
+        # A day the doctor already had that this file does not repeat must
+        # survive — "replace what I am giving you" is not "clear my calendar".
+        self._confirm(HEADER + self._row(
+            start_date="01-09-2026", end_date="08-09-2026", days="M-T-W-Th-F-Sa-Su",
+        ))
+        self._confirm(
+            HEADER + self._row(start_date="01-09-2026", end_date="04-09-2026",
+                               days="M-T-W-Th-F", start_time="11:00", end_time="14:00"),
+            replace=True,
+        )
+        # 5 and 6 September were in the original upload but not the replace.
+        self.assertTrue(
+            ScheduleOverride.objects.filter(date=date(2026, 9, 5)).exists()
+        )
+
+    def test_replace_does_not_touch_another_doctors_hours(self):
+        self._confirm(HEADER + self._row(
+            doctor_email="vikram@example.in", cabin="Cabin 2",
+        ))
+        self._confirm(
+            HEADER + self._row(start_time="11:00", end_time="14:00",
+                               days="M-T-W-Th-F-Sa", end_date="05-09-2026"),
+            replace=True,
+        )
+        self.assertEqual(
+            ScheduleOverride.objects.filter(doctor=self.vikram).count(), 4,
+        )
+
+    def test_replace_still_refuses_a_genuine_cabin_clash(self):
+        # Replacing Asha's own hours cannot excuse taking a room Vikram is
+        # already using at that time.
+        self._confirm(HEADER + self._row(
+            doctor_email="vikram@example.in", cabin="Cabin 1",
+            start_time="11:00", end_time="14:00",
+        ))
+        response = self._check(
+            HEADER + self._row(cabin="Cabin 1", start_time="11:00", end_time="14:00"),
+            replace=True,
+        )
+        self.assertContains(response, "already taken")
+
+    def test_the_preview_warns_about_bookings_on_replaced_dates(self):
+        self._confirm(HEADER + self._row(start_time="10:00", end_time="13:00"))
+        patient = make_patient(phone="9820099999")
+        make_visit(patient, self.asha, start=timezone.make_aware(
+            timezone.datetime(2026, 9, 1, 10, 30)
+        ))
+        response = self._check(
+            HEADER + self._row(start_time="11:00", end_time="14:00"), replace=True,
+        )
+        self.assertContains(response, "already booked")
+
+    def test_a_clean_replace_reports_what_it_did(self):
+        self._confirm(HEADER + self._row(start_time="10:00", end_time="13:00"))
+        response = self._confirm(
+            HEADER + self._row(start_time="11:00", end_time="14:00",
+                               days="M-T-W-Th-F-Sa", end_date="05-09-2026"),
+            replace=True,
+        )
+        self.assertContains(response, "Replaced 4 existing entries")
 
 
 # ── KAN-24: editing a holiday already recorded ───────────────────────────────

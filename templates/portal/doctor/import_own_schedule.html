@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Import doctor rotas — {{ clinic_name }}{% endblock %}
+{% block title %}Upload my schedule — {{ clinic_name }}{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
   <div>
-    <h1 class="page-header__title">Import doctor rotas</h1>
+    <h1 class="page-header__title">Upload my schedule</h1>
     <p class="page-header__sub">
-      One row per doctor, cabin and pattern. "M-W-F through September" becomes
-      every one of those dates.
+      One row per cabin and pattern. "M-W-F through September" becomes every
+      one of those dates — for you only.
     </p>
   </div>
   <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Back to the calendar</a>
@@ -20,7 +20,9 @@
 
     <h2 class="section-title">1 &middot; Get the template</h2>
     <p class="faint small" style="margin:0 0 .75rem">
-      Keep the column headings exactly as they are — they are how the file is read.
+      Keep the column headings exactly as they are — they are how the file is
+      read. Use your own email in <span class="mono">doctor_email</span>; a row
+      for anyone else is refused.
     </p>
 
     <div class="table-scroll" style="margin-bottom:1rem">
@@ -37,11 +39,6 @@
       </table>
     </div>
 
-    {% comment %}
-    The day codes are shown rather than only described. T and Th are the pair
-    people get wrong, and a rota loaded onto the wrong day of the week is not
-    something anybody notices until a doctor arrives to an empty cabin.
-    {% endcomment %}
     <p class="faint small" style="margin:0 0 .5rem"><strong>Day codes</strong> — join with hyphens, e.g. <span class="mono">M-W-F</span></p>
     <div class="table-scroll" style="margin-bottom:1rem">
       <table class="table table--middle">
@@ -72,14 +69,13 @@
       <div class="field">
         <label style="display:flex; align-items:center; gap:.5rem; font-weight:600">
           <input type="checkbox" name="replace" value="1" {% if replace %}checked{% endif %}>
-          Replace schedule for these dates
+          Replace my schedule for these dates
         </label>
         <p class="field__help">
-          For each doctor and date this file mentions, their existing hours on
-          that date are removed first, then the file's hours are written —
-          rather than the upload being refused because they already have
-          different hours that day. Only that doctor's own hours are touched;
-          a cabin another doctor is already using still blocks the row.
+          For each date this file mentions, your existing hours on that date
+          are removed first, then the file's hours are written — rather than
+          the upload being refused because you already have different hours
+          that day. A cabin another doctor is already using still blocks the row.
         </p>
       </div>
       <div class="form-actions">
@@ -120,17 +116,16 @@
             <span class="alert-strip__title">
               Replacing {{ result.total_to_remove }} existing entr{{ result.total_to_remove|pluralize:"y,ies" }}
             </span><br>
-            These are removed before the file is written — check the doctors and
-            dates below before confirming.
+            These are removed before the file is written — check the dates below
+            before confirming.
           </div>
         </div>
         <div class="table-scroll" style="margin-bottom:1rem">
           <table class="table table--middle">
-            <thead><tr><th>Doctor</th><th>Dates</th><th>Existing entries removed</th><th>Bookings on those dates</th></tr></thead>
+            <thead><tr><th>Dates</th><th>Existing entries removed</th><th>Your bookings on those dates</th></tr></thead>
             <tbody>
               {% for item in result.to_remove %}
                 <tr>
-                  <td class="strong">{{ item.doctor.display_name }}</td>
                   <td class="faint">{{ item.dates.0|date:"j M" }}–{{ item.dates|last|date:"j M Y" }}</td>
                   <td class="mono">{{ item.existing_count }}</td>
                   <td>
@@ -145,22 +140,18 @@
             </tbody>
           </table>
         </div>
-        {% if result.to_remove|length %}
-          {% for item in result.to_remove %}
-            {% if item.active_visits %}
-              <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
-                <div>
-                  <span class="alert-strip__title">
-                    {{ item.doctor.display_name }} has patients already booked on these dates
-                  </span><br>
-                  Removing the old hours does not cancel or move those appointments —
-                  it only changes when the doctor is shown as working. Check the
-                  board for those dates after importing.
-                </div>
+        {% for item in result.to_remove %}
+          {% if item.active_visits %}
+            <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+              <div>
+                <span class="alert-strip__title">You have patients already booked on these dates</span><br>
+                Removing the old hours does not cancel or move those appointments —
+                it only changes when you are shown as working. Check the board for
+                those dates after importing.
               </div>
-            {% endif %}
-          {% endfor %}
-        {% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
       {% endif %}
 
       {% if result.duplicates %}
@@ -196,14 +187,13 @@
         <div class="table-scroll" style="margin-bottom:1rem">
           <table class="table table--middle">
             <thead>
-              <tr><th>Line</th><th>Doctor</th><th>Cabin</th><th>Days</th>
+              <tr><th>Line</th><th>Cabin</th><th>Days</th>
                   <th>Hours</th><th>Dates</th><th>First</th><th>Last</th></tr>
             </thead>
             <tbody>
               {% for row in result.planned %}
                 <tr>
                   <td class="mono">{{ row.line }}</td>
-                  <td class="strong">{{ row.doctor.display_name }}</td>
                   <td>{{ row.cabin.name }}</td>
                   <td class="mono">{{ row.days }}</td>
                   <td class="mono">{{ row.start_time|time:"H:i" }}–{{ row.end_time|time:"H:i" }}</td>

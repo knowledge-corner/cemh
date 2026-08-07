@@ -1,9 +1,11 @@
 from django.urls import path
 
-from . import views_doctor, views_edit
+from . import views_calendar, views_doctor, views_edit
 
 urlpatterns = [
     path("", views_doctor.doctor_home, name="doctor_home"),
+    path("schedule/import/", views_calendar.import_own_schedule,
+         name="doctor_import_schedule"),
     path("queue/", views_doctor.doctor_queue, name="doctor_queue"),
     path("unconfirmed/", views_doctor.unconfirmed_appointments,
          name="doctor_unconfirmed_appointments"),

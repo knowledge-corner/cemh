@@ -517,7 +517,7 @@ def close_callback(request, pk):
 
 # ── Doctor rotas from a spreadsheet (KAN-22) ─────────────────────────────────
 
-@role_required(Role.RECEPTIONIST)
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def schedule_template(request):
     """The blank CSV, with its own instructions and the day codes in it."""
     response = HttpResponse(schedules_csv.template_csv(), content_type="text/csv")
@@ -538,6 +538,7 @@ def import_schedules(request):
     of before it happens.
     """
     result = None
+    replace = request.POST.get("replace") == "1"
 
     if request.method == "POST":
         upload = request.FILES.get("file")
@@ -545,28 +546,121 @@ def import_schedules(request):
         if upload is None:
             messages.error(request, "Choose a CSV file first.")
         else:
-            result = schedules_csv.parse(upload)
+            result = schedules_csv.parse(upload, replace=replace)
 
             if result.fatal:
                 messages.error(request, result.fatal)
             elif request.POST.get("confirm") and result.can_import:
-                written = schedules_csv.commit(result, created_by=request.user)
+                written, removed = schedules_csv.commit(
+                    result, created_by=request.user, replace=replace,
+                )
                 for entry in written:
                     record(request, AuditAction.CREATE, obj=entry,
                            description=f"Rota imported: {entry}")
+                if removed:
+                    record(
+                        request, AuditAction.UPDATE, obj=None,
+                        description=f"Rota replace: {removed} existing entr"
+                                    f"{'y' if removed == 1 else 'ies'} removed before import",
+                    )
+
+                replaced_note = (
+                    f"Replaced {removed} existing entr{'y' if removed == 1 else 'ies'} and i"
+                    if removed else "I"
+                )
+                left_out_note = (
+                    f" {len(result.problems)} row{'' if len(result.problems) == 1 else 's'} "
+                    f"could not be read and were left out." if result.problems else ""
+                )
                 messages.success(
                     request,
-                    f"Imported {len(written)} working-hours "
+                    f"{replaced_note}mported {len(written)} working-hours "
                     f"entr{'y' if len(written) == 1 else 'ies'} from "
                     f"{len(result.planned)} row{'' if len(result.planned) == 1 else 's'}."
-                    + (f" {len(result.problems)} row"
-                       f"{'' if len(result.problems) == 1 else 's'} could not be "
-                       f"read and were left out." if result.problems else ""),
+                    f"{left_out_note}",
                 )
                 return redirect("reception_calendar")
 
     return render(request, "portal/reception/import_schedules.html", {
         "result": result,
+        "replace": replace,
+        "columns": [(name, schedules_csv.COLUMN_HELP[name])
+                    for name in schedules_csv.COLUMNS],
+        "day_codes": schedules_csv.weekday_codes.DAY_CODES,
+        "date_help": schedules_csv.DATE_HELP,
+    })
+
+
+@role_required(Role.DOCTOR)
+def import_own_schedule(request):
+    """
+    A doctor's own version of ``import_schedules`` — same file format, same
+    two-pass check-then-confirm, same "Replace my schedule for these dates"
+    option, but fenced to their own hours only.
+
+    Reception's importer trusts whoever is filling in the email column
+    because reception is entering someone else's hours by design. Here the
+    doctor is the one at the keyboard, so any row for a different email is
+    refused rather than imported — a doctor's own upload must never be able
+    to move another doctor's hours, on purpose or by a copied-down row.
+    """
+    result = None
+    replace = request.POST.get("replace") == "1"
+
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+
+        if upload is None:
+            messages.error(request, "Choose a CSV file first.")
+        else:
+            result = schedules_csv.parse(upload, replace=replace)
+
+            if not result.fatal:
+                mine, foreign = [], []
+                for row in result.planned:
+                    (mine if row.doctor.pk == request.user.pk else foreign).append(row)
+                for row in foreign:
+                    result.problems.append(schedules_csv.RowProblem(
+                        row.line,
+                        f"Row {row.line} is for {row.doctor.display_name} — "
+                        f"you can only upload your own schedule.",
+                    ))
+                result.planned = mine
+                # Anything the replace preview found for another doctor must
+                # never have been computed from this doctor's own upload —
+                # drop it along with their rows.
+                result.to_remove = [
+                    item for item in result.to_remove if item.doctor.pk == request.user.pk
+                ]
+
+            if result.fatal:
+                messages.error(request, result.fatal)
+            elif request.POST.get("confirm") and result.can_import:
+                written, removed = schedules_csv.commit(
+                    result, created_by=request.user, replace=replace,
+                )
+                for entry in written:
+                    record(request, AuditAction.CREATE, obj=entry,
+                           description=f"Own rota imported: {entry}")
+
+                replaced_note = (
+                    f"Replaced {removed} existing entr{'y' if removed == 1 else 'ies'} and i"
+                    if removed else "I"
+                )
+                left_out_note = (
+                    f" {len(result.problems)} row{'' if len(result.problems) == 1 else 's'} "
+                    f"could not be used." if result.problems else ""
+                )
+                messages.success(
+                    request,
+                    f"{replaced_note}mported {len(written)} working-hours "
+                    f"entr{'y' if len(written) == 1 else 'ies'}.{left_out_note}",
+                )
+                return redirect("reception_calendar")
+
+    return render(request, "portal/doctor/import_own_schedule.html", {
+        "result": result,
+        "replace": replace,
         "columns": [(name, schedules_csv.COLUMN_HELP[name])
                     for name in schedules_csv.COLUMNS],
         "day_codes": schedules_csv.weekday_codes.DAY_CODES,

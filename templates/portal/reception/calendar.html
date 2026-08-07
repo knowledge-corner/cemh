@@ -21,7 +21,7 @@ it.
     <h1 class="page-header__title">Availability calendar</h1>
     <p class="page-header__sub">
       {% if is_doctor_view %}
-        Your working hours and cabins. Reception maintains these.
+        Your working hours and cabins. Upload a spreadsheet to set or change your own hours.
       {% else %}
         Working hours, cabins and holidays. Click a day to add something.
       {% endif %}
@@ -29,7 +29,9 @@ it.
   </div>
   <div class="row-actions">
     <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>
-    {% if not is_doctor_view %}
+    {% if is_doctor_view %}
+      <a class="btn btn--secondary" href="{% url 'doctor_import_schedule' %}">Upload my schedule</a>
+    {% else %}
       <a class="btn btn--secondary" href="{% url 'reception_import_schedules' %}">Import rota</a>
       <a class="btn btn--secondary" href="{% url 'reception_import_holidays' %}">Import holidays</a>
     {% endif %}

@@ -29,7 +29,7 @@ from accounts.models import Role, User
 
 from . import calendar as clinic_calendar
 from . import weekdays as weekday_codes
-from .models import Cabin, ScheduleOverride
+from .models import Cabin, ScheduleOverride, Visit
 
 COLUMNS = [
     "doctor_email", "cabin", "start_date", "end_date",
@@ -103,11 +103,23 @@ class PlannedRow:
 
 
 @dataclass
+class ReplacedDoctor:
+    """What "Replace my schedule for these dates" would remove for one doctor."""
+
+    doctor: object
+    dates: list
+    existing_count: int
+    active_visits: int
+
+
+@dataclass
 class ImportResult:
     planned: list = field(default_factory=list)     # PlannedRow
     problems: list = field(default_factory=list)    # RowProblem
     duplicates: list = field(default_factory=list)  # (line, message)
     fatal: str = ""
+    #: Populated only when parsed with ``replace=True`` — see ReplacedDoctor.
+    to_remove: list = field(default_factory=list)
 
     @property
     def can_import(self):
@@ -116,6 +128,10 @@ class ImportResult:
     @property
     def total_entries(self):
         return sum(row.count for row in self.planned)
+
+    @property
+    def total_to_remove(self):
+        return sum(item.existing_count for item in self.to_remove)
 
 
 def _parse_date(value):
@@ -140,8 +156,17 @@ def _is_help_row(row):
     return (row.get("doctor_email") or "").strip() == COLUMN_HELP["doctor_email"]
 
 
-def parse(file_obj):
-    """Read and check the file without writing anything."""
+def parse(file_obj, replace=False):
+    """
+    Read and check the file without writing anything.
+
+    ``replace`` is "Replace my schedule for these dates": when set, a row
+    that would otherwise clash with *the same doctor's own* existing hours on
+    a date the row covers is no longer refused — those existing entries are
+    what commit() removes before writing the new ones. A clash with another
+    doctor already holding the cabin still refuses the row; replacing one
+    doctor's hours must never silently take a room from somebody else.
+    """
     result = ImportResult()
 
     try:
@@ -315,7 +340,11 @@ def parse(file_obj):
         clashes = []
         duplicate_dates = []
         for day in dates:
-            if ScheduleOverride.objects.filter(
+            # In replace mode commit() deletes every existing entry across
+            # the dates this row covers and writes the file fresh, so an
+            # exact match today is not left alone — it would be deleted and
+            # never rewritten if skipped here as "already there".
+            if not replace and ScheduleOverride.objects.filter(
                 doctor=doctor, date=day, cabin=cabin,
                 start_time=start_time, end_time=end_time,
             ).exists():
@@ -326,6 +355,13 @@ def parse(file_obj):
                 kind="override", doctor=doctor, cabin=cabin,
                 start=start_time, end=end_time, date=day,
             )
+            if replace:
+                # A "doctor" conflict is always this same doctor's own
+                # existing entry — see Conflict.reason in appointments.calendar
+                # — which commit() removes before writing the new one. A
+                # "cabin" conflict is somebody *else* already holding the
+                # room, which replacing this doctor's own hours cannot excuse.
+                found = [c for c in found if c.reason != "doctor"]
             if found:
                 clashes.append(str(found[0]))
                 continue
@@ -377,14 +413,50 @@ def parse(file_obj):
     if not result.planned and not result.problems and not result.duplicates:
         result.fatal = "The file has headings but no schedules in it."
 
+    if replace and result.planned:
+        by_doctor_dates = {}
+        for row in result.planned:
+            by_doctor_dates.setdefault(row.doctor, set()).update(row.dates)
+        for row_doctor, row_dates in by_doctor_dates.items():
+            existing_count = ScheduleOverride.objects.filter(
+                doctor=row_doctor, date__in=row_dates,
+            ).count()
+            if not existing_count:
+                continue
+            active_visits = Visit.objects.filter(
+                doctor=row_doctor, scheduled_start__date__in=row_dates,
+            ).active().count()
+            result.to_remove.append(ReplacedDoctor(
+                doctor=row_doctor, dates=sorted(row_dates),
+                existing_count=existing_count, active_visits=active_visits,
+            ))
+
     return result
 
 
 @transaction.atomic
-def commit(result, created_by=None):
-    """Write the rows that parsed cleanly, and nothing else."""
+def commit(result, created_by=None, replace=False):
+    """
+    Write the rows that parsed cleanly, and nothing else.
+
+    In replace mode, first clears every existing entry for each doctor across
+    exactly the dates their rows in this file cover — not the whole calendar,
+    only the dates this upload actually mentions — then writes the file
+    fresh. Returns ``(written, removed)``.
+    """
     if result.fatal:
-        return []
+        return [], 0
+
+    removed = 0
+    if replace:
+        by_doctor_dates = {}
+        for row in result.planned:
+            by_doctor_dates.setdefault(row.doctor, set()).update(row.dates)
+        for row_doctor, row_dates in by_doctor_dates.items():
+            deleted, _detail = ScheduleOverride.objects.filter(
+                doctor=row_doctor, date__in=row_dates,
+            ).delete()
+            removed += deleted
 
     written = []
     for row in result.planned:
@@ -398,4 +470,4 @@ def commit(result, created_by=None):
                 note=f"Imported rota ({row.days})",
                 created_by=created_by,
             ))
-    return written
+    return written, removed
