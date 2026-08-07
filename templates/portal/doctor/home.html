@@ -9,6 +9,11 @@
     <h1 class="page-header__title">Today's clinic</h1>
     <p class="page-header__sub">{{ request.user.display_name }} &middot; {% now "l, j F Y" %}</p>
   </div>
+  <button type="button" class="btn btn--secondary"
+          hx-get="{% url 'doctor_unconfirmed_appointments' %}"
+          hx-target="#modal-host" hx-swap="innerHTML">
+    Booked, not confirmed ({{ unconfirmed_count }})
+  </button>
 </div>
 
 {% comment %}
@@ -48,4 +53,5 @@ was waiting until they happened to refresh.
   {% include "portal/doctor/_queue.html" %}
 </div>
 
+<div id="modal-host"></div>
 {% endblock %}

@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.permissions import role_required
 from accounts.models import Role
-from appointments.models import VisitStatus
+from appointments.models import Visit, VisitStatus
 from audit.services import record_patient_view
 from patients.models import Patient
 
@@ -86,10 +86,16 @@ def doctor_home(request):
             f"No patient found matching “{query}”. Try typing part of their name.",
         )
 
+    unconfirmed_count = Visit.objects.filter(
+        doctor=request.user, status=VisitStatus.BOOKED,
+    ).count()
     return render(
         request,
         "portal/doctor/home.html",
-        {"queue": services.todays_queue(request.user), "query": query},
+        {
+            "queue": services.todays_queue(request.user), "query": query,
+            "unconfirmed_count": unconfirmed_count,
+        },
     )
 
 
@@ -105,6 +111,28 @@ def doctor_queue(request):
     return render(
         request, "portal/doctor/_queue.html",
         {"queue": services.todays_queue(request.user)},
+    )
+
+
+@role_required(Role.DOCTOR)
+def unconfirmed_appointments(request):
+    """
+    This doctor's own bookings still waiting on reception's confirmation call,
+    in a pop-up off Today's clinic.
+
+    Booked and Confirmed share a column on the board, so a booking that never
+    got its confirmation call looks the same there as one that did — and the
+    doctor's queue only shows today besides. This is the one place a doctor
+    can see everything still unconfirmed on their own diary, whichever day it
+    falls on.
+    """
+    visits = (
+        Visit.objects.filter(doctor=request.user, status=VisitStatus.BOOKED)
+        .with_related()
+        .order_by("scheduled_start")
+    )
+    return render(
+        request, "portal/doctor/_unconfirmed_modal.html", {"visits": visits},
     )
 
 

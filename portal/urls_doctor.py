@@ -5,6 +5,8 @@ from . import views_doctor, views_edit
 urlpatterns = [
     path("", views_doctor.doctor_home, name="doctor_home"),
     path("queue/", views_doctor.doctor_queue, name="doctor_queue"),
+    path("unconfirmed/", views_doctor.unconfirmed_appointments,
+         name="doctor_unconfirmed_appointments"),
     path("send/<int:pk>/", views_doctor.send_for_patient, name="doctor_send_for_patient"),
     path("search/", views_doctor.doctor_patient_search, name="doctor_patient_search"),
     path(

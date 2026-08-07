@@ -167,6 +167,64 @@ class TestTheQueueRefreshesItself(TestCase):
         self.assertNotContains(self.client.get(reverse("doctor_queue")), patient.patient_id)
 
 
+class TestBookedNotConfirmedFromTodaysClinic(TestCase):
+    """
+    Booked and Confirmed share a column on the board, and the queue below only
+    ever shows today, so a doctor had no way to see a booking on their own
+    diary that reception never got round to confirming. This pop-up, off
+    Today's clinic, is that list — scoped to this doctor's own patients only.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.receptionist = make_receptionist()
+        self.client.force_login(self.doctor)
+
+    def test_the_button_is_on_the_home_page(self):
+        response = self.client.get(reverse("doctor_home"))
+        self.assertContains(response, reverse("doctor_unconfirmed_appointments"))
+
+    def test_a_booked_visit_is_listed(self):
+        patient = make_patient()
+        visit = make_visit(patient, self.doctor, start=later_today())
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertContains(response, patient.patient_id)
+        self.assertEqual(list(response.context["visits"]), [visit])
+
+    def test_a_confirmed_visit_is_not_listed(self):
+        patient = make_patient()
+        visit = make_visit(patient, self.doctor, start=later_today())
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertNotContains(response, patient.patient_id)
+
+    def test_another_doctors_unconfirmed_booking_does_not_show_here(self):
+        other = make_doctor(username="dr2", email="dr2@example.in")
+        patient = make_patient()
+        make_visit(patient, other, start=later_today())
+
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertNotContains(response, patient.patient_id)
+
+    def test_nothing_booked_says_so(self):
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertContains(response, "Nothing of yours is waiting on a confirmation call")
+
+    def test_the_count_on_the_button_matches_this_doctors_own(self):
+        other = make_doctor(username="dr3", email="dr3@example.in")
+        make_visit(make_patient(), self.doctor, start=later_today())
+        make_visit(make_patient(phone="9820011133"), other, start=later_today())
+
+        response = self.client.get(reverse("doctor_home"))
+        self.assertEqual(response.context["unconfirmed_count"], 1)
+        self.assertContains(response, "Booked, not confirmed (1)")
+
+    def test_a_receptionist_cannot_open_this_doctors_pop_up(self):
+        self.client.force_login(self.receptionist)
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertEqual(response.status_code, 403)
+
+
 class TestVisitHistoryShowsOnlyWhatHappened(TestCase):
     def setUp(self):
         self.doctor = make_doctor()
