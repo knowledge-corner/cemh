@@ -120,6 +120,12 @@ class TestTheEmailCarriesNoCredential(TestCase):
     def test_it_says_no_password_is_in_it(self):
         self.assertIn("does not contain a password", self.message.body)
 
+    def test_it_tells_them_their_username(self):
+        # Otherwise there is nowhere the doctor ever learns what to type at
+        # the login screen — this email is it.
+        doctor = User.objects.get(email="vrushali@example.in")
+        self.assertIn(doctor.username, self.message.body)
+
     def test_it_carries_nothing_that_looks_like_a_password_field(self):
         lowered = self.message.body.lower()
         for word in ("your password is", "temporary password", "password:"):
@@ -268,7 +274,10 @@ class TestResending(TestCase):
         )
         self.assertContains(response, "no longer valid", status_code=400)
 
-    def test_resending_to_an_activated_doctor_does_nothing(self):
+    def test_resending_to_an_activated_doctor_sends_a_password_reset(self):
+        # Superseded: this used to be a no-op. It now doubles as "forgotten
+        # password" for a doctor who has already set one — see
+        # test_doctor_password_reset.py for the full behaviour.
         self.client.logout()
         self.client.post(
             reverse("doctor_activate", args=[self.first_token]),
@@ -279,7 +288,8 @@ class TestResending(TestCase):
 
         self.client.force_login(self.receptionist)
         self._resend()
-        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Reset your password", mail.outbox[0].subject)
 
     def test_a_doctor_cannot_resend_invitations(self):
         self.client.force_login(make_doctor())

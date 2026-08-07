@@ -62,6 +62,19 @@
                     {% csrf_token %}
                     <button type="submit" class="btn btn--secondary">Resend invitation</button>
                   </form>
+                {% elif doctor.is_active %}
+                  {% comment %}
+                  Same link, same mechanism as the invitation above — see
+                  resend_invitation — offered under a name that matches what
+                  reception is actually doing here. Confirmed rather than a
+                  bare click: it invalidates whatever the doctor currently has
+                  set the moment they use it.
+                  {% endcomment %}
+                  <form method="post" action="{% url 'reception_resend_invitation' doctor.pk %}"
+                        onsubmit="return confirm('Send {{ doctor.display_name|escapejs }} a password reset link? Their current password keeps working until they use it.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn--secondary">Reset password</button>
+                  </form>
                 {% endif %}
               </td>
             </tr>

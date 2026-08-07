@@ -25,9 +25,15 @@ def activation_url(request, raw_token):
     return request.build_absolute_uri(path)
 
 
-def send_invitation(request, user, *, by=None):
+def send_invitation(request, user, *, by=None, is_reset=False):
     """
     Issue a fresh invitation and email it.
+
+    The same link does two jobs, depending on whether the doctor has ever
+    finished it before: setting a password for the first time, or choosing a
+    new one because the old one is forgotten. Nothing about the mechanism
+    differs — it is still a single-use, time-limited link and never a
+    password — so this is one function with a change of wording, not two.
 
     Returns the invitation. Any earlier unused link for this doctor stops
     working, which is what makes correcting a mistyped address safe: the
@@ -45,10 +51,16 @@ def send_invitation(request, user, *, by=None):
         "clinic_name": settings.CLINIC.CLINIC_NAME,
         "url": activation_url(request, raw),
         "days": settings.CLINIC.INVITATION_DAYS,
+        "is_reset": is_reset,
     }
 
+    subject = (
+        f"Reset your password for {settings.CLINIC.CLINIC_NAME}" if is_reset
+        else f"Set your password for {settings.CLINIC.CLINIC_NAME}"
+    )
+
     send_mail(
-        subject=f"Set your password for {settings.CLINIC.CLINIC_NAME}",
+        subject=subject,
         message=render_to_string("accounts/email/invitation.txt", context),
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],

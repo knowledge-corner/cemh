@@ -106,11 +106,21 @@ def edit_doctor(request, pk):
 @role_required(Role.RECEPTIONIST)
 def resend_invitation(request, pk):
     """
-    Issue a fresh link (FR-6, AC-8).
+    Issue a fresh link (FR-6, AC-8) — and the same mechanism doubles as a
+    password reset once the doctor has already activated.
+
+    A doctor who has forgotten their password is not in a different state
+    from one who never set one: both need a single-use link to choose one,
+    and KAN-21's rule — never a password reception generates, shows or
+    emails — applies exactly the same either way. So this is the same view
+    and the same underlying invitation either way; only the wording (and,
+    for an inactive doctor, the refusal) differs.
 
     Issuing revokes whatever came before it, which is what makes a mistyped
     address safe to correct: the link that went to the wrong inbox stops
-    working the moment the new one is made.
+    working the moment the new one is made. The same property makes a reset
+    safe too — an old, unused reset link cannot be used after a newer one is
+    sent.
     """
     doctor = get_object_or_404(
         User.objects.select_related("doctor_profile"), pk=pk, role=Role.DOCTOR
@@ -120,26 +130,45 @@ def resend_invitation(request, pk):
     if request.method != "POST":
         return redirect("reception_doctors")
 
-    if profile is None or not profile.is_pending:
-        messages.info(
-            request, f"{doctor.display_name} has already set a password."
+    is_pending = profile is None or profile.is_pending
+
+    # A doctor who has left is not offered a fresh way back in from here —
+    # that is a decision about their account, not a forgotten password.
+    if not is_pending and not doctor.is_active:
+        messages.error(
+            request,
+            f"{doctor.display_name} is inactive, so cannot be sent a "
+            f"password link.",
         )
         return redirect("reception_doctors")
 
     try:
-        invitations.send_invitation(request, doctor, by=request.user)
+        invitations.send_invitation(
+            request, doctor, by=request.user, is_reset=not is_pending
+        )
     except (BadHeaderError, OSError, ValueError) as exc:
-        messages.error(request, f"The invitation could not be sent ({exc}).")
+        messages.error(request, f"The link could not be sent ({exc}).")
     else:
-        record(
-            request, AuditAction.UPDATE, obj=doctor,
-            description="Doctor invitation re-sent",
-        )
-        messages.success(
-            request,
-            f"A new invitation has been sent to {doctor.email}. Any earlier "
-            f"link no longer works.",
-        )
+        if is_pending:
+            record(
+                request, AuditAction.UPDATE, obj=doctor,
+                description="Doctor invitation re-sent",
+            )
+            messages.success(
+                request,
+                f"A new invitation has been sent to {doctor.email}. Any "
+                f"earlier link no longer works.",
+            )
+        else:
+            record(
+                request, AuditAction.UPDATE, obj=doctor,
+                description="Doctor password reset link sent",
+            )
+            messages.success(
+                request,
+                f"A password reset link has been sent to {doctor.email}. "
+                f"Their current password keeps working until they use it.",
+            )
     return redirect("reception_doctors")
 
 
@@ -190,15 +219,22 @@ def activate_doctor(request, token):
                 doctor.save(update_fields=["is_active"])
 
                 profile, _ = DoctorProfile.objects.get_or_create(user=doctor)
-                profile.activated_at = timezone.now()
-                profile.save(update_fields=["activated_at"])
+                # Only set the first time. This same screen now also serves a
+                # password reset, and activated_at means *first* activation —
+                # overwriting it on every reset would lose that.
+                if profile.activated_at is None:
+                    profile.activated_at = timezone.now()
+                    profile.save(update_fields=["activated_at"])
 
                 invitation.consume()
 
             # Straight in, rather than to a login screen they would immediately
             # fill in with the password they have just this second chosen.
             login(request, doctor)
-            messages.success(request, "Your password is set. Welcome.")
+            messages.success(
+                request,
+                f"Your password is set. You'll sign in as {doctor.username}. Welcome.",
+            )
             return redirect("doctor_home")
     else:
         form = SetPasswordForm(doctor)

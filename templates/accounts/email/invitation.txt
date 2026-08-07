@@ -1,16 +1,18 @@
 {% autoescape off %}Dear Dr {{ doctor.display_name }},
 
-You have been added to {{ clinic_name }}.
+{% if is_reset %}A password reset was requested for your account at {{ clinic_name }}.{% else %}You have been added to {{ clinic_name }}.{% endif %}
 
-To finish setting up your account, choose your own password here:
+Your username is {{ doctor.username }}. That is what you sign in with — not
+this email address.
+
+{% if is_reset %}To choose a new password, follow this link{% else %}To finish setting up your account, choose your own password here{% endif %}:
 
 {{ url }}
 
 This link works once and expires in {{ days }} days. If it has expired by the
 time you open it, ask reception to send a new one.
 
-This email does not contain a password, and nobody at the clinic can see
-yours. If you were not expecting this message, ignore it and tell reception —
+{% if is_reset %}Your current password keeps working until this link is actually used. If you did not ask for a reset, ignore this email and tell reception.{% else %}This email does not contain a password, and nobody at the clinic can see yours.{% endif %} If you were not expecting this message, tell reception —
 the link does nothing until it is used.
 
 {{ clinic_name }}
