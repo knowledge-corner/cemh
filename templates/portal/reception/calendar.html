@@ -28,10 +28,16 @@ it.
     </p>
   </div>
   <div class="row-actions">
-    <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>
     {% if is_doctor_view %}
+      {% comment %}
+      Not "Bookings" — that screen is reception's own and refuses a doctor
+      outright. This is the doctor's own cross-page nav instead.
+      {% endcomment %}
       <a class="btn btn--secondary" href="{% url 'doctor_import_schedule' %}">Upload my schedule</a>
+      <a class="btn btn--secondary" href="{% url 'doctor_home' %}">Today's clinic</a>
+      <a class="btn btn--primary" href="{% url 'doctor_register_patient' %}">New patient</a>
     {% else %}
+      <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>
       <a class="btn btn--secondary" href="{% url 'reception_import_schedules' %}">Import rota</a>
       <a class="btn btn--secondary" href="{% url 'reception_import_holidays' %}">Import holidays</a>
     {% endif %}

@@ -4,6 +4,7 @@ from . import views_calendar, views_doctor, views_edit
 
 urlpatterns = [
     path("", views_doctor.doctor_home, name="doctor_home"),
+    path("patient/register/", views_doctor.register_patient, name="doctor_register_patient"),
     path("schedule/import/", views_calendar.import_own_schedule,
          name="doctor_import_schedule"),
     path("queue/", views_doctor.doctor_queue, name="doctor_queue"),

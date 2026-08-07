@@ -14,9 +14,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from accounts.permissions import role_required
 from accounts.models import Role
 from appointments.models import Visit, VisitStatus
-from audit.services import record_patient_view
+from audit.models import AuditAction
+from audit.services import record, record_patient_view
+from patients import matching
 from patients.models import Patient
 
+from . import forms as clinic_forms
 from . import services
 
 #: Tab name → (template partial, context builder)
@@ -102,6 +105,51 @@ def doctor_home(request):
             "unconfirmed_count": _unconfirmed_count(request.user),
         },
     )
+
+
+@role_required(Role.DOCTOR)
+def register_patient(request):
+    """
+    A doctor registering a patient who has never attended before.
+
+    Reception's own version of this exists and is unchanged — this is for a
+    walk-in the doctor is looking at right now, so it goes straight to the
+    new chart rather than to a booking screen, which is reception's job, not
+    something this screen offers.
+    """
+    duplicates = None
+
+    if request.method == "POST":
+        form = clinic_forms.PatientRegistrationForm(request.POST)
+        if form.is_valid():
+            # Same rule as reception's own form — see register_patient in
+            # views_reception.py — kept in one place, patients.matching, so
+            # the two callers cannot end up disagreeing about what counts as
+            # the same person.
+            if not request.POST.get("confirm"):
+                duplicates = matching.find_duplicates(
+                    form.cleaned_data.get("first_name"),
+                    form.cleaned_data.get("last_name"),
+                    form.cleaned_data.get("phone"),
+                )
+
+        if form.is_valid() and not duplicates:
+            patient = form.save()
+            record(
+                request, AuditAction.CREATE, obj=patient, patient=patient,
+                description="Patient registered by doctor",
+            )
+            messages.success(
+                request, f"Registered {patient.full_name} — {patient.patient_id}."
+            )
+            return redirect("doctor_patient_dashboard", patient_id=patient.patient_id)
+    else:
+        form = clinic_forms.PatientRegistrationForm()
+
+    return render(request, "portal/doctor/register_patient.html", {
+        "form": form,
+        "duplicates": duplicates,
+    })
 
 
 @role_required(Role.DOCTOR)

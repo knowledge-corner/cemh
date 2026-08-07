@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Register patient — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Register a new patient</h1>
+    <p class="page-header__sub">A {{ patient_id_label }} is issued automatically on saving</p>
+  </div>
+</div>
+
+{% include "portal/doctor/_nav.html" with nav_active="register" %}
+
+<div class="card page--narrow">
+  <div class="card__body">
+    <form method="post">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <ul class="form-errors">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      {% comment %}
+      Same duplicate warning reception's own form shows — see the note on
+      views_doctor.register_patient — except "Book this patient" would send a
+      doctor to a screen that is not theirs, so this opens the chart instead.
+      {% endcomment %}
+      {% if duplicates %}
+        <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+          <div>
+            <span class="alert-strip__title">
+              Somebody with this name and number is already registered
+            </span><br>
+            Opening the existing record keeps their history in one place.
+            <ul style="margin:.5rem 0 0;padding-left:1.125rem">
+              {% for existing in duplicates %}
+                <li style="margin-bottom:.25rem">
+                  <strong>{{ existing.full_name }}</strong>
+                  <span class="mono">{{ existing.patient_id }}</span> ·
+                  {{ existing.age_display }} ·
+                  <span class="mono">{{ existing.phone }}</span>
+                  &nbsp;<a href="{% url 'doctor_patient_dashboard' existing.patient_id %}">Open this patient</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="form-grid">
+        {% for field in form %}
+          {% if field.name != "guardian_name" and field.name != "guardian_relation" %}
+            <div class="field">
+              <label class="field__label" for="{{ field.id_for_label }}">
+                {{ field.label }}{% if field.field.required %} <span aria-hidden="true">*</span>{% endif %}
+              </label>
+              {{ field }}
+              {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+              {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      {% comment %}
+      Guardian details, for a patient under 18 — same hidden-until-needed
+      pattern as reception's own form, shown by the same script.
+      {% endcomment %}
+      <fieldset id="guardian-section" class="guardian-section" hidden>
+        <legend class="guardian-section__legend">Guardian</legend>
+        <p class="faint small" style="margin:0 0 .75rem">
+          This patient is under 18, so the clinic needs to know who brings them in.
+        </p>
+        <div class="form-grid">
+          {% for field in form %}
+            {% if field.name == "guardian_name" or field.name == "guardian_relation" %}
+              <div class="field">
+                <label class="field__label" for="{{ field.id_for_label }}">
+                  {{ field.label }} <span aria-hidden="true">*</span>
+                </label>
+                {{ field }}
+                {% for e in field.errors %}<div class="field__error">{{ e }}</div>{% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="form-actions">
+        {% if duplicates %}
+          <button type="submit" name="confirm" value="1" class="btn btn--primary">
+            This is a different person — register anyway
+          </button>
+        {% else %}
+          <button type="submit" class="btn btn--primary">Register</button>
+        {% endif %}
+        <a class="btn btn--secondary" href="{% url 'doctor_home' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/guardian_section.js' %}" defer></script>
+{% endblock %}
