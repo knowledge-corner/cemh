@@ -47,6 +47,35 @@
     });
   }
 
+  /* ── Analytics events ──────────────────────────────────────────────────
+   * Which button got pressed, not just that someone left the page. GA4's
+   * own enhanced measurement already counts outbound clicks (the WhatsApp
+   * links) and page views on its own, but it cannot tell a phone number in
+   * the header from one in a doctor's card, and it does not tag tel: links
+   * at all — so those need naming here. One delegated listener rather than
+   * one per link, since the set of tracked links spans the whole page.
+   *
+   * Every call is guarded: an ad blocker or an unset Measurement ID must
+   * never touch how the page behaves, matching this file's own rule that
+   * the page is complete without it. */
+
+  document.addEventListener("click", function (event) {
+    if (typeof gtag !== "function") return;
+
+    var link = event.target.closest("a[data-ga-label]");
+    if (!link) return;
+
+    var label = link.getAttribute("data-ga-label");
+    var eventName = link.getAttribute("data-ga-event");
+    if (!eventName) {
+      if (link.href.indexOf("tel:") === 0) eventName = "call_click";
+      else if (link.href.indexOf("https://wa.me/") === 0) eventName = "whatsapp_click";
+    }
+    if (!eventName) return;
+
+    gtag("event", eventName, { location: label });
+  });
+
   /* ── Service tabs ───────────────────────────────────────────────────── */
 
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".wf-tab"));
