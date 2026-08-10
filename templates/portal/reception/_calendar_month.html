@@ -76,19 +76,6 @@ where holidays are drawn).
                   +{{ cell.more }} more
                 </a>
               {% endif %}
-
-              {% comment %}
-              Counted rather than listed. Every doctor without hours of their own
-              falls back to the clinic default on every working day, so drawing
-              them filled the month with identical chips and hid the real
-              sittings. Still shown, because those hours can genuinely be booked.
-              {% endcomment %}
-              {% if cell.on_default %}
-                <a class="calendar__default"
-                   href="?view=day&amp;date={{ cell.date|date:'Y-m-d' }}{{ filter_query }}">
-                  {{ cell.on_default }} on clinic hours
-                </a>
-              {% endif %}
             </td>
           {% endfor %}
         </tr>

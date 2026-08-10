@@ -333,14 +333,11 @@ def month_weeks(anchor, schedule, *, per_day=3):
     ``per_day`` caps what is drawn; the remainder is reported as a count so a
     busy month stays legible rather than growing an unreadable cell (KAN-22 T-8).
 
-    Clinic-default hours are counted, not drawn. Every doctor without schedule
+    Clinic-default hours are omitted, not drawn. Every doctor without schedule
     rows of their own falls back to them *every working day*, so drawing them as
     entries filled every cell in the month with identical chips and buried the
     handful of real sittings underneath — which is the one thing the month view
-    exists to show. Dropping them silently would be worse: those hours are
-    genuinely bookable, and a month claiming nobody works would disagree with
-    the booking form. So they get one summary line per day, and the day view
-    lists them properly under "No cabin set".
+    exists to show. The day view lists them properly under "No cabin set".
     """
     weeks = []
     for week in Calendar(firstweekday=0).monthdatescalendar(anchor.year, anchor.month):
@@ -348,7 +345,6 @@ def month_weeks(anchor, schedule, *, per_day=3):
         for day in week:
             entries = schedule.entries_on(day)
             recorded = [e for e in entries if e.source != SOURCE_DEFAULT]
-            on_default = [e for e in entries if e.source == SOURCE_DEFAULT]
             row.append({
                 "date": day,
                 "in_month": day.month == anchor.month,
@@ -357,7 +353,6 @@ def month_weeks(anchor, schedule, *, per_day=3):
                 "leave": schedule.leave.get(day, []),
                 "entries": recorded[:per_day],
                 "more": max(0, len(recorded) - per_day),
-                "on_default": len(on_default),
             })
         weeks.append(row)
     return weeks
