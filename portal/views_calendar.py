@@ -92,7 +92,10 @@ def _apply_filters(request, doctors):
             doctors = doctors.filter(pk=chosen_doctor.pk)
 
     specialisation_id = request.GET.get("specialisation") or ""
-    if specialisation_id:
+    if specialisation_id and not _is_doctor(request.user):
+        # A single doctor's own calendar is already scoped to themselves —
+        # filtering that one-doctor list by a specialisation is meaningless at
+        # best, and at worst a stray URL parameter empties their own calendar.
         chosen_specialisation = Specialisation.objects.filter(
             pk=specialisation_id
         ).first()

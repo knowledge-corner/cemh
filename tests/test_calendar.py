@@ -387,6 +387,18 @@ class TestDoctorScoping(CalendarTestCase):
     def test_a_doctor_is_not_offered_the_doctor_filter(self):
         self.assertNotContains(self._monday(), "All doctors")
 
+    def test_a_doctor_is_not_offered_the_specialisation_filter(self):
+        # A single doctor's own calendar is already scoped to themselves —
+        # filtering that one-doctor list by specialisation has nothing to do.
+        self.assertNotContains(self._monday(), "All specialisations")
+
+    def test_a_stray_specialisation_in_the_url_does_not_empty_their_calendar(self):
+        # Mirrors test_asking_for_another_doctor_in_the_url_does_not_work: the
+        # filter is reception's tool, so a doctor's own URL cannot use it to
+        # filter themselves out of their own calendar.
+        response = self._monday(specialisation=Specialisation.objects.first().pk)
+        self.assertContains(response, "Asha Rao")
+
     def test_a_doctor_cannot_add_an_event(self):
         response = self.client.post(reverse("reception_add_calendar_event"), {
             "event_type": "hours", "date": self.monday.isoformat(),
