@@ -17,6 +17,8 @@
   <a class="btn btn--secondary" href="{% url 'reception_import_patients' %}">Import from a spreadsheet</a>
 </div>
 
+{% include "portal/reception/_nav.html" with nav_active="add_patient" %}
+
 <div class="card page--narrow">
   <div class="card__body">
     <form method="post">

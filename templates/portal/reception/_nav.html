@@ -1,10 +1,11 @@
 {% comment %}
-The reception nav bar, shared by Today's Clinic and Bookings.
+The reception nav bar — one component, shared by every reception screen, so
+they read as one application rather than a page each one bolted on for itself.
 
-One template rather than two so the two screens cannot drift apart: they carry
-different links, but the bar itself — spacing, button sizes, where the doctor
-filter sits — is defined once. `nav_active` names the screen we are on, so its
-own entry is marked rather than offered as somewhere to go.
+`nav_active` names the screen we are on, so its own entry is left out of the
+bar rather than offered as somewhere to go: a page never needs a link back to
+itself, and a bar that showed every destination every time would mean reading
+past your own current page on every screen to find the one you actually want.
 
 `show_doctor_filter` puts the All-doctors select at the head of the bar. The
 filter has no visible label: "All doctors" already says what it is, and a label
@@ -34,11 +35,15 @@ beside it only crowded the row. Screen readers get it from aria-label.
       <a class="btn btn--secondary" href="{% url 'reception_home' %}">Today's queue</a>
     {% endif %}
 
-    <a class="btn btn--secondary"
-       href="{% url 'reception_register_patient' %}?next={{ request.get_full_path|urlencode }}">Add patient</a>
+    {% if nav_active != "add_patient" %}
+      <a class="btn btn--secondary"
+         href="{% url 'reception_register_patient' %}?next={{ request.get_full_path|urlencode }}">Add patient</a>
+    {% endif %}
 
-    <a class="btn btn--primary"
-       href="{% url 'reception_new_booking' %}?next={{ request.get_full_path|urlencode }}">New booking</a>
+    {% if nav_active != "new_booking" %}
+      <a class="btn btn--primary"
+         href="{% url 'reception_new_booking' %}?next={{ request.get_full_path|urlencode }}">New booking</a>
+    {% endif %}
 
     {% if nav_active != "bookings" %}
       <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">All bookings</a>
@@ -49,18 +54,21 @@ beside it only crowded the row. Screen readers get it from aria-label.
     be a second screen listing the same rows, and two screens writing one set of
     tables is two answers to "when does this doctor work".
     {% endcomment %}
-    {% if nav_active == "bookings" or nav_active == "doctors" %}
+    {% if nav_active != "calendar" %}
       <a class="btn btn--secondary" href="{% url 'reception_calendar' %}">Calendar</a>
-      {% comment %}
-      Only shown when somebody is actually waiting for a call. A permanently
-      visible zero is a link nobody clicks, and then the day it matters it
-      looks the same as it did yesterday.
-      {% endcomment %}
-      {% if outstanding_callbacks %}
-        <a class="btn btn--primary" href="{% url 'reception_callbacks' %}">
-          Callbacks ({{ outstanding_callbacks }})
-        </a>
-      {% endif %}
+    {% endif %}
+
+    {% comment %}
+    Only shown when somebody is actually waiting for a call. A permanently
+    visible zero is a link nobody clicks, and then the day it matters it
+    looks the same as it did yesterday. Not one of the standard destinations
+    this bar always offers, so it is never left out for being "the current
+    page" — there is no Callbacks page to be on.
+    {% endcomment %}
+    {% if outstanding_callbacks %}
+      <a class="btn btn--primary" href="{% url 'reception_callbacks' %}">
+        Callbacks ({{ outstanding_callbacks }})
+      </a>
     {% endif %}
 
     {% if nav_active != "doctors" %}

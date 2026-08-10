@@ -16,6 +16,8 @@
   {% endcomment %}
 </div>
 
+{% include "portal/reception/_nav.html" with nav_active="new_booking" %}
+
 <form method="post" action="{% url 'reception_new_booking' %}">
   {% csrf_token %}
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}

@@ -203,11 +203,12 @@ class TestTheNavBar(TestCase):
         body = self.client.get(reverse("reception_home")).content.decode()
         self.assertIn("aria-label=\"Filter the board by doctor\"", body)
 
-    def test_doctor_availability_is_not_on_the_board(self):
-        # AC-9. Setting a doctor's working days is diary work; since KAN-50 the
-        # calendar is where all of it happens, and it is still not on the board.
+    def test_the_calendar_is_reachable_from_the_board(self):
+        # Superseded by the standardized reception nav bar: Calendar is now
+        # one of the six links every reception screen offers, the board
+        # included, rather than being reachable only via Bookings.
         body = self.client.get(reverse("reception_home")).content.decode()
-        self.assertNotIn(reverse("reception_calendar"), body)
+        self.assertIn(reverse("reception_calendar"), body)
 
     def test_bookings_carries_its_own_three(self):
         # Bookings AC-1.

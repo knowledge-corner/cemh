@@ -23,18 +23,14 @@ on the Bookings screen.
 </div>
 
 {% comment %}
-The doctor filter and the actions, in one bar shared with the Bookings screen so
-the two cannot drift into looking like different applications.
+The doctor filter and the standardized nav bar, shared by every reception
+screen so they cannot drift into looking like different applications.
 
 The filter is deliberately not remembered between page loads: one left on from
 yesterday is how a receptionist becomes certain the clinic is empty while
 somebody sits in the waiting room. Each action carries the current view along in
 `next`, so coming back lands where they left rather than widening to all
 doctors.
-
-Doctor availability is not here. Setting a doctor's working days and leave is
-not part of running today's clinic; it is reached from Bookings, where looking
-up a diary belongs.
 {% endcomment %}
 {% if can_work_queue %}
   {% include "portal/reception/_nav.html" with nav_active="queue" show_doctor_filter=1 %}

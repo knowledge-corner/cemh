@@ -38,12 +38,15 @@ it.
       <a class="btn btn--secondary" href="{% url 'doctor_analytics' %}">Analytics</a>
       <a class="btn btn--primary" href="{% url 'doctor_register_patient' %}">New patient</a>
     {% else %}
-      <a class="btn btn--secondary" href="{% url 'reception_bookings' %}">Bookings</a>
       <a class="btn btn--secondary" href="{% url 'reception_import_schedules' %}">Import rota</a>
       <a class="btn btn--secondary" href="{% url 'reception_import_holidays' %}">Import holidays</a>
     {% endif %}
   </div>
 </div>
+
+{% if not is_doctor_view %}
+  {% include "portal/reception/_nav.html" with nav_active="calendar" %}
+{% endif %}
 
 <nav class="toolbar" aria-label="Calendar">
   <form method="get" class="toolbar__filter">
