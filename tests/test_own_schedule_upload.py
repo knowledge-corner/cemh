@@ -170,7 +170,7 @@ class TestReplacingMyOwnSchedule(OwnScheduleTestCase):
             DoctorSchedule.objects.filter(doctor=self.vikram, start_time="10:00:00").count(), 4,
         )
 
-    def test_replace_still_refuses_a_genuine_cabin_clash_with_another_doctor(self):
+    def test_replace_still_flags_a_genuine_cabin_clash_with_another_doctor(self):
         self._seed_via_reception(HEADER + self._row(
             doctor_email="vikram@example.in", cabin="Cabin 1",
             start_time="11:00", end_time="14:00",
@@ -179,7 +179,7 @@ class TestReplacingMyOwnSchedule(OwnScheduleTestCase):
             HEADER + self._row(cabin="Cabin 1", start_time="11:00", end_time="14:00"),
             replace=True,
         )
-        self.assertContains(response, "already taken")
+        self.assertContains(response, "Conflict Detected")
 
     def test_the_preview_warns_about_my_own_bookings(self):
         self._confirm(HEADER + self._row(start_time="10:00", end_time="13:00"))

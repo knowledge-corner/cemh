@@ -339,14 +339,29 @@ class TestRotaImport(CalendarReworkTestCase):
 
     # ── Clashes ──────────────────────────────────────────────────────────────
 
-    def test_a_clash_with_the_calendar_is_refused(self):
+    def test_a_clash_with_the_calendar_is_flagged_as_a_conflict(self):
+        # Not refused outright any more — one clashing date out of thirteen
+        # is named as a conflict, and the other twelve are still offered for
+        # import; see CalendarEventForm's own Conflict Detected dialog for
+        # the pop-up's version of the same idea.
         DoctorSchedule.objects.create(
             doctor=self.vikram, date=date(2026, 9, 2), cabin=self.one,
             start_time=time(10), end_time=time(12),
         )
         response = self._check(HEADER + self._row())
         self.assertEqual(DoctorSchedule.objects.count(), 1)
-        self.assertContains(response, "could not be used")
+        self.assertContains(response, "Conflict Detected")
+        self.assertContains(response, "02 Sep")
+
+    def test_confirming_skips_only_the_conflicting_date(self):
+        DoctorSchedule.objects.create(
+            doctor=self.vikram, date=date(2026, 9, 2), cabin=self.one,
+            start_time=time(10), end_time=time(12),
+        )
+        self._confirm(HEADER + self._row())
+        written = DoctorSchedule.objects.filter(doctor=self.asha)
+        self.assertEqual(written.count(), 12)
+        self.assertFalse(written.filter(date=date(2026, 9, 2)).exists())
 
     def test_two_rows_of_one_file_cannot_share_a_cabin(self):
         # Neither row conflicts with the database, because neither has been
@@ -529,7 +544,7 @@ class TestReplaceMySchedule(CalendarReworkTestCase):
             DoctorSchedule.objects.filter(doctor=self.vikram).count(), 4,
         )
 
-    def test_replace_still_refuses_a_genuine_cabin_clash(self):
+    def test_replace_still_flags_a_genuine_cabin_clash_as_a_conflict(self):
         # Replacing Asha's own hours cannot excuse taking a room Vikram is
         # already using at that time.
         self._confirm(HEADER + self._row(
@@ -540,7 +555,7 @@ class TestReplaceMySchedule(CalendarReworkTestCase):
             HEADER + self._row(cabin="Cabin 1", start_time="11:00", end_time="14:00"),
             replace=True,
         )
-        self.assertContains(response, "already taken")
+        self.assertContains(response, "Conflict Detected")
 
     def test_the_preview_warns_about_bookings_on_replaced_dates(self):
         self._confirm(HEADER + self._row(start_time="10:00", end_time="13:00"))

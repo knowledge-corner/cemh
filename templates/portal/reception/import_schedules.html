@@ -182,6 +182,27 @@
         </div>
       {% endif %}
 
+      {% if result.conflicts %}
+        <div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+          <div>
+            <span class="alert-strip__title">Conflict Detected</span><br>
+            The dates below overlap with working hours already on record.
+            Confirming imports every other date in the file and skips these —
+            go back and correct the file first if that is not what you want.
+          </div>
+        </div>
+        <div class="table-scroll" style="margin-bottom:1rem">
+          <table class="table table--middle">
+            <thead><tr><th>Line</th><th>Conflicting dates and times</th></tr></thead>
+            <tbody>
+              {% for conflict in result.conflicts %}
+                <tr><td class="mono">{{ conflict.line }}</td><td class="faint">{{ conflict.message }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
       {% if result.planned %}
         <div class="alert-strip alert-strip--success" style="margin-bottom:1rem">
           <div>

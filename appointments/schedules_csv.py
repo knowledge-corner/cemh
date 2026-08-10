@@ -117,6 +117,14 @@ class ImportResult:
     planned: list = field(default_factory=list)     # PlannedRow
     problems: list = field(default_factory=list)    # RowProblem
     duplicates: list = field(default_factory=list)  # (line, message)
+    #: Dates a row named that clash with hours already on record — for the
+    #: doctor themselves, another doctor's cabin, or another row of this same
+    #: file. Unlike ``problems``, a conflict does not take the whole row out:
+    #: the row is still planned, minus just these dates — see parse(), which
+    #: mirrors ``duplicates`` in that respect. RowProblem is reused as the
+    #: shape rather than a new dataclass, since "which line, what happened" is
+    #: exactly what both need to say.
+    conflicts: list = field(default_factory=list)   # RowProblem
     fatal: str = ""
     #: Populated only when parsed with ``replace=True`` — see ReplacedDoctor.
     to_remove: list = field(default_factory=list)
@@ -349,7 +357,14 @@ def parse(file_obj, replace=False):
             continue
 
         # ── Clashes, against the calendar and against this file ──────────────
-        clashes = []
+        #
+        # A clash takes out only the dates it actually names, not the whole
+        # row — the same "mention the conflict, offer to book what's free"
+        # shape as the pop-up's own Conflict Detected dialog. Confirming the
+        # import is the moment that choice is made: the preview names every
+        # conflicting date before anything is written, and pressing Confirm
+        # is choosing to skip them and keep the rest.
+        clashed_dates = []   # [(day, message)]
         duplicate_dates = []
         for day in dates:
             # In replace mode commit() deletes every existing entry across
@@ -375,7 +390,7 @@ def parse(file_obj, replace=False):
                 # room, which replacing this doctor's own hours cannot excuse.
                 found = [c for c in found if c.reason != "doctor"]
             if found:
-                clashes.append(str(found[0]))
+                clashed_dates.append((day, str(found[0])))
                 continue
 
             for other in claimed:
@@ -384,23 +399,35 @@ def parse(file_obj, replace=False):
                 if not (start_time < other["end"] and other["start"] < end_time):
                     continue
                 if other["doctor"] == doctor.pk:
-                    clashes.append(
+                    clashed_dates.append((day,
                         f"{doctor.display_name} is already given other hours on "
                         f"{day:%a %d %b} by line {other['line']} of this file."
-                    )
+                    ))
                     break
                 if other["cabin"] == cabin.pk:
-                    clashes.append(
+                    clashed_dates.append((day,
                         f"{cabin.name} is already taken on {day:%a %d %b} by "
                         f"line {other['line']} of this file."
-                    )
+                    ))
                     break
 
-        if clashes:
-            result.problems.append(RowProblem(number, clashes[0]))
-            continue
+        if clashed_dates:
+            shown = ", ".join(f"{d:%d %b} ({start_time:%I:%M %p}-{end_time:%I:%M %p})"
+                              for d, _msg in clashed_dates[:5])
+            if len(clashed_dates) > 5:
+                shown += f" and {len(clashed_dates) - 5} more"
+            result.conflicts.append(RowProblem(
+                number,
+                f"{len(clashed_dates)} of {len(dates)} date"
+                f"{'' if len(clashed_dates) == 1 else 's'} conflict"
+                f"{'s' if len(clashed_dates) == 1 else ''} with hours already on "
+                f"record and will be skipped if you continue: {shown}.",
+            ))
 
-        wanted_dates = [d for d in dates if d not in duplicate_dates]
+        wanted_dates = [
+            d for d in dates
+            if d not in duplicate_dates and d not in {c[0] for c in clashed_dates}
+        ]
         if duplicate_dates:
             result.duplicates.append((
                 number,
@@ -422,7 +449,7 @@ def parse(file_obj, replace=False):
             days=weekday_codes.format_codes(wanted),
         ))
 
-    if not result.planned and not result.problems and not result.duplicates:
+    if not (result.planned or result.problems or result.duplicates or result.conflicts):
         result.fatal = "The file has headings but no schedules in it."
 
     if replace and result.planned:
