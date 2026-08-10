@@ -520,7 +520,7 @@ class TestConflicts(CalendarTestCase):
         self._post(doctor=third.pk, start_time="11:00", end_time="14:00")
         self.assertFalse(DoctorSchedule.objects.filter(doctor=third).exists())
 
-    def test_the_refusal_says_how_many_dates_had_no_cabin_free(self):
+    def test_the_refusal_names_the_conflicting_date(self):
         for doctor, cabin in ((self.asha, self.one), (self.vikram, self.two)):
             DoctorSchedule.objects.create(
                 doctor=doctor, date=self.monday, cabin=cabin,
@@ -530,7 +530,8 @@ class TestConflicts(CalendarTestCase):
                              first_name="Third", last_name="Doctor")
         self._post(doctor=third.pk, start_time="11:00", end_time="14:00")
         page = self.client.get(reverse("reception_calendar"))
-        self.assertContains(page, "No cabin is free on 1 of 1 selected dates")
+        self.assertContains(page, "Conflict detected")
+        self.assertContains(page, f"{self.monday:%d-%b-%Y}")
 
     def test_the_same_room_at_a_different_time_is_fine(self):
         DoctorSchedule.objects.create(

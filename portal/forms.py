@@ -793,6 +793,23 @@ def _end_of_month(day):
     return day.replace(day=last_day)
 
 
+def _conflict_message(conflict):
+    """
+    "Conflict detected: ..." — named date and time, not a jargon reason code.
+
+    Every conflict this form can raise against the doctor themselves (cabin
+    is never chosen here, so a room clash is never this doctor's to read
+    about) is the same shape: they already have hours on record that overlap
+    what is being entered.
+    """
+    entry = conflict.entry
+    return (
+        f"Conflict detected: {entry.doctor.display_name} already has working "
+        f"hours configured for {conflict.day:%d-%b-%Y} from "
+        f"{entry.start:%I:%M %p} to {entry.end:%I:%M %p}."
+    )
+
+
 class CalendarEventForm(forms.Form):
     """
     The calendar's add-event pop-up (KAN-22 FR-8, FR-9).
@@ -875,12 +892,6 @@ class CalendarEventForm(forms.Form):
     weekdays = forms.MultipleChoiceField(
         label="On these days", choices=weekday_codes.CHOICES, required=False,
         widget=forms.CheckboxSelectMultiple(attrs={"class": "daypick-input"}),
-    )
-    #: The escape hatch for a recurring run that cannot get a cabin on every
-    #: date: without this, one bad date would refuse the whole booking.
-    book_available_dates = forms.BooleanField(
-        label="Book the dates a cabin is free for, and skip the rest",
-        required=False,
     )
 
     # Holiday
@@ -987,35 +998,33 @@ class CalendarEventForm(forms.Form):
         doctor_clashes = clinic_calendar.find_conflicts(
             doctor=cleaned["doctor"], cabin=None, start=start, end=end, dates=dates,
         )
-        for conflict in doctor_clashes[:5]:
-            self.add_error(None, str(conflict))
-        if len(doctor_clashes) > 5:
-            self.add_error(
-                None, f"…and {len(doctor_clashes) - 5} more dates with the same clash."
-            )
-        if self.errors:
+        if doctor_clashes:
+            for conflict in doctor_clashes[:5]:
+                self.add_error(None, _conflict_message(conflict))
+            if len(doctor_clashes) > 5:
+                self.add_error(
+                    None,
+                    f"…and {len(doctor_clashes) - 5} more dates with the same clash.",
+                )
             return
 
         by_date, unavailable = clinic_calendar.allocate_cabins(
             doctor=cleaned["doctor"], dates=dates, start=start, end=end,
         )
-        if unavailable and not cleaned.get("book_available_dates"):
-            shown = ", ".join(f"{d:%d %b}" for d in unavailable[:5])
+        if unavailable:
+            shown = ", ".join(f"{d:%d-%b-%Y}" for d in unavailable[:5])
             if len(unavailable) > 5:
                 shown += f" and {len(unavailable) - 5} more"
             self.add_error(
                 None,
-                f"No cabin is free on {len(unavailable)} of {len(dates)} "
-                f"selected dates ({shown}). Tick "
-                f"“{self.fields['book_available_dates'].label}” to add the "
-                f"other {len(dates) - len(unavailable)}, or change the "
-                f"doctor, time or dates and try again.",
+                f"Conflict detected: no cabin is free for "
+                f"{cleaned['doctor'].display_name} on {shown} from "
+                f"{start:%I:%M %p} to {end:%I:%M %p}.",
             )
             return
 
         self._planned_dates = dates
         self._cabin_by_date = by_date
-        self._skipped_dates = unavailable
 
     def _clean_holiday(self, cleaned):
         from appointments.models import ClinicHoliday
@@ -1060,13 +1069,10 @@ class CalendarEventForm(forms.Form):
 
         series_id = uuid.uuid4() if cleaned.get("is_recurring") else None
         for day in self._planned_dates:
-            cabin = self._cabin_by_date.get(day)
-            if cabin is None:
-                continue
             created.append(DoctorSchedule.objects.create(
                 doctor=cleaned["doctor"],
                 date=day,
-                cabin=cabin,
+                cabin=self._cabin_by_date[day],
                 start_time=cleaned["start_time"],
                 end_time=cleaned["end_time"],
                 series_id=series_id,

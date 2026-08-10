@@ -302,24 +302,7 @@ def add_calendar_event(request):
     for obj in created:
         record(request, AuditAction.CREATE, obj=obj, description=f"Calendar: {obj}")
 
-    skipped = getattr(form, "_skipped_dates", [])
-    if skipped:
-        # Only reachable once "book the ones that are free" was ticked — see
-        # CalendarEventForm._clean_hours, which refuses the submission outright
-        # otherwise. The dates are named so the gap is something reception can
-        # act on, not just a number.
-        shown = ", ".join(f"{d:%d %b}" for d in skipped[:5])
-        if len(skipped) > 5:
-            shown += f" and {len(skipped) - 5} more"
-        messages.warning(
-            request,
-            f"{len(created)} entr{'y was' if len(created) == 1 else 'ies were'} "
-            f"added. No cabin was free on {len(skipped)} "
-            f"date{'' if len(skipped) == 1 else 's'} ({shown}), so "
-            f"{'it was' if len(skipped) == 1 else 'those were'} left out — "
-            f"please review and book separately if still needed.",
-        )
-    elif not created:
+    if not created:
         messages.warning(request, "Nothing new to add — that was already recorded.")
     elif len(created) == 1:
         messages.success(request, f"Added: {created[0]}.")

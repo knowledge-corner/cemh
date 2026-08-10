@@ -139,19 +139,6 @@ form exists to work out.
             </div>
           </div>
 
-          {% comment %}
-          The escape hatch for a run of dates that cannot all get a cabin.
-          Left unticked, one bad date refuses the whole booking outright — see
-          CalendarEventForm._clean_hours — which is what a receptionist adding
-          a single day normally wants too, so this stays visible rather than
-          only appearing once something has actually clashed.
-          {% endcomment %}
-          <div class="field field--check">
-            <label>
-              {{ event_form.book_available_dates }}
-              {{ event_form.book_available_dates.label }}
-            </label>
-          </div>
         </div>
 
         {# ── Holiday ──────────────────────────────────────────────────── #}
