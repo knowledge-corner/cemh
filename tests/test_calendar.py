@@ -238,7 +238,7 @@ class TestTheViews(CalendarTestCase):
         cells = [c for week in response.context["weeks"] for c in week]
         self.assertTrue(all(len(cell["entries"]) <= 3 for cell in cells))
 
-    def test_doctors_on_clinic_default_hours_are_counted_not_listed(self):
+    def test_doctors_on_clinic_default_hours_are_not_listed(self):
         # Neither doctor has rows, so both fall back to clinic hours on every
         # working day. Drawing them filled every cell in the month with
         # identical chips and buried the real sittings underneath — which only
@@ -251,15 +251,14 @@ class TestTheViews(CalendarTestCase):
             if c["date"] == self.monday
         )
         self.assertEqual(cell["entries"], [])
-        self.assertEqual(cell["on_default"], 2)
 
-    def test_they_are_still_reported_rather_than_dropped(self):
-        # Those hours are genuinely bookable. A month claiming nobody works
-        # would disagree with the booking form, quietly.
+    def test_they_are_not_summarised_either(self):
+        # The month view says nothing about clinic-default hours at all now —
+        # not a chip, not a count. The day view is where they are found.
         response = self.client.get(
             reverse("reception_calendar"), {"date": self.monday.isoformat()}
         )
-        self.assertContains(response, "on clinic hours")
+        self.assertNotContains(response, "on clinic hours")
 
     def test_a_real_sitting_is_not_hidden_behind_them(self):
         DoctorSchedule.objects.create(

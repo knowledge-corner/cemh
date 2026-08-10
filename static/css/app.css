@@ -1310,14 +1310,12 @@ p { margin: 0 0 .75rem; }
 }
 .calendar__add:hover { background: var(--brand-teal-soft); color: var(--brand-teal-dark); }
 
-.calendar__more,
-.calendar__default {
+.calendar__more {
   display: inline-block;
   font-size: .6875rem;
   color: var(--text-muted);
   text-decoration: underline;
 }
-.calendar__default { font-style: italic; }
 
 /* Entries inside a month cell. Every kind carries a word as well as a colour:
    orange alone fails contrast and colour-blindness, and "the clinic is shut"
