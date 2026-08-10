@@ -111,15 +111,68 @@ class TestCabins(CalendarTestCase):
         )
         self.assertTrue(Cabin.objects.filter(pk=self.one.pk).exists())
 
-    def test_retiring_keeps_it_on_the_hours_it_is_already_on(self):
-        sitting = DoctorSchedule.objects.create(
+    def test_one_still_on_a_doctors_weekly_hours_cannot_be_retired(self):
+        DoctorSchedule.objects.create(
             doctor=self.asha, weekday=MONDAY, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
 
-        sitting.refresh_from_db()
-        self.assertEqual(sitting.cabin, self.one)
+        self.one.refresh_from_db()
+        self.assertTrue(self.one.is_active)
+
+    def test_one_with_an_upcoming_override_cannot_be_retired(self):
+        ScheduleOverride.objects.create(
+            doctor=self.asha, date=self.monday, cabin=self.one,
+            start_time=time(14), end_time=time(16),
+        )
+        self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
+
+        self.one.refresh_from_db()
+        self.assertTrue(self.one.is_active)
+
+    def test_one_with_no_future_hours_can_be_retired(self):
+        self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
+
+        self.one.refresh_from_db()
+        self.assertFalse(self.one.is_active)
+
+    def test_a_past_override_does_not_block_retiring(self):
+        # Only what is still ahead counts — a one-off sitting that has already
+        # happened is history, not a reason to keep the room on the books.
+        ScheduleOverride.objects.create(
+            doctor=self.asha, date=self.monday - timedelta(weeks=2), cabin=self.one,
+            start_time=time(14), end_time=time(16),
+        )
+        self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
+
+        self.one.refresh_from_db()
+        self.assertFalse(self.one.is_active)
+
+    def test_bringing_a_retired_one_back_is_never_blocked(self):
+        # The rule is about *starting* to retire a room doctors still use, not
+        # about restoring one — there is nothing to protect against there.
+        DoctorSchedule.objects.create(
+            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            start_time=time(10), end_time=time(13),
+        )
+        self.one.is_active = False
+        self.one.save(update_fields=["is_active"])
+
+        self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
+
+        self.one.refresh_from_db()
+        self.assertTrue(self.one.is_active)
+
+    def test_the_calendar_flags_a_cabin_still_on_the_hours(self):
+        DoctorSchedule.objects.create(
+            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            start_time=time(10), end_time=time(13),
+        )
+        response = self.client.get(reverse("reception_calendar"))
+        by_pk = {cabin.pk: cabin for cabin in response.context["all_cabins"]}
+        self.assertTrue(by_pk[self.one.pk].still_scheduled)
+        self.assertFalse(by_pk[self.two.pk].still_scheduled)
 
     def test_a_retired_one_is_not_offered_for_new_hours(self):
         self.one.is_active = False
