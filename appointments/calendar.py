@@ -6,38 +6,23 @@ worked out from the same layered rules that :mod:`appointments.scheduling`
 uses to produce bookable slots:
 
   1. **Clinic holiday** — nobody works.
-  2. **Schedule entry** — this doctor's hours for this one date.
-  3. **Clinic default** — the consulting hours in ``config/clinic.py``, for a
-     doctor who has no entry of their own on this date.
+  2. **Schedule entry** — this doctor's hours for this one date. There is no
+     other tier below this: a doctor with no entry for a date simply is not
+     drawn on it, rather than falling back to any clinic-wide default hours.
 
 This module expands those rules into dated **entries** so a month or a day can
 be drawn, and it is deliberately the *only* expansion in the system. Conflict
 detection and cabin allocation both ask it the same question the calendar
 asks — "who is actually in which cabin at this time on this date".
-
-Rule 3 produces entries with no cabin. That is not an oversight: those hours are
-genuinely bookable today, and drawing them into a cabin column would be
-inventing an occupancy nobody recorded. They appear under "No cabin set", which
-is also the honest answer to why a doctor with no entry still has free slots.
 """
 
 from calendar import Calendar
 from dataclasses import dataclass
 from datetime import date as date_cls, time
 
-from django.conf import settings
 from django.utils import timezone
 
 from .models import Cabin, ClinicHoliday, DoctorSchedule
-
-#: Sources an entry can come from, most specific first.
-SOURCE_SCHEDULED = "scheduled"
-SOURCE_DEFAULT = "clinic-default"
-
-
-def _parse_time(value):
-    hour, _, minute = value.partition(":")
-    return time(int(hour), int(minute or 0))
 
 
 @dataclass(frozen=True)
@@ -46,18 +31,12 @@ class Entry:
 
     date: date_cls
     doctor: object
-    cabin: object              # Cabin or None
+    cabin: object              # Cabin or None — see day_columns()
     start: time
     end: time
-    source: str
-    pk: int | None             # the row this came from; None for clinic default
+    pk: int
     note: str = ""
     series_id: object = None   # groups the rows one recurring booking created
-
-    @property
-    def is_editable(self):
-        """Clinic-default hours are not a row, so there is nothing to edit."""
-        return self.pk is not None
 
     @property
     def label(self):
@@ -123,18 +102,11 @@ class Schedule:
 
     def _entries_for(self, doctor, day):
         rows = self._entries.get((doctor.pk, day), [])
-        if rows:
-            return [
-                Entry(day, doctor, row.cabin, row.start_time, row.end_time,
-                      SOURCE_SCHEDULED, row.pk, row.note, row.series_id)
-                for row in rows
-            ]
-
-        if day.weekday() not in settings.CLINIC.WORKING_DAYS:
-            return []
-        start = _parse_time(settings.CLINIC.CONSULTING_START)
-        end = _parse_time(settings.CLINIC.CONSULTING_END)
-        return [Entry(day, doctor, None, start, end, SOURCE_DEFAULT, None)]
+        return [
+            Entry(day, doctor, row.cabin, row.start_time, row.end_time,
+                  row.pk, row.note, row.series_id)
+            for row in rows
+        ]
 
 
 # ── Conflict detection (FR-17, FR-18) ────────────────────────────────────────
@@ -167,11 +139,6 @@ def find_conflicts(*, doctor, cabin, start, end, dates, exclude_pk=None, doctors
     * **FR-17** — two doctors cannot occupy the same cabin at overlapping times.
     * **FR-18** — one doctor cannot be in two cabins at once.
 
-    Checked against the *effective* schedule rather than the raw rows: clinic
-    default hours are a fallback for a doctor with no entry, not a commitment
-    anybody made, so they never count as occupying anything — the very first
-    entry ever added for a doctor would otherwise clash with their own default.
-
     Pass ``cabin=None`` to check only for a doctor already busy (FR-18) without
     naming a room — what cabin allocation uses before it has picked one.
     ``exclude_pk`` drops the row being edited, which otherwise clashes with
@@ -190,8 +157,6 @@ def find_conflicts(*, doctor, cabin, start, end, dates, exclude_pk=None, doctors
     for day in dates:
         for entry in schedule.entries_on(day):
             if entry.pk == exclude_pk:
-                continue
-            if entry.source == SOURCE_DEFAULT:
                 continue
             if not entry.overlaps(start, end):
                 continue
@@ -262,27 +227,19 @@ def month_weeks(anchor, schedule, *, per_day=3):
 
     ``per_day`` caps what is drawn; the remainder is reported as a count so a
     busy month stays legible rather than growing an unreadable cell (KAN-22 T-8).
-
-    Clinic-default hours are omitted, not drawn. Every doctor without a
-    schedule entry of their own falls back to them *every working day*, so
-    drawing them as entries filled every cell in the month with identical
-    chips and buried the handful of real sittings underneath — which is the
-    one thing the month view exists to show. The day view lists them properly
-    under "No cabin set".
     """
     weeks = []
     for week in Calendar(firstweekday=0).monthdatescalendar(anchor.year, anchor.month):
         row = []
         for day in week:
             entries = schedule.entries_on(day)
-            recorded = [e for e in entries if e.source != SOURCE_DEFAULT]
             row.append({
                 "date": day,
                 "in_month": day.month == anchor.month,
                 "is_today": day == timezone.localdate(),
                 "holiday": schedule.holidays.get(day),
-                "entries": recorded[:per_day],
-                "more": max(0, len(recorded) - per_day),
+                "entries": entries[:per_day],
+                "more": max(0, len(entries) - per_day),
             })
         weeks.append(row)
     return weeks

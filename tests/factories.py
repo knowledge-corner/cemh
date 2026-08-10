@@ -5,6 +5,7 @@ Plain functions with a defaults-dict rather than a factory library — one less
 dependency, and the call sites read clearly.
 """
 
+from datetime import time as time_cls
 from datetime import timedelta
 from decimal import Decimal
 
@@ -12,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from accounts.models import Role
-from appointments.models import Visit
+from appointments.models import DoctorSchedule, Visit
 from patients.models import Patient, PatientHistory
 
 User = get_user_model()
@@ -95,6 +96,23 @@ def make_visit(patient, doctor, **kwargs):
     )
     defaults.update(kwargs)
     return Visit.objects.create(**defaults)
+
+
+def give_wide_open_hours(doctor, *, days=30, start=None):
+    """
+    A doctor with hours on every date for the next ``days`` — the fixture the
+    old clinic-default-hours fallback used to provide for free. Tests that
+    only care about "this doctor has slots" call this once in setUp rather
+    than each hand-rolling a DoctorSchedule row per date they need; a test
+    that cares about a *specific* date's hours should still create its own
+    row instead.
+    """
+    start = start or timezone.localdate()
+    for offset in range(days):
+        DoctorSchedule.objects.create(
+            doctor=doctor, date=start + timedelta(days=offset),
+            start_time=time_cls(0, 0), end_time=time_cls(23, 45),
+        )
 
 
 def make_measurement(patient, **kwargs):

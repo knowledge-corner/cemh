@@ -18,7 +18,8 @@ from appointments import scheduling
 from appointments.models import ClinicHoliday, VisitStatus
 
 from .factories import (
-    make_doctor, make_patient, make_receptionist, make_visit, today_at,
+    give_wide_open_hours, make_doctor, make_patient, make_receptionist, make_visit,
+    today_at,
 )
 
 
@@ -31,6 +32,7 @@ class TestTheSlotGrid(TestCase):
 
     def setUp(self):
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
         self.tomorrow = timezone.localdate() + timedelta(days=1)
@@ -93,6 +95,7 @@ class TestWhatTheFormOffers(TestCase):
 
     def setUp(self):
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
         self.tomorrow = timezone.localdate() + timedelta(days=1)

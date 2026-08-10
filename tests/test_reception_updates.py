@@ -20,7 +20,8 @@ from appointments.models import (
 )
 
 from .factories import (
-    make_doctor, make_patient, make_receptionist, make_visit, today_at,
+    give_wide_open_hours, make_doctor, make_patient, make_receptionist, make_visit,
+    today_at,
 )
 
 
@@ -214,6 +215,7 @@ class TestPastDatesCannotBeBooked(TestCase):
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
         self.patient = make_patient()
 
     def _post(self, day, slot):
@@ -255,11 +257,12 @@ class TestDoctorAvailability(TestCase):
         self.assertFalse(scheduling.is_working_day(self.day, self.doctor))
         self.assertEqual(scheduling.available_slots(self.doctor, self.day), [])
 
-    def test_a_doctor_with_no_schedule_uses_the_clinic_default(self):
-        # A single-doctor clinic never has to fill in any of these tables.
-        self.assertTrue(scheduling.day_slots(self.day, self.doctor))
+    def test_a_doctor_with_no_schedule_has_no_slots(self):
+        # There is no clinic-wide default to fall back to any more —
+        # availability is read entirely off the calendar.
+        self.assertEqual(scheduling.day_slots(self.day, self.doctor), [])
 
-    def test_a_schedule_entry_replaces_the_clinic_default(self):
+    def test_a_schedule_entry_produces_its_own_slots(self):
         DoctorSchedule.objects.create(
             doctor=self.doctor, date=self.day,
             start_time=time(10, 0), end_time=time(11, 0), slot_minutes=30,
@@ -267,15 +270,14 @@ class TestDoctorAvailability(TestCase):
         slots = scheduling.day_slots(self.day, self.doctor)
         self.assertEqual(len(slots), 2)
 
-    def test_an_entry_on_another_date_does_not_narrow_this_one(self):
-        # Every entry names its own date now — there is no "doctor's ordinary
-        # week" narrowing every date they have no row for, so an entry
-        # elsewhere leaves this date exactly as bookable as with no rows at all.
+    def test_an_entry_on_another_date_does_not_cover_this_one(self):
+        # Every entry names its own date — an entry elsewhere does not make
+        # this date bookable, the same as if the doctor had no rows at all.
         DoctorSchedule.objects.create(
             doctor=self.doctor, date=self.day + timedelta(days=1),
             start_time=time(10, 0), end_time=time(13, 0),
         )
-        self.assertTrue(scheduling.is_working_day(self.day, self.doctor))
+        self.assertFalse(scheduling.is_working_day(self.day, self.doctor))
 
     def test_two_entries_on_one_date_both_contribute_their_slots(self):
         # A morning and an evening clinic on the same day are two entries, not
@@ -300,6 +302,7 @@ class TestAmendingABooking(TestCase):
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
         self.visit = make_visit(make_patient(), self.doctor, start=_tomorrow_at(11))
 
     def test_the_edit_screen_opens(self):
@@ -521,6 +524,7 @@ class TestTheClinicIsOpenEveryDay(TestCase):
 
     def setUp(self):
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
         self.client.force_login(make_receptionist())
         self.sunday = timezone.localdate() + timedelta(days=1)
         while self.sunday.weekday() != 6:
@@ -533,7 +537,7 @@ class TestTheClinicIsOpenEveryDay(TestCase):
     def test_slots_are_offered_on_a_sunday(self):
         self.assertTrue(scheduling.available_slots(self.doctor, self.sunday))
 
-    def test_every_day_of_the_week_is_bookable_by_default(self):
+    def test_every_day_of_the_week_is_bookable_when_scheduled(self):
         day = timezone.localdate() + timedelta(days=1)
         for _ in range(7):
             self.assertTrue(

@@ -6,15 +6,10 @@ in step with reality. What a day looks like is decided by the most specific rule
 that applies, in this order:
 
   1. **Clinic holiday** — nobody works, so there are no slots at all.
-  2. **Schedule entry** — this doctor's hours for this one date.
-  3. **Clinic default** — the consulting hours in ``config/clinic.py``, used
-     on any date a doctor has no entry of their own. A single-doctor clinic
-     never has to add a single row.
-
-The clinic is **open every day** unless one of those says otherwise. There is no
-weekend rule: a Sunday is a working day until somebody enters it as a holiday or
-gives a doctor hours that say otherwise. Closure is always something a person
-recorded, never something the software assumed.
+  2. **Schedule entry** — this doctor's hours for this one date. There is no
+     other tier below this one: a doctor with no entry for a date simply has
+     no slots on it, rather than falling back to any clinic-wide notion of
+     "normal hours". Availability is read off the calendar, not assumed.
 
 Any slot already held by an active visit is then subtracted.
 
@@ -24,17 +19,12 @@ the same instant and both accept. This module makes that race rare; the
 constraint makes it harmless.
 """
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.utils import timezone
 
 from .models import ClinicHoliday, DoctorSchedule, Visit
-
-
-def _parse_time(value):
-    hour, _, minute = value.partition(":")
-    return time(int(hour), int(minute or 0))
 
 
 def _aware(day, at):
@@ -59,17 +49,16 @@ def is_working_day(day, doctor=None):
     """
     Does the clinic run on ``day`` — and, if a doctor is named, do they work it?
 
-    Usable without a doctor so the booking form can rule a date out before a
-    doctor has been chosen.
+    Without a doctor, only a holiday closes the clinic — there is no other
+    clinic-wide notion of "days it runs" any more. With one, the answer comes
+    straight off the calendar: a doctor works a date only if they have a
+    schedule entry for it, never because of what day of the week it is.
     """
     if is_holiday(day):
         return False
     if doctor is None:
-        return day.weekday() in settings.CLINIC.WORKING_DAYS
-
-    if DoctorSchedule.objects.filter(doctor=doctor, date=day).exists():
         return True
-    return day.weekday() in settings.CLINIC.WORKING_DAYS
+    return DoctorSchedule.objects.filter(doctor=doctor, date=day).exists()
 
 
 def booking_window():
@@ -82,26 +71,18 @@ def sittings_for(day, doctor=None):
     """
     The stretches of time worked on ``day``, as ``(start, end, slot_minutes)``.
 
-    A doctor with a morning and an evening clinic returns two.
+    A doctor with a morning and an evening clinic returns two. Nothing at all
+    if they have no schedule entry for this date — there is no clinic-default
+    stretch to fall back to.
     """
-    if is_holiday(day):
+    if is_holiday(day) or doctor is None:
         return []
 
-    if doctor is not None:
-        entries = DoctorSchedule.objects.filter(doctor=doctor, date=day)
-        if entries.exists():
-            return [
-                (e.start_time, e.end_time, e.slot_minutes or default_slot_minutes())
-                for e in entries.order_by("start_time")
-            ]
-
-    if day.weekday() not in settings.CLINIC.WORKING_DAYS:
-        return []
-    return [(
-        _parse_time(settings.CLINIC.CONSULTING_START),
-        _parse_time(settings.CLINIC.CONSULTING_END),
-        default_slot_minutes(),
-    )]
+    entries = DoctorSchedule.objects.filter(doctor=doctor, date=day)
+    return [
+        (e.start_time, e.end_time, e.slot_minutes or default_slot_minutes())
+        for e in entries.order_by("start_time")
+    ]
 
 
 def day_slots(day, doctor=None):

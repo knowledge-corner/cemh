@@ -114,19 +114,15 @@ OPTIONAL_APPS = tuple(
 
 # ── Consulting hours ──────────────────────────────────────────────────────────
 #
-# The fallback used when a doctor has no working week of their own. Per-doctor
-# days and hours now live in Doctor availability, and take precedence over
-# everything here.
-
-# Monday = 0 … Sunday = 6. **Every day by default.** The clinic is treated as
-# open unless something explicit says otherwise, and there are only two such
-# things: a date entered under Clinic holidays, or a doctor's own working week.
-# A blanket "Sundays are shut" rule was wrong for this clinic, and guessing it
-# for the next one would be no better.
+# Not consulted for scheduling any more — a doctor's hours are read straight
+# off the calendar (appointments.models.DoctorSchedule); a day they have no
+# entry for is a day they are not working, full stop. What is left here feeds
+# only the public website's SEO structured data (website/seo.py's
+# OpeningHoursSpecification), which needs a machine-readable day list and
+# times rather than the free text in *_DISPLAY below.
 WORKING_DAYS = tuple(
     int(d) for d in os.environ.get("WORKING_DAYS", "0,1,2,3,4,5,6").split(",") if d.strip()
 )
-
 CONSULTING_START = os.environ.get("CONSULTING_START", "10:00")
 CONSULTING_END = os.environ.get("CONSULTING_END", "18:00")
 

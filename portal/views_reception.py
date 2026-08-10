@@ -834,9 +834,9 @@ def slot_options(request):
         "free_count": sum(1 for s in slots if s["state"] == scheduling.SLOT_FREE),
         "doctor": doctor,
         "day": day,
-        # Asked per doctor, not clinic-wide: the clinic is open every day now,
-        # so a day with no slots means either a holiday or this doctor not
-        # working it, and the message needs to say which.
+        # Asked per doctor, not clinic-wide: a day with no slots means either
+        # a holiday or this doctor having no schedule entry for it, and the
+        # message needs to say which.
         "closed": bool(day and doctor) and not scheduling.is_working_day(day, doctor),
         "holiday": ClinicHoliday.objects.filter(date=day).first() if day else None,
     })

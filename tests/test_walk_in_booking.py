@@ -8,15 +8,13 @@ straight in today's waiting room rather than behind a phone call to confirm it
 that will never happen.
 """
 
-from datetime import time, timedelta
-
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from appointments.models import ClinicHoliday, DoctorSchedule, Visit, VisitStatus
+from appointments.models import ClinicHoliday, Visit, VisitStatus
 
-from .factories import make_doctor, make_patient, make_receptionist
+from .factories import give_wide_open_hours, make_doctor, make_patient, make_receptionist
 
 
 class WalkInTestCase(TestCase):
@@ -29,15 +27,9 @@ class WalkInTestCase(TestCase):
         # Wide open every day, covering whichever hour the suite happens to
         # run at — a walk-in test that only failed after 6pm would be
         # exactly the kind of flakiness nobody notices until it does. Today
-        # and the next fortnight, not just today: a doctor with any entry at
-        # all stops falling back to the clinic's default hours on the dates
-        # that have none, and "tomorrow" is used by several of these tests.
-        today = timezone.localdate()
-        for offset in range(14):
-            DoctorSchedule.objects.create(
-                doctor=self.doctor, date=today + timedelta(days=offset),
-                start_time=time(0, 0), end_time=time(23, 45),
-            )
+        # and the next fortnight, not just today: "tomorrow" is used by
+        # several of these tests.
+        give_wide_open_hours(self.doctor, days=14)
 
     def _walk_in(self, **overrides):
         payload = {

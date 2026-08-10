@@ -5,9 +5,9 @@ The story is mostly about a screen, but the part that can silently go wrong is
 the conflict check, because it has to reason about the *effective* schedule
 rather than the rows in the table. Every entry names its own date now — there
 is no separate weekly pattern and no override replacing it, just rows, and a
-date with nothing entered falls back to the clinic-wide default hours, which
-are a fallback rather than a commitment. Get any of that wrong and the check
-either blocks something legal or, worse, lets two doctors into one room.
+date with nothing entered simply has nobody working it. Get any of that wrong
+and the check either blocks something legal or, worse, lets two doctors into
+one room.
 
 Dates are pinned to fixed weekdays rather than taken as offsets from today, so
 a recurring booking always lands on a predictable day and the failure reads as
@@ -224,11 +224,8 @@ class TestTheViews(CalendarTestCase):
         cells = [c for week in response.context["weeks"] for c in week]
         self.assertTrue(all(len(cell["entries"]) <= 3 for cell in cells))
 
-    def test_doctors_on_clinic_default_hours_are_not_listed(self):
-        # Neither doctor has rows, so both fall back to clinic hours on every
-        # working day. Drawing them filled every cell in the month with
-        # identical chips and buried the real sittings underneath — which only
-        # a browser showed, because the count assertions all still passed.
+    def test_a_doctor_with_no_rows_is_not_listed(self):
+        # Neither doctor has a row for this date, so neither is drawn.
         response = self.client.get(
             reverse("reception_calendar"), {"date": self.monday.isoformat()}
         )
@@ -238,9 +235,9 @@ class TestTheViews(CalendarTestCase):
         )
         self.assertEqual(cell["entries"], [])
 
-    def test_they_are_not_summarised_either(self):
-        # The month view says nothing about clinic-default hours at all now —
-        # not a chip, not a count. The day view is where they are found.
+    def test_an_unscheduled_doctor_is_not_summarised_either(self):
+        # No chip, no count, nothing — a doctor with no entry for a date is
+        # simply absent from the month view.
         response = self.client.get(
             reverse("reception_calendar"), {"date": self.monday.isoformat()}
         )
@@ -425,12 +422,10 @@ class TestWhatActuallyHappensOnADate(CalendarTestCase):
             start_time=time(10), end_time=time(13),
         )
         tuesday = self.monday + timedelta(days=1)
+        # No entry of its own on Tuesday, so nothing carries Monday's cabin
+        # and hours over — there is no fallback for a date left blank.
         entries = self.schedule([self.asha], on=tuesday).entries_on(tuesday)
-        # No entry of its own on Tuesday, so it falls back to the clinic
-        # default rather than carrying Monday's cabin and hours over.
-        self.assertEqual(len(entries), 1)
-        self.assertIsNone(entries[0].cabin)
-        self.assertEqual(entries[0].source, clinic_calendar.SOURCE_DEFAULT)
+        self.assertEqual(entries, [])
 
     def test_two_entries_on_one_date_both_appear(self):
         # A morning and an evening clinic on the same day are two entries, not
@@ -448,14 +443,11 @@ class TestWhatActuallyHappensOnADate(CalendarTestCase):
         self.assertEqual({(e.cabin, e.start) for e in entries},
                           {(self.one, time(9)), (self.two, time(17))})
 
-    def test_a_doctor_with_no_rows_falls_back_to_clinic_hours(self):
-        # And is shown, rather than left off. Those hours are genuinely
-        # bookable, so a calendar that hides them disagrees with the booking
-        # form — in the direction that puts a patient in front of nobody.
-        entries = self.schedule([self.asha]).entries_on(self.monday)
-        self.assertEqual(len(entries), 1)
-        self.assertIsNone(entries[0].cabin)
-        self.assertEqual(entries[0].source, clinic_calendar.SOURCE_DEFAULT)
+    def test_a_doctor_with_no_rows_has_no_entries(self):
+        # No clinic-wide default to fall back to — a doctor with no entry for
+        # this date simply is not working it, agreeing with the booking form,
+        # which would offer them no slots either.
+        self.assertEqual(self.schedule([self.asha]).entries_on(self.monday), [])
 
     def test_a_holiday_empties_the_day(self):
         DoctorSchedule.objects.create(
@@ -542,9 +534,9 @@ class TestConflicts(CalendarTestCase):
         row = DoctorSchedule.objects.get(doctor=self.vikram)
         self.assertEqual(row.cabin, self.one)
 
-    def test_the_first_row_for_a_doctor_does_not_clash_with_their_own_default(self):
-        # Clinic-default hours are a fallback, not a commitment. Counting them
-        # would make it impossible to enter the very first row for a doctor.
+    def test_the_first_row_for_a_doctor_never_clashes_with_anything(self):
+        # A doctor with no rows at all has nothing on record to clash with —
+        # their very first entry always goes in cleanly.
         self._post()
         self.assertTrue(DoctorSchedule.objects.filter(doctor=self.asha).exists())
 

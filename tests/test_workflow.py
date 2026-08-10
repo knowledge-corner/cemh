@@ -20,8 +20,8 @@ from patients.models import Patient
 from pharmacy.models import Prescription, PrescriptionItem
 
 from .factories import (
-    later_today, make_adult_patient, make_doctor, make_patient, make_receptionist,
-    make_user, make_visit, today_at,
+    give_wide_open_hours, later_today, make_adult_patient, make_doctor, make_patient,
+    make_receptionist, make_user, make_visit, today_at,
 )
 
 PASSWORD = "testpass12345"
@@ -37,14 +37,16 @@ def next_working_day(start=None):
 class TestScheduling(TestCase):
     def setUp(self):
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
 
     def test_slots_are_offered_on_a_working_day(self):
         self.assertTrue(scheduling.available_slots(self.doctor, next_working_day()))
 
     def test_no_slots_on_a_day_somebody_marked_closed(self):
-        # The clinic is open every day now, including Sundays. A closed day has
-        # to be entered as a holiday — this test used to walk forward until it
-        # found a weekend, which no longer terminates.
+        # A holiday closes the clinic outright, overriding even a doctor who
+        # has an entry for that date — this test used to walk forward until
+        # it found a weekend, which no longer terminates now there is no
+        # weekend rule.
         from appointments.models import ClinicHoliday
 
         day = timezone.localdate() + timedelta(days=1)
@@ -53,11 +55,15 @@ class TestScheduling(TestCase):
         self.assertFalse(scheduling.is_working_day(day))
         self.assertEqual(scheduling.available_slots(self.doctor, day), [])
 
-    def test_a_sunday_is_bookable_unless_marked_otherwise(self):
+    def test_a_sunday_is_bookable_like_any_other_date_with_an_entry(self):
+        # There is no weekend rule to test in isolation any more — a Sunday
+        # is bookable exactly when the doctor has a schedule entry for it,
+        # the same as any other day. give_wide_open_hours already covers
+        # this doctor's Sundays along with everything else.
         day = timezone.localdate() + timedelta(days=1)
         while day.weekday() != 6:            # 6 = Sunday
             day += timedelta(days=1)
-        self.assertTrue(scheduling.is_working_day(day))
+        self.assertTrue(scheduling.is_working_day(day, self.doctor))
         self.assertTrue(scheduling.available_slots(self.doctor, day))
 
     def test_a_booked_slot_is_no_longer_offered(self):
@@ -80,7 +86,7 @@ class TestScheduling(TestCase):
 
     def test_past_slots_are_hidden_unless_asked_for(self):
         today = timezone.localdate()
-        if not scheduling.is_working_day(today):
+        if not scheduling.is_working_day(today, self.doctor):
             self.skipTest("Today is not a consulting day")
         offered = scheduling.available_slots(self.doctor, today)
         everything = scheduling.available_slots(self.doctor, today, include_past=True)
@@ -91,6 +97,7 @@ class TestReceptionBooking(TestCase):
     def setUp(self):
         self.receptionist = make_receptionist()
         self.doctor = make_doctor()
+        give_wide_open_hours(self.doctor)
         self.patient = make_patient()
         self.client.force_login(self.receptionist)
         self.day = next_working_day()

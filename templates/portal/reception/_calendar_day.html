@@ -4,10 +4,9 @@ One date, one column per cabin (FR-4).
 Cabin-oriented because "which room is free at three" is the question this view
 exists to answer, and it cannot be read off a list ordered by doctor.
 
-Hours with no cabin get their own column rather than being hidden. A doctor with
-no schedule rows at all still works the clinic's default hours and can still be
-booked, so leaving them off would make the calendar disagree with the booking
-form — quietly, and in the direction that puts a patient in front of nobody.
+A doctor with no schedule row for this date is simply absent from it — there is
+no clinic-default fallback any more, so the calendar and the booking form always
+agree on who is actually working.
 {% endcomment %}
 
 {% if holiday %}
@@ -73,48 +72,46 @@ form — quietly, and in the direction that puts a patient in front of nobody.
                   <p class="sitting__time mono">{{ entry.label }}</p>
                   <p class="sitting__doctor">{{ entry.doctor.display_name }}</p>
 
-                  {% if entry.is_editable %}
-                    {% comment %}
-                    A doctor only ever sees their own entries here (see
-                    _visible_doctors), so no per-entry ownership check is
-                    needed on top of is_doctor_view — the endpoint these post
-                    to checks regardless. "Remove the whole booking" is left
-                    out for a doctor: re-uploading a schedule is the tool for
-                    changing a recurring pattern of their own.
-                    {% endcomment %}
-                    <div class="sitting__actions">
-                      {% if entry.series_id %}
+                  {% comment %}
+                  A doctor only ever sees their own entries here (see
+                  _visible_doctors), so no per-entry ownership check is
+                  needed on top of is_doctor_view — the endpoint these post
+                  to checks regardless. "Remove the whole booking" is left
+                  out for a doctor: re-uploading a schedule is the tool for
+                  changing a recurring pattern of their own.
+                  {% endcomment %}
+                  <div class="sitting__actions">
+                    {% if entry.series_id %}
+                      <form method="post"
+                            action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
+                            onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input type="hidden" name="scope" value="date">
+                        <button class="btn btn--secondary" type="submit">
+                          Remove this date
+                        </button>
+                      </form>
+                      {% if not is_doctor_view %}
                         <form method="post"
                               action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
-                              onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
+                              onsubmit="return confirm('Remove the whole booking for {{ entry.doctor.display_name|escapejs }}, every date it covers — not just {{ anchor|date:'j M'|escapejs }}?');">
                           {% csrf_token %}
                           <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <input type="hidden" name="scope" value="date">
-                          <button class="btn btn--secondary" type="submit">
-                            Remove this date
-                          </button>
-                        </form>
-                        {% if not is_doctor_view %}
-                          <form method="post"
-                                action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
-                                onsubmit="return confirm('Remove the whole booking for {{ entry.doctor.display_name|escapejs }}, every date it covers — not just {{ anchor|date:'j M'|escapejs }}?');">
-                            {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                            <input type="hidden" name="scope" value="series">
-                            <button class="btn btn--secondary" type="submit">Remove whole booking</button>
-                          </form>
-                        {% endif %}
-                      {% else %}
-                        <form method="post"
-                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
-                              onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
-                          {% csrf_token %}
-                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <button class="btn btn--secondary" type="submit">Remove</button>
+                          <input type="hidden" name="scope" value="series">
+                          <button class="btn btn--secondary" type="submit">Remove whole booking</button>
                         </form>
                       {% endif %}
-                    </div>
-                  {% endif %}
+                    {% else %}
+                      <form method="post"
+                            action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
+                            onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button class="btn btn--secondary" type="submit">Remove</button>
+                      </form>
+                    {% endif %}
+                  </div>
                 </div>
               {% endfor %}
             </td>
