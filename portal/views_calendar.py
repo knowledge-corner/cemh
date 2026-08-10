@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 
 from django.contrib import messages
 from django.db.models import ProtectedError
-from django.http import HttpResponse
+from django.http import HttpResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -134,6 +134,21 @@ def calendar_view(request):
 
     schedule = clinic_calendar.Schedule(doctors, start=span_start, end=span_end)
 
+    # A submission that came back with conflicts to resolve — see
+    # add_calendar_event, which stashes the raw POST data here rather than
+    # rendering a response itself, so the add-event pop-up can be reopened
+    # exactly as it was left, values intact, with the Conflict Detected
+    # dialog on top of it. Read once and discarded, the same as a Django
+    # message, so refreshing this page never reopens it a second time.
+    pending = request.session.pop("pending_event_conflict", None)
+    if pending:
+        event_form = clinic_forms.CalendarEventForm(QueryDict(pending))
+        event_form.is_valid()
+        event_conflicts = getattr(event_form, "_conflicts", [])
+    else:
+        event_form = clinic_forms.CalendarEventForm(initial={"date": anchor})
+        event_conflicts = []
+
     context = {
         "view": view,
         "anchor": anchor,
@@ -144,7 +159,9 @@ def calendar_view(request):
         "chosen_doctor": chosen_doctor,
         "chosen_specialisation": chosen_specialisation,
         "is_doctor_view": _is_doctor(request.user),
-        "event_form": clinic_forms.CalendarEventForm(initial={"date": anchor}),
+        "event_form": event_form,
+        "reopen_event_modal": bool(pending),
+        "event_conflicts": event_conflicts,
         "cabin_form": clinic_forms.CabinForm(),
         "all_cabins": all_cabins,
         # Kept on every navigation link so a filter survives moving month
@@ -291,7 +308,17 @@ def add_calendar_event(request):
         return redirect("reception_calendar")
 
     form = clinic_forms.CalendarEventForm(request.POST)
-    if not form.is_valid():
+    is_valid = form.is_valid()
+
+    if getattr(form, "_conflicts", None):
+        # Nothing has been written. The submission is held rather than
+        # refused outright — calendar_view reopens this same form, values
+        # intact, with the conflicting dates named and a choice: skip just
+        # those dates, or go back and change the booking.
+        request.session["pending_event_conflict"] = request.POST.urlencode()
+        return _back(request)
+
+    if not is_valid:
         for field, errors in form.errors.items():
             for error in errors:
                 label = "" if field == "__all__" else f"{form.fields[field].label}: "

@@ -530,7 +530,7 @@ class TestConflicts(CalendarTestCase):
                              first_name="Third", last_name="Doctor")
         self._post(doctor=third.pk, start_time="11:00", end_time="14:00")
         page = self.client.get(reverse("reception_calendar"))
-        self.assertContains(page, "Conflict detected")
+        self.assertContains(page, "Conflict Detected")
         self.assertContains(page, f"{self.monday:%d-%b-%Y}")
 
     def test_the_same_room_at_a_different_time_is_fine(self):
@@ -581,6 +581,82 @@ class TestConflicts(CalendarTestCase):
     def test_a_zero_length_entry_is_refused(self):
         self._post(start_time="10:00", end_time="10:00")
         self.assertFalse(DoctorSchedule.objects.exists())
+
+
+# ── The Conflict Detected dialog ─────────────────────────────────────────────
+
+class TestConflictDialog(CalendarTestCase):
+    """
+    A submission with conflicting dates is held rather than refused outright:
+    nothing is written, and the calendar reopens the same form with the
+    conflicting dates named and a choice — skip just those, or go back and
+    change the booking (see CalendarEventForm._clean_hours and
+    views_calendar.calendar_view's "pending_event_conflict" handling).
+    """
+
+    def _post(self, **overrides):
+        payload = {
+            "event_type": "hours",
+            "doctor": self.asha.pk,
+            "date": self.monday.isoformat(),
+            "is_recurring": "1", "weekdays": ["M"],
+            "recur_until": (self.monday + timedelta(weeks=2)).isoformat(),
+            "start_time": "10:00",
+            "end_time": "13:00",
+        }
+        payload.update(overrides)
+        return self.client.post(reverse("reception_add_calendar_event"), payload)
+
+    def test_a_conflicting_submission_creates_nothing_yet(self):
+        third_monday = self.monday + timedelta(weeks=2)
+        DoctorSchedule.objects.create(
+            doctor=self.asha, date=third_monday, cabin=self.one,
+            start_time=time(11), end_time=time(12),
+        )
+        self._post()
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 1)
+
+    def test_the_dialog_names_only_the_conflicting_date(self):
+        third_monday = self.monday + timedelta(weeks=2)
+        DoctorSchedule.objects.create(
+            doctor=self.asha, date=third_monday, cabin=self.one,
+            start_time=time(11), end_time=time(12),
+        )
+        self._post()
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertContains(page, "Conflict Detected")
+        self.assertContains(page, f"{third_monday:%d-%b-%Y}")
+        self.assertNotContains(page, f"{self.monday:%d-%b-%Y}, 10:00 AM")
+
+    def test_skipping_creates_every_date_except_the_conflicting_one(self):
+        third_monday = self.monday + timedelta(weeks=2)
+        DoctorSchedule.objects.create(
+            doctor=self.asha, date=third_monday, cabin=self.one,
+            start_time=time(11), end_time=time(12),
+        )
+        self._post(skip_conflicts="1")
+        created = DoctorSchedule.objects.filter(doctor=self.asha, start_time=time(10))
+        self.assertEqual(
+            set(created.values_list("date", flat=True)),
+            {self.monday, self.monday + timedelta(weeks=1)},
+        )
+
+    def test_the_dialog_does_not_reappear_after_being_shown_once(self):
+        third_monday = self.monday + timedelta(weeks=2)
+        DoctorSchedule.objects.create(
+            doctor=self.asha, date=third_monday, cabin=self.one,
+            start_time=time(11), end_time=time(12),
+        )
+        self._post()
+        self.client.get(reverse("reception_calendar"))
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertNotContains(page, "Conflict Detected")
+
+    def test_no_conflict_creates_everything_silently(self):
+        self._post()
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 3)
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertNotContains(page, "Conflict Detected")
 
 
 # ── Adding through the pop-up (FR-8 … FR-13, FR-20) ──────────────────────────

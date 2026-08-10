@@ -21,9 +21,17 @@ There is no cabin field. Which room a booking gets is worked out once the dates
 and time are known — see appointments.calendar.allocate_cabins — so asking
 reception to pick one here would be asking them to already know the answer this
 form exists to work out.
+
+A submission with conflicting dates does not fail outright. It is held —
+see calendar_view's "pending_event_conflict" handling — and this pop-up is
+reopened exactly as it was left, values intact, underneath the Conflict
+Detected dialog below. "Skip Conflicting Dates" resubmits this same form
+with that choice made; "Redo Schedule" simply closes the dialog, leaving
+the form open to edit.
 {% endcomment %}
 
-<div class="modal-backdrop" id="event-modal" hidden data-close-on-backdrop>
+<div class="modal-backdrop" id="event-modal" {% if not reopen_event_modal %}hidden{% endif %}
+     data-close-on-backdrop>
   <div class="modal modal--narrow" role="dialog" aria-modal="true"
        aria-labelledby="event-modal-title">
 
@@ -32,7 +40,7 @@ form exists to work out.
       <button type="button" class="modal__close" aria-label="Close" data-close-modal>&times;</button>
     </div>
 
-    <form method="post" action="{% url 'reception_add_calendar_event' %}">
+    <form method="post" action="{% url 'reception_add_calendar_event' %}" id="event-modal-form">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
 
@@ -164,3 +172,48 @@ form exists to work out.
     </form>
   </div>
 </div>
+
+{% comment %}
+Shown stacked on top of the reopened form above, only when
+add_calendar_event held a submission back for conflicting dates. Redo
+Schedule needs no server round trip — the form underneath is already
+sitting there, values intact, ready to edit. Skip Conflicting Dates submits
+that same form again, with the extra field its button carries added to the
+post — see CalendarEventForm._clean_hours, which then creates every date
+except the ones named here.
+{% endcomment %}
+{% if event_conflicts %}
+  <div class="modal-backdrop" id="conflict-modal" data-close-on-backdrop>
+    <div class="modal modal--narrow" role="alertdialog" aria-modal="true"
+         aria-labelledby="conflict-modal-title">
+
+      <div class="modal__header">
+        <h2 class="modal__title" id="conflict-modal-title">Conflict Detected</h2>
+      </div>
+
+      <div class="modal__body">
+        <p>
+          The following occurrence{{ event_conflicts|pluralize }}
+          conflict{{ event_conflicts|pluralize:"s," }} with existing doctor
+          working hours:
+        </p>
+        <ul>
+          {% for occurrence in event_conflicts %}
+            <li>{{ occurrence }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="modal__footer">
+        <button type="button" class="btn btn--secondary"
+                onclick="document.getElementById('conflict-modal').hidden = true">
+          Redo Schedule
+        </button>
+        <button type="submit" name="skip_conflicts" value="1" form="event-modal-form"
+                class="btn btn--primary">
+          Skip Conflicting Dates
+        </button>
+      </div>
+    </div>
+  </div>
+{% endif %}

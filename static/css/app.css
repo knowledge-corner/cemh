@@ -789,6 +789,12 @@ p { margin: 0 0 .75rem; }
 
 .modal__body { padding: 1.25rem; max-height: 65vh; overflow-y: auto; }
 
+/* Conflict Detected dialog (KAN-22) — the occurrence list is the whole
+   point of the dialog, so it gets normal browser bullets rather than the
+   list-style: none most of this app's <ul>s use for chip-like rows. */
+.modal__body ul { margin: .5rem 0 0; padding-left: 1.25rem; }
+.modal__body li { margin-bottom: .25rem; }
+
 .modal__footer {
   display: flex;
   justify-content: flex-end;

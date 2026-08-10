@@ -793,21 +793,11 @@ def _end_of_month(day):
     return day.replace(day=last_day)
 
 
-def _conflict_message(conflict):
-    """
-    "Conflict detected: ..." — named date and time, not a jargon reason code.
-
-    Every conflict this form can raise against the doctor themselves (cabin
-    is never chosen here, so a room clash is never this doctor's to read
-    about) is the same shape: they already have hours on record that overlap
-    what is being entered.
-    """
+def _conflict_occurrence(conflict):
+    """One line for the Conflict Detected dialog: the date and the existing
+    hours it clashes with — named plainly, not as a jargon reason code."""
     entry = conflict.entry
-    return (
-        f"Conflict detected: {entry.doctor.display_name} already has working "
-        f"hours configured for {conflict.day:%d-%b-%Y} from "
-        f"{entry.start:%I:%M %p} to {entry.end:%I:%M %p}."
-    )
+    return f"{conflict.day:%d-%b-%Y}, {entry.start:%I:%M %p} to {entry.end:%I:%M %p}"
 
 
 class CalendarEventForm(forms.Form):
@@ -998,32 +988,44 @@ class CalendarEventForm(forms.Form):
         doctor_clashes = clinic_calendar.find_conflicts(
             doctor=cleaned["doctor"], cabin=None, start=start, end=end, dates=dates,
         )
-        if doctor_clashes:
-            for conflict in doctor_clashes[:5]:
-                self.add_error(None, _conflict_message(conflict))
-            if len(doctor_clashes) > 5:
-                self.add_error(
-                    None,
-                    f"…and {len(doctor_clashes) - 5} more dates with the same clash.",
-                )
+        clashed = {conflict.day for conflict in doctor_clashes}
+        occurrences = [_conflict_occurrence(conflict) for conflict in doctor_clashes]
+
+        # Cabin availability is only worth checking for the dates that do not
+        # already clash on the doctor themselves — one clash there means the
+        # date is out regardless of what a room would say.
+        remaining = [d for d in dates if d not in clashed]
+        if remaining:
+            by_date, unavailable = clinic_calendar.allocate_cabins(
+                doctor=cleaned["doctor"], dates=remaining, start=start, end=end,
+            )
+        else:
+            by_date, unavailable = {}, []
+        occurrences += [
+            f"{day:%d-%b-%Y}, {start:%I:%M %p} to {end:%I:%M %p} — no cabin available"
+            for day in unavailable
+        ]
+
+        conflicting = clashed | set(unavailable)
+        if conflicting and not self.data.get("skip_conflicts"):
+            # Nothing is written yet. add_calendar_event reopens this same
+            # form with these occurrences named, so reception can choose to
+            # skip just the conflicting dates or go back and change the
+            # booking — rather than the whole recurring run being refused
+            # with no way to see which date was the problem.
+            self._conflicts = occurrences
             return
 
-        by_date, unavailable = clinic_calendar.allocate_cabins(
-            doctor=cleaned["doctor"], dates=dates, start=start, end=end,
-        )
-        if unavailable:
-            shown = ", ".join(f"{d:%d-%b-%Y}" for d in unavailable[:5])
-            if len(unavailable) > 5:
-                shown += f" and {len(unavailable) - 5} more"
+        final_dates = [d for d in dates if d not in conflicting]
+        if not final_dates:
             self.add_error(
                 None,
-                f"Conflict detected: no cabin is free for "
-                f"{cleaned['doctor'].display_name} on {shown} from "
-                f"{start:%I:%M %p} to {end:%I:%M %p}.",
+                "Every date in this booking conflicts with hours already on "
+                "record. Change the doctor, time or dates and try again.",
             )
             return
 
-        self._planned_dates = dates
+        self._planned_dates = final_dates
         self._cabin_by_date = by_date
 
     def _clean_holiday(self, cleaned):
