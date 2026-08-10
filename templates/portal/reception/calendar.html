@@ -62,16 +62,18 @@ it.
       </select>
     {% endif %}
 
-    <select class="input" name="specialisation"
-            aria-label="Filter the calendar by specialisation"
-            onchange="this.form.submit()">
-      <option value="">All specialisations</option>
-      {% for s in specialisations %}
-        <option value="{{ s.pk }}"{% if chosen_specialisation and chosen_specialisation.pk == s.pk %} selected{% endif %}>
-          {{ s.name }}
-        </option>
-      {% endfor %}
-    </select>
+    {% if not is_doctor_view %}
+      <select class="input" name="specialisation"
+              aria-label="Filter the calendar by specialisation"
+              onchange="this.form.submit()">
+        <option value="">All specialisations</option>
+        {% for s in specialisations %}
+          <option value="{{ s.pk }}"{% if chosen_specialisation and chosen_specialisation.pk == s.pk %} selected{% endif %}>
+            {{ s.name }}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
     <noscript><button class="btn btn--secondary" type="submit">Filter</button></noscript>
   </form>
 
