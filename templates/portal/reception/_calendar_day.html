@@ -108,16 +108,6 @@ form — quietly, and in the direction that puts a patient in front of nobody.
                 <div class="sitting{% if entry.away %} sitting--away{% endif %}">
                   <p class="sitting__time mono">{{ entry.label }}</p>
                   <p class="sitting__doctor">{{ entry.doctor.display_name }}</p>
-                  <p class="sitting__meta faint">
-                    {% if entry.is_recurring %}
-                      Every {{ anchor|date:"l" }}
-                    {% elif entry.is_editable %}
-                      This date only
-                    {% else %}
-                      Clinic default hours &mdash; no cabin set
-                    {% endif %}
-                  </p>
-                  {% if entry.note %}<p class="sitting__meta">{{ entry.note }}</p>{% endif %}
                   {% if entry.away %}
                     <p class="badge badge--warning">Away — recorded as leave</p>
                   {% endif %}

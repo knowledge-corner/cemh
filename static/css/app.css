@@ -1371,7 +1371,6 @@ p { margin: 0 0 .75rem; }
 .sitting p { margin: 0 0 .125rem; }
 .sitting__time   { font-weight: 700; font-size: .8125rem; }
 .sitting__doctor { font-weight: 600; font-size: .8125rem; }
-.sitting__meta   { font-size: .6875rem; }
 .sitting__actions {
   display: flex;
   flex-wrap: wrap;
