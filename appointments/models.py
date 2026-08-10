@@ -448,23 +448,20 @@ class VisitStatusEvent(models.Model):
 #
 # Slots used to come purely from the clinic-wide consulting hours in
 # config/clinic.py. That is fine for one doctor working fixed hours, but a real
-# clinic has doctors with different days, split morning and evening sittings,
-# public holidays and leave. The three models below layer over that default,
-# most specific first:
+# clinic has doctors with different days and split morning and evening
+# sittings. The two models below layer over that default, most specific first:
 #
-#   1. DoctorLeave      — this doctor is away, all day or for part of it
-#   2. ScheduleOverride — this doctor works different hours on this one date
-#   3. DoctorSchedule   — this doctor's ordinary week
-#   4. ClinicHoliday    — the clinic is shut, for everyone
+#   1. DoctorSchedule — this doctor's hours on this one date
+#   2. ClinicHoliday  — the clinic is shut, for everyone
 #
 # Nothing here stores individual slots. Slots stay derived, so there is still no
 # table of empty rows to keep in step with reality.
-
-
-WEEKDAYS = [
-    (0, "Monday"), (1, "Tuesday"), (2, "Wednesday"), (3, "Thursday"),
-    (4, "Friday"), (5, "Saturday"), (6, "Sunday"),
-]
+#
+# A recurring booking (several dates on chosen weekdays) is not a fourth kind
+# of row — it is several DoctorSchedule rows sharing one series_id, generated
+# up front. There is no separate "pattern that recurs until removed": every
+# row names an actual date, so removing one date is deleting one row, and nothing
+# has to stand in for "except this Monday".
 
 
 class Cabin(models.Model):
@@ -531,81 +528,47 @@ class ClinicHoliday(models.Model):
 
 class DoctorSchedule(models.Model):
     """
-    One sitting in a doctor's ordinary week.
+    One doctor's hours on one date.
 
-    A doctor with a morning and an evening clinic on the same day has two rows
-    for that weekday. A doctor with no rows at all falls back to the clinic-wide
-    consulting hours, so this table is optional until somebody needs it.
+    Every entry names an actual calendar date — there is no separate row shape
+    for "every Monday, indefinitely". A recurring booking (chosen weekdays
+    between a start and an end date) is several of these rows, one per date,
+    sharing one ``series_id`` — generated up front rather than expanded on
+    read, so removing a single date is deleting a single row, and the rest of
+    the booking needs no code to notice.
+
+    ``series_id`` is only ever set by the calendar's own "Add event" form.
+    Rows written by the CSV rota importer leave it empty and rely on ``note``
+    instead — the importer's own two-pass preview already shows what it is
+    about to write, so a batch marker adds nothing there.
     """
 
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="schedule_days",
-        limit_choices_to={"role": "DOCTOR"},
-    )
-    weekday = models.PositiveSmallIntegerField(choices=WEEKDAYS)
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    slot_minutes = models.PositiveSmallIntegerField(
-        null=True, blank=True,
-        help_text="Leave empty to use the clinic's standard slot length.",
-    )
-    #: Nullable because the clinic ran without cabins before KAN-22, and the
-    #: rows already entered are still true — they simply do not say which room.
-    cabin = models.ForeignKey(
-        Cabin, on_delete=models.PROTECT, null=True, blank=True,
-        related_name="weekly_sittings",
-    )
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ["doctor", "weekday", "start_time"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["doctor", "weekday", "start_time"],
-                name="one_sitting_per_start_time",
-            ),
-            models.CheckConstraint(
-                condition=Q(end_time__gt=F("start_time")),
-                name="schedule_end_after_start",
-            ),
-        ]
-
-    def __str__(self):
-        where = f" · {self.cabin.name}" if self.cabin_id else ""
-        return (f"{self.doctor.display_name} · {self.get_weekday_display()} "
-                f"{self.start_time:%H:%M}–{self.end_time:%H:%M}{where}")
-
-
-class ScheduleOverride(models.Model):
-    """
-    Different hours for one doctor on one date.
-
-    Used when a doctor runs an extra evening clinic, or starts late. To mark
-    absence use :class:`DoctorLeave` instead — an override with no hours would
-    be an ambiguous way of saying the same thing.
-    """
-
-    doctor = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="schedule_overrides",
+        related_name="schedule_entries",
         limit_choices_to={"role": "DOCTOR"},
     )
     date = models.DateField(db_index=True)
     start_time = models.TimeField()
     end_time = models.TimeField()
     slot_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Nullable only because a handful of pre-KAN-22 rows predate cabins. The
+    #: calendar's own form always allocates one — see appointments.calendar's
+    #: cabin-allocation helper.
     cabin = models.ForeignKey(
         Cabin, on_delete=models.PROTECT, null=True, blank=True,
-        related_name="one_off_sittings",
+        related_name="schedule_entries",
     )
     note = models.CharField(max_length=200, blank=True)
+    #: Ties together the rows one "Add event" submission created, so the whole
+    #: booking can be found and removed as a unit. Null for a single date and
+    #: for anything the CSV importer wrote.
+    series_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="schedule_overrides_created",
+        related_name="schedule_entries_created",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -626,82 +589,6 @@ class ScheduleOverride(models.Model):
         where = f" · {self.cabin.name}" if self.cabin_id else ""
         return (f"{self.doctor.display_name} · {self.date:%d %b} "
                 f"{self.start_time:%H:%M}–{self.end_time:%H:%M}{where}")
-
-
-class DoctorLeave(models.Model):
-    """
-    A doctor is away — the whole day, or a stretch of it.
-
-    Booking against leave is prevented, but leave taken *after* patients have
-    already been confirmed is the case that actually matters: those patients
-    have to be rung and moved. :meth:`affected_visits` is what the receptionist
-    is shown so that call list is never missed.
-    """
-
-    doctor = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="leave",
-        limit_choices_to={"role": "DOCTOR"},
-    )
-    date = models.DateField(db_index=True)
-    # Empty times mean the whole day.
-    start_time = models.TimeField(null=True, blank=True)
-    end_time = models.TimeField(null=True, blank=True)
-    reason = models.CharField(max_length=200, blank=True)
-
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="leave_recorded",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-date"]
-        verbose_name = "doctor leave"
-        verbose_name_plural = "doctor leave"
-        indexes = [models.Index(fields=["doctor", "date"])]
-
-    def __str__(self):
-        span = "all day" if self.whole_day else f"{self.start_time:%H:%M}–{self.end_time:%H:%M}"
-        return f"{self.doctor.display_name} away {self.date:%d %b %Y} ({span})"
-
-    def clean(self):
-        if bool(self.start_time) != bool(self.end_time):
-            raise ValidationError(
-                "Give both a start and an end time, or neither for a whole day."
-            )
-        if self.start_time and self.end_time and self.end_time <= self.start_time:
-            raise ValidationError("The end time must be after the start time.")
-
-    @property
-    def whole_day(self):
-        return self.start_time is None or self.end_time is None
-
-    def covers(self, start, end):
-        """Does this leave overlap the window ``start``–``end`` (aware datetimes)?"""
-        local_start = timezone.localtime(start)
-        local_end = timezone.localtime(end)
-        if local_start.date() != self.date and local_end.date() != self.date:
-            return False
-        if self.whole_day:
-            return True
-        return local_start.time() < self.end_time and self.start_time < local_end.time()
-
-    def affected_visits(self):
-        """
-        Bookings this leave strands — the patients who must be rung.
-
-        Cancelled and completed visits are excluded: there is nobody left to
-        ring about those.
-        """
-        candidates = (
-            Visit.objects.filter(doctor=self.doctor, scheduled_start__date=self.date)
-            .active()
-            .select_related("patient", "doctor")
-            .order_by("scheduled_start")
-        )
-        return [v for v in candidates if self.covers(v.scheduled_start, v.scheduled_end)]
 
 
 class DaySignOff(models.Model):

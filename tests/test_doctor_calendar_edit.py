@@ -4,20 +4,19 @@ at a time, rather than only through a CSV upload.
 
 "Editing" here means what reception's own calendar already means by it: there
 is no in-place time/cabin change even for reception, only remove-and-redo — so
-a doctor gets the same Remove / "Off this day" / "Not away after all" actions
-reception has, scoped to their own entries, and never a clinic holiday or their
-whole weekly pattern (that stays with re-uploading a schedule).
+a doctor gets the same Remove actions reception has, scoped to their own
+entries, and never a clinic holiday or a whole recurring booking at once (that
+stays with reception, or with re-uploading a schedule).
 """
 
+import uuid
 from datetime import date, time, timedelta
 
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from appointments.models import (
-    Cabin, ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride,
-)
+from appointments.models import Cabin, ClinicHoliday, DoctorSchedule
 
 from .factories import make_doctor, make_receptionist
 
@@ -53,107 +52,84 @@ class DoctorCalendarEditTestCase(TestCase):
         )
 
 
-class TestADoctorCanRemoveTheirOwnOverride(DoctorCalendarEditTestCase):
+class TestADoctorCanRemoveTheirOwnEntry(DoctorCalendarEditTestCase):
     def test_it_is_removed(self):
-        override = ScheduleOverride.objects.create(
+        entry = DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.cabin,
             start_time=time(10), end_time=time(13),
         )
-        self._delete("override", override.pk)
-        self.assertFalse(ScheduleOverride.objects.filter(pk=override.pk).exists())
+        self._delete("schedule", entry.pk)
+        self.assertFalse(DoctorSchedule.objects.filter(pk=entry.pk).exists())
 
     def test_it_is_audited_as_the_doctor(self):
         from audit.models import AccessLog, AuditAction
-        override = ScheduleOverride.objects.create(
+        entry = DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.cabin,
             start_time=time(10), end_time=time(13),
         )
-        self._delete("override", override.pk)
-        entry = AccessLog.objects.filter(action=AuditAction.DELETE).get()
-        self.assertEqual(entry.username, self.asha.username)
+        self._delete("schedule", entry.pk)
+        record = AccessLog.objects.filter(action=AuditAction.DELETE).get()
+        self.assertEqual(record.username, self.asha.username)
 
 
-class TestADoctorCannotTouchAnotherDoctorsOverride(DoctorCalendarEditTestCase):
+class TestADoctorCannotTouchAnotherDoctorsEntry(DoctorCalendarEditTestCase):
     def test_it_is_refused(self):
-        override = ScheduleOverride.objects.create(
+        entry = DoctorSchedule.objects.create(
             doctor=self.vikram, date=self.monday, cabin=self.cabin,
             start_time=time(10), end_time=time(13),
         )
-        response = self._delete("override", override.pk)
+        response = self._delete("schedule", entry.pk)
         self.assertEqual(response.status_code, 404)
-        self.assertTrue(ScheduleOverride.objects.filter(pk=override.pk).exists())
+        self.assertTrue(DoctorSchedule.objects.filter(pk=entry.pk).exists())
 
 
-class TestADoctorCanClearOneOccurrenceOfTheirOwnWeek(DoctorCalendarEditTestCase):
+class TestADoctorCanRemoveOneDateOfTheirOwnSeries(DoctorCalendarEditTestCase):
     def setUp(self):
         super().setUp()
-        self.sitting = DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.cabin,
-            start_time=time(10), end_time=time(13),
+        self.series = uuid.uuid4()
+        self.first = DoctorSchedule.objects.create(
+            doctor=self.asha, date=self.monday, cabin=self.cabin,
+            start_time=time(10), end_time=time(13), series_id=self.series,
+        )
+        self.second = DoctorSchedule.objects.create(
+            doctor=self.asha, date=self.monday + timedelta(weeks=1), cabin=self.cabin,
+            start_time=time(10), end_time=time(13), series_id=self.series,
         )
 
-    def test_the_series_survives(self):
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                      date=self.monday.isoformat())
-        self.assertTrue(DoctorSchedule.objects.filter(pk=self.sitting.pk).exists())
+    def test_that_date_is_removed(self):
+        # "date" is the default scope, so a doctor deleting one entry of
+        # their own series does not have to know to say so explicitly.
+        self._delete("schedule", self.first.pk)
+        self.assertFalse(DoctorSchedule.objects.filter(pk=self.first.pk).exists())
 
-    def test_that_date_becomes_leave(self):
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                      date=self.monday.isoformat())
-        self.assertTrue(
-            DoctorLeave.objects.filter(doctor=self.asha, date=self.monday).exists()
-        )
-
-    def test_the_leave_is_attributed_to_the_doctor_themselves(self):
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                      date=self.monday.isoformat())
-        leave = DoctorLeave.objects.get(doctor=self.asha, date=self.monday)
-        self.assertEqual(leave.created_by, self.asha)
+    def test_the_rest_of_the_series_survives(self):
+        self._delete("schedule", self.first.pk)
+        self.assertTrue(DoctorSchedule.objects.filter(pk=self.second.pk).exists())
 
 
-class TestADoctorCannotRemoveTheirWholeWeeklyPattern(DoctorCalendarEditTestCase):
+class TestADoctorCannotRemoveTheirWholeSeries(DoctorCalendarEditTestCase):
     def setUp(self):
         super().setUp()
+        self.series = uuid.uuid4()
         self.sitting = DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.cabin,
-            start_time=time(10), end_time=time(13),
+            doctor=self.asha, date=self.monday, cabin=self.cabin,
+            start_time=time(10), end_time=time(13), series_id=self.series,
         )
 
-    def test_the_series_is_refused(self):
+    def test_the_whole_series_is_refused(self):
         self._delete("schedule", self.sitting.pk, scope="series")
         self.assertTrue(DoctorSchedule.objects.filter(pk=self.sitting.pk).exists())
 
-    def test_series_is_the_default_scope_and_is_still_refused(self):
-        # The endpoint defaults scope to "series" when it is not posted at
-        # all — a doctor omitting it must not fall through to the one action
-        # that is meant to be unavailable to them.
-        self._delete("schedule", self.sitting.pk)
-        self.assertTrue(DoctorSchedule.objects.filter(pk=self.sitting.pk).exists())
 
-
-class TestADoctorCannotTouchAnotherDoctorsWeeklyPattern(DoctorCalendarEditTestCase):
-    def test_occurrence_removal_is_refused(self):
-        sitting = DoctorSchedule.objects.create(
-            doctor=self.vikram, weekday=MONDAY, cabin=self.cabin,
-            start_time=time(10), end_time=time(13),
+class TestADoctorCannotTouchAnotherDoctorsSeries(DoctorCalendarEditTestCase):
+    def test_it_is_refused(self):
+        entry = DoctorSchedule.objects.create(
+            doctor=self.vikram, date=self.monday, cabin=self.cabin,
+            start_time=time(10), end_time=time(13), series_id=uuid.uuid4(),
         )
-        response = self._delete("schedule", sitting.pk, scope="occurrence",
-                                 date=self.monday.isoformat())
+        response = self._delete("schedule", entry.pk)
         self.assertEqual(response.status_code, 404)
-        self.assertFalse(DoctorLeave.objects.filter(doctor=self.vikram).exists())
-
-
-class TestADoctorCanCancelTheirOwnLeave(DoctorCalendarEditTestCase):
-    def test_it_is_removed(self):
-        leave = DoctorLeave.objects.create(doctor=self.asha, date=self.monday)
-        self._delete("leave", leave.pk)
-        self.assertFalse(DoctorLeave.objects.filter(pk=leave.pk).exists())
-
-    def test_another_doctors_leave_cannot_be_touched(self):
-        leave = DoctorLeave.objects.create(doctor=self.vikram, date=self.monday)
-        response = self._delete("leave", leave.pk)
-        self.assertEqual(response.status_code, 404)
-        self.assertTrue(DoctorLeave.objects.filter(pk=leave.pk).exists())
+        self.assertTrue(DoctorSchedule.objects.filter(pk=entry.pk).exists())
 
 
 class TestADoctorCannotTouchAClinicHoliday(DoctorCalendarEditTestCase):
@@ -165,8 +141,8 @@ class TestADoctorCannotTouchAClinicHoliday(DoctorCalendarEditTestCase):
 
 
 class TestTheDayViewOffersTheRightButtonsToADoctor(DoctorCalendarEditTestCase):
-    def test_a_doctor_sees_remove_on_their_own_override(self):
-        ScheduleOverride.objects.create(
+    def test_a_doctor_sees_remove_on_a_single_entry(self):
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.cabin,
             start_time=time(10), end_time=time(13),
         )
@@ -176,26 +152,26 @@ class TestTheDayViewOffersTheRightButtonsToADoctor(DoctorCalendarEditTestCase):
         )
         self.assertContains(response, "Remove")
 
-    def test_a_doctor_does_not_see_remove_every_week(self):
+    def test_a_doctor_does_not_see_remove_whole_booking(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.cabin,
-            start_time=time(10), end_time=time(13),
+            doctor=self.asha, date=self.monday, cabin=self.cabin,
+            start_time=time(10), end_time=time(13), series_id=uuid.uuid4(),
         )
         response = self.client.get(
             reverse("reception_calendar"),
             {"view": "day", "date": self.monday.isoformat()},
         )
-        self.assertContains(response, "Off this")
-        self.assertNotContains(response, "Remove every week")
+        self.assertContains(response, "Remove this date")
+        self.assertNotContains(response, "Remove whole booking")
 
-    def test_reception_still_sees_remove_every_week(self):
+    def test_reception_still_sees_remove_whole_booking(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.cabin,
-            start_time=time(10), end_time=time(13),
+            doctor=self.asha, date=self.monday, cabin=self.cabin,
+            start_time=time(10), end_time=time(13), series_id=uuid.uuid4(),
         )
         self.client.force_login(self.receptionist)
         response = self.client.get(
             reverse("reception_calendar"),
             {"view": "day", "date": self.monday.isoformat()},
         )
-        self.assertContains(response, "Remove every week")
+        self.assertContains(response, "Remove whole booking")

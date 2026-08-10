@@ -8,7 +8,7 @@ straight in today's waiting room rather than behind a phone call to confirm it
 that will never happen.
 """
 
-from datetime import time
+from datetime import time, timedelta
 
 from django.test import TestCase
 from django.urls import reverse
@@ -28,14 +28,14 @@ class WalkInTestCase(TestCase):
 
         # Wide open every day, covering whichever hour the suite happens to
         # run at — a walk-in test that only failed after 6pm would be
-        # exactly the kind of flakiness nobody notices until it does. Every
-        # weekday, not just today's: a doctor with any row at all stops
-        # falling back to the clinic's default hours on the days that have
-        # none, and "tomorrow" is a different weekday in several of these
-        # tests.
-        for weekday in range(7):
+        # exactly the kind of flakiness nobody notices until it does. Today
+        # and the next fortnight, not just today: a doctor with any entry at
+        # all stops falling back to the clinic's default hours on the dates
+        # that have none, and "tomorrow" is used by several of these tests.
+        today = timezone.localdate()
+        for offset in range(14):
             DoctorSchedule.objects.create(
-                doctor=self.doctor, weekday=weekday,
+                doctor=self.doctor, date=today + timedelta(days=offset),
                 start_time=time(0, 0), end_time=time(23, 45),
             )
 

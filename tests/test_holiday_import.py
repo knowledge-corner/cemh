@@ -309,7 +309,7 @@ class TestHolidaysOnTheCalendar(TestCase):
 
     def test_the_clinic_being_shut_empties_the_day(self):
         DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=self.day.weekday(),
+            doctor=self.doctor, date=self.day,
             start_time=time(10), end_time=time(13),
         )
         response = self._page("day")

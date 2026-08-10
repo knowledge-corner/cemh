@@ -3,17 +3,18 @@ KAN-22 — the availability calendar, cabins, and conflict detection.
 
 The story is mostly about a screen, but the part that can silently go wrong is
 the conflict check, because it has to reason about the *effective* schedule
-rather than the rows in the tables. An override replaces a doctor's ordinary
-week for its date; a weekly row does not exist on a date the doctor already has
-an override for; and the clinic-wide default hours are a fallback rather than a
-commitment. Get any of those wrong and the check either blocks something legal
-or, worse, lets two doctors into one room.
+rather than the rows in the table. Every entry names its own date now — there
+is no separate weekly pattern and no override replacing it, just rows, and a
+date with nothing entered falls back to the clinic-wide default hours, which
+are a fallback rather than a commitment. Get any of that wrong and the check
+either blocks something legal or, worse, lets two doctors into one room.
 
-Dates are pinned to fixed weekdays rather than taken as offsets from today. A
-weekly pattern is keyed on the weekday, so "today + 3" tests a different rule on
-a Friday than on a Monday, and the failure reads as a product bug.
+Dates are pinned to fixed weekdays rather than taken as offsets from today, so
+a recurring booking always lands on a predictable day and the failure reads as
+a product bug rather than a flaky test.
 """
 
+import uuid
 from datetime import date, time, timedelta
 
 from django.test import TestCase
@@ -22,9 +23,7 @@ from django.utils import timezone
 
 from accounts.models import DoctorProfile, Specialisation
 from appointments import calendar as clinic_calendar
-from appointments.models import (
-    Cabin, ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride,
-)
+from appointments.models import Cabin, ClinicHoliday, DoctorSchedule
 
 from .factories import make_doctor, make_patient, make_receptionist, make_visit
 
@@ -102,7 +101,7 @@ class TestCabins(CalendarTestCase):
 
     def test_one_in_use_cannot_be_deleted(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         self.client.post(
@@ -111,20 +110,10 @@ class TestCabins(CalendarTestCase):
         )
         self.assertTrue(Cabin.objects.filter(pk=self.one.pk).exists())
 
-    def test_one_still_on_a_doctors_weekly_hours_cannot_be_retired(self):
+    def test_one_with_upcoming_hours_cannot_be_retired(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
-            start_time=time(10), end_time=time(13),
-        )
-        self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
-
-        self.one.refresh_from_db()
-        self.assertTrue(self.one.is_active)
-
-    def test_one_with_an_upcoming_override_cannot_be_retired(self):
-        ScheduleOverride.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.one,
-            start_time=time(14), end_time=time(16),
+            start_time=time(10), end_time=time(13),
         )
         self.client.post(reverse("reception_retire_cabin", args=[self.one.pk]))
 
@@ -137,10 +126,10 @@ class TestCabins(CalendarTestCase):
         self.one.refresh_from_db()
         self.assertFalse(self.one.is_active)
 
-    def test_a_past_override_does_not_block_retiring(self):
+    def test_a_past_entry_does_not_block_retiring(self):
         # Only what is still ahead counts — a one-off sitting that has already
         # happened is history, not a reason to keep the room on the books.
-        ScheduleOverride.objects.create(
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday - timedelta(weeks=2), cabin=self.one,
             start_time=time(14), end_time=time(16),
         )
@@ -153,7 +142,7 @@ class TestCabins(CalendarTestCase):
         # The rule is about *starting* to retire a room doctors still use, not
         # about restoring one — there is nothing to protect against there.
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         self.one.is_active = False
@@ -166,21 +155,13 @@ class TestCabins(CalendarTestCase):
 
     def test_the_calendar_flags_a_cabin_still_on_the_hours(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         response = self.client.get(reverse("reception_calendar"))
         by_pk = {cabin.pk: cabin for cabin in response.context["all_cabins"]}
         self.assertTrue(by_pk[self.one.pk].still_scheduled)
         self.assertFalse(by_pk[self.two.pk].still_scheduled)
-
-    def test_a_retired_one_is_not_offered_for_new_hours(self):
-        self.one.is_active = False
-        self.one.save()
-        response = self.client.get(reverse("reception_calendar"))
-        choices = response.context["event_form"].fields["cabin"].queryset
-        self.assertNotIn(self.one, choices)
-        self.assertIn(self.two, choices)
 
 
 # ── The two views (FR-3, FR-4) ───────────────────────────────────────────────
@@ -207,7 +188,7 @@ class TestTheViews(CalendarTestCase):
 
     def test_both_views_show_the_same_entry(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         month = self.client.get(
@@ -226,15 +207,20 @@ class TestTheViews(CalendarTestCase):
         self.assertEqual(response.context["anchor"], timezone.localdate())
 
     def test_a_month_of_entries_stays_legible(self):
-        # Every doctor every weekday. Without a cap the cells grow until the
-        # grid is unreadable (T-8).
-        for weekday in range(7):
+        # Every doctor every day of the displayed month. Without a cap the
+        # cells grow until the grid is unreadable (T-8).
+        span_start, span_end = clinic_calendar.month_range(self.monday)
+        day = span_start
+        while day <= span_end:
             for doctor, cabin in ((self.asha, self.one), (self.vikram, self.two)):
                 DoctorSchedule.objects.create(
-                    doctor=doctor, weekday=weekday, cabin=cabin,
+                    doctor=doctor, date=day, cabin=cabin,
                     start_time=time(10), end_time=time(13),
                 )
-        response = self.client.get(reverse("reception_calendar"))
+            day += timedelta(days=1)
+        response = self.client.get(
+            reverse("reception_calendar"), {"date": self.monday.isoformat()}
+        )
         cells = [c for week in response.context["weeks"] for c in week]
         self.assertTrue(all(len(cell["entries"]) <= 3 for cell in cells))
 
@@ -262,7 +248,7 @@ class TestTheViews(CalendarTestCase):
 
     def test_a_real_sitting_is_not_hidden_behind_them(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         response = self.client.get(
@@ -297,7 +283,7 @@ class TestFilters(CalendarTestCase):
                                      activated_at=timezone.now())
         for doctor, cabin in ((self.asha, self.one), (self.vikram, self.two)):
             DoctorSchedule.objects.create(
-                doctor=doctor, weekday=MONDAY, cabin=cabin,
+                doctor=doctor, date=self.monday, cabin=cabin,
                 start_time=time(10), end_time=time(13),
             )
 
@@ -355,7 +341,7 @@ class TestDoctorScoping(CalendarTestCase):
         super().setUp()
         for doctor, cabin in ((self.asha, self.one), (self.vikram, self.two)):
             DoctorSchedule.objects.create(
-                doctor=doctor, weekday=MONDAY, cabin=cabin,
+                doctor=doctor, date=self.monday, cabin=cabin,
                 start_time=time(10), end_time=time(13),
             )
         self.client.force_login(self.asha)
@@ -401,19 +387,18 @@ class TestDoctorScoping(CalendarTestCase):
     def test_a_doctor_cannot_add_an_event(self):
         response = self.client.post(reverse("reception_add_calendar_event"), {
             "event_type": "hours", "date": self.monday.isoformat(),
-            "doctor": self.asha.pk, "cabin": self.one.pk,
-            "start_time": "15:00", "end_time": "17:00", "repeat": "once",
+            "doctor": self.asha.pk, "start_time": "15:00", "end_time": "17:00",
         })
         self.assertEqual(response.status_code, 403)
-        self.assertFalse(ScheduleOverride.objects.exists())
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 1)
 
-    def test_a_doctor_cannot_delete_their_whole_weekly_pattern_from_here(self):
+    def test_a_doctor_cannot_delete_a_whole_booking_from_here(self):
         # Superseded by the doctor-scoped calendar-edit feature: a doctor may
-        # now remove their own single-day entries (see
-        # test_doctor_calendar_edit.py), but the whole weekly pattern is still
-        # out of reach from this screen — re-uploading a schedule is the tool
-        # for that. Refused with a message now rather than a flat 403, since
-        # the endpoint is no longer closed to doctors altogether.
+        # now remove their own single-date entries (see
+        # test_doctor_calendar_edit.py), but removing a whole recurring
+        # booking in one action is still reception's call. Refused with a
+        # message now rather than a flat 403, since the endpoint is no longer
+        # closed to doctors altogether.
         sitting = DoctorSchedule.objects.get(doctor=self.asha)
         response = self.client.post(
             reverse("reception_delete_calendar_entry", args=["schedule", sitting.pk]),
@@ -426,33 +411,42 @@ class TestDoctorScoping(CalendarTestCase):
 # ── The effective schedule ───────────────────────────────────────────────────
 
 class TestWhatActuallyHappensOnADate(CalendarTestCase):
-    def test_a_weekly_row_appears_on_its_weekday(self):
+    def test_an_entry_appears_on_its_date(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         entries = self.schedule([self.asha]).entries_on(self.monday)
         self.assertEqual([e.cabin for e in entries], [self.one])
 
-    def test_it_does_not_appear_on_another_weekday(self):
+    def test_it_does_not_appear_on_another_date(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         tuesday = self.monday + timedelta(days=1)
-        self.assertEqual(self.schedule([self.asha], on=tuesday).entries_on(tuesday), [])
+        entries = self.schedule([self.asha], on=tuesday).entries_on(tuesday)
+        # No entry of its own on Tuesday, so it falls back to the clinic
+        # default rather than carrying Monday's cabin and hours over.
+        self.assertEqual(len(entries), 1)
+        self.assertIsNone(entries[0].cabin)
+        self.assertEqual(entries[0].source, clinic_calendar.SOURCE_DEFAULT)
 
-    def test_an_override_replaces_the_week_for_its_date(self):
+    def test_two_entries_on_one_date_both_appear(self):
+        # A morning and an evening clinic on the same day are two entries, not
+        # one replacing the other — see CalendarEventForm's own note that one
+        # event is one continuous stretch of time.
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
-            start_time=time(10), end_time=time(13),
+            doctor=self.asha, date=self.monday, cabin=self.one,
+            start_time=time(9), end_time=time(11),
         )
-        ScheduleOverride.objects.create(
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.two,
-            start_time=time(16), end_time=time(19),
+            start_time=time(17), end_time=time(19),
         )
         entries = self.schedule([self.asha]).entries_on(self.monday)
-        self.assertEqual([(e.cabin, e.start) for e in entries], [(self.two, time(16))])
+        self.assertEqual({(e.cabin, e.start) for e in entries},
+                          {(self.one, time(9)), (self.two, time(17))})
 
     def test_a_doctor_with_no_rows_falls_back_to_clinic_hours(self):
         # And is shown, rather than left off. Those hours are genuinely
@@ -465,23 +459,11 @@ class TestWhatActuallyHappensOnADate(CalendarTestCase):
 
     def test_a_holiday_empties_the_day(self):
         DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         ClinicHoliday.objects.create(date=self.monday, name="Diwali")
         self.assertEqual(self.schedule([self.asha]).entries_on(self.monday), [])
-
-    def test_leave_marks_the_entry_rather_than_hiding_it(self):
-        # Reception has to see that somebody was down to work and is not, or
-        # the day reads as one nobody was ever scheduled for.
-        DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
-            start_time=time(10), end_time=time(13),
-        )
-        DoctorLeave.objects.create(doctor=self.asha, date=self.monday)
-        entries = self.schedule([self.asha]).entries_on(self.monday)
-        self.assertEqual(len(entries), 1)
-        self.assertTrue(entries[0].away)
 
 
 # ── Conflicts (FR-17, FR-18) ─────────────────────────────────────────────────
@@ -492,128 +474,112 @@ class TestConflicts(CalendarTestCase):
             "event_type": "hours",
             "date": self.monday.isoformat(),
             "doctor": self.asha.pk,
-            "cabin": self.one.pk,
             "start_time": "10:00",
             "end_time": "13:00",
-            "repeat": "once",
         }
         payload.update(overrides)
         return self.client.post(reverse("reception_add_calendar_event"), payload)
 
-    def test_two_doctors_cannot_share_a_cabin_at_the_same_time(self):
-        ScheduleOverride.objects.create(
+    def test_a_doctor_cannot_be_in_two_cabins_at_once(self):
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
-        self._post(doctor=self.vikram.pk, start_time="12:00", end_time="14:00")
-        self.assertEqual(
-            ScheduleOverride.objects.filter(doctor=self.vikram).count(), 0
-        )
+        self._post(start_time="11:00", end_time="15:00")
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 1)
 
-    def test_the_clash_names_who_has_the_room(self):
-        ScheduleOverride.objects.create(
-            doctor=self.asha, date=self.monday, cabin=self.one,
-            start_time=time(10), end_time=time(13),
-        )
-        self._post(doctor=self.vikram.pk, start_time="12:00", end_time="14:00")
-        page = self.client.get(reverse("reception_calendar"))
-        self.assertContains(page, "Cabin 1 is already taken by Asha Rao")
-
-    def test_back_to_back_in_one_cabin_is_allowed(self):
-        # 10:00–12:00 then 12:00–14:00 is how a room is shared, not a mistake.
-        ScheduleOverride.objects.create(
+    def test_back_to_back_for_one_doctor_is_allowed(self):
+        # 10:00–12:00 then 12:00–14:00 is how a doctor's day is split, not a
+        # mistake.
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(12),
         )
-        self._post(doctor=self.vikram.pk, start_time="12:00", end_time="14:00")
-        self.assertTrue(ScheduleOverride.objects.filter(doctor=self.vikram).exists())
+        self._post(start_time="12:00", end_time="14:00")
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 2)
 
-    def test_one_doctor_cannot_be_in_two_cabins_at_once(self):
-        ScheduleOverride.objects.create(
+    def test_two_cabins_let_two_doctors_overlap(self):
+        # There is no manual cabin choice any more — the second doctor is
+        # simply given whichever room is free.
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
-        self._post(cabin=self.two.pk, start_time="11:00", end_time="15:00")
-        self.assertEqual(ScheduleOverride.objects.filter(doctor=self.asha).count(), 1)
+        self._post(doctor=self.vikram.pk, start_time="11:00", end_time="14:00")
+        row = DoctorSchedule.objects.get(doctor=self.vikram)
+        self.assertEqual(row.cabin, self.two)
+
+    def test_when_every_cabin_is_taken_the_booking_is_refused(self):
+        for doctor, cabin in ((self.asha, self.one), (self.vikram, self.two)):
+            DoctorSchedule.objects.create(
+                doctor=doctor, date=self.monday, cabin=cabin,
+                start_time=time(10), end_time=time(13),
+            )
+        third = make_doctor(username="dr-third", email="third@example.in",
+                             first_name="Third", last_name="Doctor")
+        self._post(doctor=third.pk, start_time="11:00", end_time="14:00")
+        self.assertFalse(DoctorSchedule.objects.filter(doctor=third).exists())
+
+    def test_the_refusal_says_how_many_dates_had_no_cabin_free(self):
+        for doctor, cabin in ((self.asha, self.one), (self.vikram, self.two)):
+            DoctorSchedule.objects.create(
+                doctor=doctor, date=self.monday, cabin=cabin,
+                start_time=time(10), end_time=time(13),
+            )
+        third = make_doctor(username="dr-third", email="third@example.in",
+                             first_name="Third", last_name="Doctor")
+        self._post(doctor=third.pk, start_time="11:00", end_time="14:00")
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertContains(page, "No cabin is free on 1 of 1 selected dates")
 
     def test_the_same_room_at_a_different_time_is_fine(self):
-        ScheduleOverride.objects.create(
+        DoctorSchedule.objects.create(
             doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         self._post(doctor=self.vikram.pk, start_time="15:00", end_time="18:00")
-        self.assertTrue(ScheduleOverride.objects.filter(doctor=self.vikram).exists())
+        row = DoctorSchedule.objects.get(doctor=self.vikram)
+        self.assertEqual(row.cabin, self.one)
 
     def test_the_first_row_for_a_doctor_does_not_clash_with_their_own_default(self):
         # Clinic-default hours are a fallback, not a commitment. Counting them
         # would make it impossible to enter the very first row for a doctor.
         self._post()
-        self.assertTrue(ScheduleOverride.objects.filter(doctor=self.asha).exists())
+        self.assertTrue(DoctorSchedule.objects.filter(doctor=self.asha).exists())
 
-    def test_an_override_does_not_clash_with_the_week_it_replaces(self):
-        # The whole point of an override is to supersede that Monday. If the
-        # weekly row it is replacing counted as occupying the cabin, no doctor
-        # could ever change their hours for a single date.
-        DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
-            start_time=time(10), end_time=time(13),
-        )
-        self._post(cabin=self.one.pk, start_time="11:00", end_time="15:00")
-        self.assertTrue(ScheduleOverride.objects.filter(doctor=self.asha).exists())
-
-    def test_a_weekly_pattern_clashes_with_another_weekly_pattern(self):
-        DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
-            start_time=time(10), end_time=time(13),
-        )
-        self._post(doctor=self.vikram.pk, repeat="weekly",
-                   start_time="11:00", end_time="14:00")
-        self.assertFalse(DoctorSchedule.objects.filter(doctor=self.vikram).exists())
-
-    def test_a_weekly_pattern_clashes_with_a_one_off_weeks_ahead(self):
+    def test_a_recurring_booking_clashes_with_a_one_off_weeks_ahead(self):
         # The one case a naive check misses entirely: the clash is not on the
-        # date being entered, it is three Mondays later.
+        # date being entered, it is three Mondays later — and it takes out the
+        # whole recurring submission, not just that one date.
         third_monday = next_weekday(MONDAY, weeks=3)
-        ScheduleOverride.objects.create(
+        DoctorSchedule.objects.create(
             doctor=self.vikram, date=third_monday, cabin=self.one,
             start_time=time(11), end_time=time(14),
         )
-        self._post(repeat="weekly", start_time="10:00", end_time="13:00")
-        self.assertFalse(DoctorSchedule.objects.filter(doctor=self.asha).exists())
-
-    def test_a_weekly_pattern_ignores_a_date_the_doctor_has_an_override_for(self):
-        # On that Monday the new weekly row does not apply at all, so it cannot
-        # take a cabin there and has nothing to clash with.
-        third_monday = next_weekday(MONDAY, weeks=3)
-        ScheduleOverride.objects.create(
-            doctor=self.asha, date=third_monday, cabin=self.two,
-            start_time=time(16), end_time=time(18),
+        self._post(
+            doctor=self.vikram.pk, is_recurring="1", weekdays=["M"],
+            recur_until=(self.monday + timedelta(weeks=4)).isoformat(),
         )
-        ScheduleOverride.objects.create(
-            doctor=self.vikram, date=third_monday, cabin=self.one,
-            start_time=time(11), end_time=time(12),
-        )
-        self._post(repeat="weekly", start_time="10:00", end_time="13:00")
-        self.assertTrue(DoctorSchedule.objects.filter(doctor=self.asha).exists())
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.vikram).count(), 1)
 
     def test_editing_a_row_does_not_clash_with_itself(self):
         sitting = DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
         conflicts = clinic_calendar.find_conflicts(
-            kind="schedule", doctor=self.asha, cabin=self.one,
-            start=time(10), end=time(13), weekday=MONDAY, exclude_pk=sitting.pk,
+            doctor=self.asha, cabin=self.one, start=time(10), end=time(13),
+            dates=[self.monday], exclude_pk=sitting.pk,
         )
         self.assertEqual(conflicts, [])
 
     def test_an_end_before_the_start_is_refused(self):
         self._post(start_time="15:00", end_time="10:00")
-        self.assertFalse(ScheduleOverride.objects.exists())
+        self.assertFalse(DoctorSchedule.objects.exists())
 
     def test_a_zero_length_entry_is_refused(self):
         self._post(start_time="10:00", end_time="10:00")
-        self.assertFalse(ScheduleOverride.objects.exists())
+        self.assertFalse(DoctorSchedule.objects.exists())
 
 
 # ── Adding through the pop-up (FR-8 … FR-13, FR-20) ──────────────────────────
@@ -624,10 +590,8 @@ class TestTheAddEventPopUp(CalendarTestCase):
             "event_type": "hours",
             "date": self.monday.isoformat(),
             "doctor": self.asha.pk,
-            "cabin": self.one.pk,
             "start_time": "10:00",
             "end_time": "13:00",
-            "repeat": "once",
         }
         payload.update(overrides)
         return self.client.post(reverse("reception_add_calendar_event"), payload)
@@ -640,54 +604,71 @@ class TestTheAddEventPopUp(CalendarTestCase):
 
     def test_working_hours_are_created_for_the_date(self):
         self._post()
-        row = ScheduleOverride.objects.get(doctor=self.asha)
+        row = DoctorSchedule.objects.get(doctor=self.asha)
         self.assertEqual((row.date, row.cabin, row.start_time), (self.monday, self.one, time(10)))
 
-    def test_a_weekly_repeat_creates_the_pattern_not_one_date(self):
-        self._post(repeat="weekly")
-        self.assertFalse(ScheduleOverride.objects.exists())
-        self.assertEqual(DoctorSchedule.objects.get(doctor=self.asha).weekday, MONDAY)
+    def test_a_recurring_booking_creates_one_row_per_chosen_date(self):
+        self._post(
+            is_recurring="1", weekdays=["M"],
+            recur_until=(self.monday + timedelta(weeks=2)).isoformat(),
+        )
+        rows = DoctorSchedule.objects.filter(doctor=self.asha).order_by("date")
+        self.assertEqual(
+            list(rows.values_list("date", flat=True)),
+            [self.monday, self.monday + timedelta(weeks=1), self.monday + timedelta(weeks=2)],
+        )
+        self.assertEqual(len({r.series_id for r in rows}), 1)
+        self.assertIsNotNone(rows.first().series_id)
 
-    def test_a_date_range_creates_one_entry_per_day(self):
-        self._post(until=(self.monday + timedelta(days=2)).isoformat())
-        self.assertEqual(ScheduleOverride.objects.filter(doctor=self.asha).count(), 3)
+    def test_a_recurring_booking_without_an_end_date_defaults_to_month_end(self):
+        self._post(is_recurring="1", weekdays=["M"])
+        rows = DoctorSchedule.objects.filter(doctor=self.asha)
+        self.assertTrue(rows.exists())
+        last_of_month = clinic_calendar.month_range(self.monday)[1]
+        # Every generated date must fall no later than the end of the month
+        # the start date is in.
+        self.assertTrue(all(
+            row.date.month == self.monday.month or row.date <= last_of_month
+            for row in rows
+        ))
 
-    def test_a_weekly_repeat_refuses_an_end_date_rather_than_ignoring_it(self):
-        # The model has no end date for a weekly pattern. Accepting one would
-        # create hours that silently never stop.
-        self._post(repeat="weekly", until=(self.monday + timedelta(days=30)).isoformat())
+    def test_a_recurring_end_date_before_the_start_is_refused(self):
+        self._post(
+            is_recurring="1", weekdays=["M"],
+            recur_until=(self.monday - timedelta(days=3)).isoformat(),
+        )
         self.assertFalse(DoctorSchedule.objects.exists())
-        self.assertFalse(ScheduleOverride.objects.exists())
-
-    def test_an_end_before_the_start_date_is_refused(self):
-        self._post(until=(self.monday - timedelta(days=3)).isoformat())
-        self.assertFalse(ScheduleOverride.objects.exists())
 
     def test_a_mistyped_year_is_refused_rather_than_creating_thousands(self):
-        self._post(until=self.monday.replace(year=self.monday.year + 90).isoformat())
-        self.assertFalse(ScheduleOverride.objects.exists())
+        self._post(
+            is_recurring="1", weekdays=["M"],
+            recur_until=self.monday.replace(year=self.monday.year + 90).isoformat(),
+        )
+        self.assertFalse(DoctorSchedule.objects.exists())
+
+    def test_recurring_needs_at_least_one_weekday(self):
+        self._post(is_recurring="1")
+        self.assertFalse(DoctorSchedule.objects.exists())
 
     def test_a_holiday_can_be_added_from_the_same_pop_up(self):
-        self._post(event_type="holiday", name="Diwali", doctor="", cabin="",
+        self._post(event_type="holiday", name="Diwali", doctor="",
                    start_time="", end_time="")
         self.assertTrue(ClinicHoliday.objects.filter(date=self.monday).exists())
 
     def test_a_holiday_needs_a_name(self):
-        self._post(event_type="holiday", name="", doctor="", cabin="",
+        self._post(event_type="holiday", name="", doctor="",
                    start_time="", end_time="")
         self.assertFalse(ClinicHoliday.objects.exists())
 
     def test_the_same_holiday_twice_is_refused(self):
         ClinicHoliday.objects.create(date=self.monday, name="Diwali")
-        self._post(event_type="holiday", name="Diwali again", doctor="", cabin="",
+        self._post(event_type="holiday", name="Diwali again", doctor="",
                    start_time="", end_time="")
         self.assertEqual(ClinicHoliday.objects.filter(date=self.monday).count(), 1)
 
-    def test_working_hours_need_a_doctor_and_a_cabin(self):
-        for missing in ("doctor", "cabin"):
-            with self.subTest(missing=missing):
-                self._post(**{missing: ""})
-                self.assertFalse(ScheduleOverride.objects.exists())
+    def test_working_hours_need_a_doctor(self):
+        self._post(doctor="")
+        self.assertFalse(DoctorSchedule.objects.exists())
 
     def test_a_pending_doctor_is_not_offered(self):
         # KAN-21 FR-7 / AC-8. Nobody can sign in as them, so a patient booked
@@ -700,7 +681,7 @@ class TestTheAddEventPopUp(CalendarTestCase):
     def test_a_pending_doctor_cannot_be_given_hours(self):
         DoctorProfile.objects.create(user=self.vikram)
         self._post(doctor=self.vikram.pk)
-        self.assertFalse(ScheduleOverride.objects.filter(doctor=self.vikram).exists())
+        self.assertFalse(DoctorSchedule.objects.filter(doctor=self.vikram).exists())
 
     def test_the_refusal_says_why_rather_than_select_a_valid_choice(self):
         # Django's own message for a value outside the queryset is "Select a
@@ -712,13 +693,13 @@ class TestTheAddEventPopUp(CalendarTestCase):
         self.assertContains(page, "has not set their password yet")
 
 
-# ── Deleting, which is how leave is recorded (FR-15, FR-16) ──────────────────
+# ── Removing an entry ─────────────────────────────────────────────────────────
 
 class TestRemoving(CalendarTestCase):
     def setUp(self):
         super().setUp()
         self.sitting = DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
+            doctor=self.asha, date=self.monday, cabin=self.one,
             start_time=time(10), end_time=time(13),
         )
 
@@ -727,63 +708,36 @@ class TestRemoving(CalendarTestCase):
             reverse("reception_delete_calendar_entry", args=[kind, pk]), payload
         )
 
-    def test_the_whole_weekly_pattern_can_be_removed(self):
-        self._delete("schedule", self.sitting.pk, scope="series")
+    def test_a_single_entry_is_removed_outright(self):
+        self._delete("schedule", self.sitting.pk)
         self.assertFalse(DoctorSchedule.objects.filter(pk=self.sitting.pk).exists())
 
-    def test_removing_one_occurrence_leaves_the_series_alone(self):
-        # AC-14. The row *is* every other Monday, so deleting it to clear one
-        # date would take the doctor off the calendar for good.
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                     date=self.monday.isoformat())
-        self.assertTrue(DoctorSchedule.objects.filter(pk=self.sitting.pk).exists())
+    def test_a_recurring_series_can_be_removed_as_a_whole(self):
+        series = uuid.uuid4()
+        rows = [
+            DoctorSchedule.objects.create(
+                doctor=self.vikram, date=self.monday + timedelta(weeks=n),
+                cabin=self.two, start_time=time(9), end_time=time(11),
+                series_id=series,
+            )
+            for n in range(3)
+        ]
+        self._delete("schedule", rows[0].pk, scope="series")
+        self.assertEqual(DoctorSchedule.objects.filter(series_id=series).count(), 0)
 
-    def test_removing_one_occurrence_clears_that_date(self):
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                     date=self.monday.isoformat())
-        entries = self.schedule([self.asha]).entries_on(self.monday)
-        self.assertTrue(all(entry.away for entry in entries))
-
-    def test_removing_one_occurrence_leaves_the_next_week_working(self):
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                     date=self.monday.isoformat())
-        next_monday = self.monday + timedelta(days=7)
-        entries = self.schedule([self.asha], on=next_monday).entries_on(next_monday)
-        self.assertEqual(len(entries), 1)
-        self.assertFalse(entries[0].away)
-
-    def test_removing_one_occurrence_leaves_a_record_of_who_and_when(self):
-        # KAN-22 notes that recording leave by deletion leaves nothing to
-        # report on afterwards. A weekly pattern cannot lose one date by
-        # deleting the row anyway, so that case writes leave instead — which is
-        # both the correct behaviour and the missing positive record.
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                     date=self.monday.isoformat())
-        leave = DoctorLeave.objects.get(doctor=self.asha, date=self.monday)
-        self.assertEqual(leave.created_by, self.receptionist)
-
-    def test_removing_a_date_says_who_has_to_be_rung(self):
-        # The case that actually matters: patients already booked for hours
-        # that have just been withdrawn.
-        patient = make_patient()
-        start = timezone.make_aware(
-            timezone.datetime.combine(self.monday, time(11)),
-            timezone.get_current_timezone(),
-        )
-        make_visit(patient, self.asha, start=start)
-
-        self._delete("schedule", self.sitting.pk, scope="occurrence",
-                     date=self.monday.isoformat())
-        page = self.client.get(reverse("reception_calendar"))
-        self.assertContains(page, patient.full_name)
-
-    def test_a_one_off_entry_is_simply_removed(self):
-        override = ScheduleOverride.objects.create(
-            doctor=self.vikram, date=self.monday, cabin=self.two,
-            start_time=time(16), end_time=time(18),
-        )
-        self._delete("override", override.pk)
-        self.assertFalse(ScheduleOverride.objects.filter(pk=override.pk).exists())
+    def test_removing_one_date_of_a_series_leaves_the_rest(self):
+        series = uuid.uuid4()
+        rows = [
+            DoctorSchedule.objects.create(
+                doctor=self.vikram, date=self.monday + timedelta(weeks=n),
+                cabin=self.two, start_time=time(9), end_time=time(11),
+                series_id=series,
+            )
+            for n in range(3)
+        ]
+        self._delete("schedule", rows[0].pk)
+        self.assertFalse(DoctorSchedule.objects.filter(pk=rows[0].pk).exists())
+        self.assertEqual(DoctorSchedule.objects.filter(series_id=series).count(), 2)
 
     def test_a_holiday_can_be_removed(self):
         holiday = ClinicHoliday.objects.create(date=self.monday, name="Diwali")
@@ -803,37 +757,19 @@ class TestRemoving(CalendarTestCase):
 
 class TestTheAddEventPopUpWritesTheSameRows(CalendarTestCase):
     """
-    KAN-50 left the calendar as the only screen writing these tables.
+    KAN-50 left the calendar as the only screen writing this table.
 
-    These were written against the availability screen it replaced. They are
-    kept, pointed at the pop-up: what they check is that a cabin chosen here
-    reaches the schedule row and that a clash is refused, and both still have to
-    be true of whichever screen does the writing.
+    Kept as a small integration smoke test — what matters is that hours
+    entered through the pop-up show up on the calendar exactly as any other
+    row would.
     """
 
-    def _add(self, doctor, **overrides):
-        payload = {
-            "event_type": "hours", "doctor": doctor.pk, "cabin": self.one.pk,
-            "date": self.monday.isoformat(), "repeat": "weekly",
-            "start_time": "10:00", "end_time": "13:00",
-        }
-        payload.update(overrides)
-        return self.client.post(reverse("reception_add_calendar_event"), payload)
-
-    def test_a_cabin_can_be_chosen_there_too(self):
-        self._add(self.asha)
-        self.assertEqual(DoctorSchedule.objects.get(doctor=self.asha).cabin, self.one)
-
-    def test_it_refuses_a_clash_as_well(self):
-        DoctorSchedule.objects.create(
-            doctor=self.asha, weekday=MONDAY, cabin=self.one,
-            start_time=time(10), end_time=time(13),
-        )
-        self._add(self.vikram, start_time="11:00", end_time="14:00")
-        self.assertFalse(DoctorSchedule.objects.filter(doctor=self.vikram).exists())
-
     def test_hours_entered_there_show_on_the_calendar(self):
-        self._add(self.asha)
+        self.client.post(reverse("reception_add_calendar_event"), {
+            "event_type": "hours", "doctor": self.asha.pk,
+            "date": self.monday.isoformat(),
+            "start_time": "10:00", "end_time": "13:00",
+        })
         response = self.client.get(
             reverse("reception_calendar"),
             {"view": "day", "date": self.monday.isoformat()},

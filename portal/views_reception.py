@@ -29,10 +29,7 @@ from django.utils import timezone
 from accounts.models import Role, User
 from accounts.permissions import role_required
 from appointments import scheduling, signoff
-from appointments.models import (
-    ClinicHoliday, DoctorLeave, DoctorSchedule, InvalidTransition,
-    ScheduleOverride, Visit, VisitStatus,
-)
+from appointments.models import ClinicHoliday, InvalidTransition, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from billing.models import Charge, Payment, Receipt

@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from appointments import schedules_csv
-from appointments.models import Cabin, ScheduleOverride
+from appointments.models import Cabin, DoctorSchedule
 
 from .factories import make_doctor, make_patient, make_receptionist, make_visit
 
@@ -87,7 +87,7 @@ class TestUploadingMyOwnHours(OwnScheduleTestCase):
 
     def test_it_creates_entries_for_myself(self):
         self._confirm(HEADER + self._row())
-        self.assertEqual(ScheduleOverride.objects.filter(doctor=self.asha).count(), 4)
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 4)
 
     def test_a_receptionist_cannot_reach_this_page(self):
         self.client.force_login(self.receptionist)
@@ -99,14 +99,14 @@ class TestUploadingMyOwnHours(OwnScheduleTestCase):
 
     def test_a_row_for_another_doctor_creates_nothing(self):
         self._confirm(HEADER + self._row(doctor_email="vikram@example.in"))
-        self.assertFalse(ScheduleOverride.objects.filter(doctor=self.vikram).exists())
+        self.assertFalse(DoctorSchedule.objects.filter(doctor=self.vikram).exists())
 
     def test_a_retired_cabin_is_refused(self):
         self.two.is_active = False
         self.two.save()
         response = self._check(HEADER + self._row(cabin="Cabin 2"))
         self.assertContains(response, "retired")
-        self.assertEqual(ScheduleOverride.objects.count(), 0)
+        self.assertEqual(DoctorSchedule.objects.count(), 0)
 
     def test_a_mixed_file_keeps_my_rows_and_refuses_the_rest(self):
         text = (
@@ -115,8 +115,8 @@ class TestUploadingMyOwnHours(OwnScheduleTestCase):
             + self._row(doctor_email="vikram@example.in", cabin="Cabin 2")
         )
         response = self._confirm(text)
-        self.assertEqual(ScheduleOverride.objects.filter(doctor=self.asha).count(), 4)
-        self.assertFalse(ScheduleOverride.objects.filter(doctor=self.vikram).exists())
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 4)
+        self.assertFalse(DoctorSchedule.objects.filter(doctor=self.vikram).exists())
         self.assertContains(response, "could not be used")
 
 
@@ -126,7 +126,7 @@ class TestReplacingMyOwnSchedule(OwnScheduleTestCase):
         response = self._check(HEADER + self._row(start_time="11:00", end_time="14:00"))
         self.assertContains(response, "already")
         self.assertEqual(
-            ScheduleOverride.objects.filter(doctor=self.asha, start_time="10:00:00").count(), 4,
+            DoctorSchedule.objects.filter(doctor=self.asha, start_time="10:00:00").count(), 4,
         )
 
     def test_replace_lets_the_new_time_through(self):
@@ -135,10 +135,10 @@ class TestReplacingMyOwnSchedule(OwnScheduleTestCase):
             HEADER + self._row(start_time="11:00", end_time="14:00"), replace=True,
         )
         self.assertEqual(
-            ScheduleOverride.objects.filter(doctor=self.asha, start_time="10:00:00").count(), 0,
+            DoctorSchedule.objects.filter(doctor=self.asha, start_time="10:00:00").count(), 0,
         )
         self.assertEqual(
-            ScheduleOverride.objects.filter(doctor=self.asha, start_time="11:00:00").count(), 4,
+            DoctorSchedule.objects.filter(doctor=self.asha, start_time="11:00:00").count(), 4,
         )
 
     def test_replace_can_add_a_day_at_the_same_time_as_changing_others(self):
@@ -148,9 +148,9 @@ class TestReplacingMyOwnSchedule(OwnScheduleTestCase):
                                days="M-T-W-Th-F-Sa", end_date="05-09-2026"),
             replace=True,
         )
-        self.assertEqual(ScheduleOverride.objects.filter(doctor=self.asha).count(), 5)
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 5)
         self.assertTrue(
-            ScheduleOverride.objects.filter(
+            DoctorSchedule.objects.filter(
                 doctor=self.asha, date=date(2026, 9, 5),
             ).exists()
         )
@@ -167,7 +167,7 @@ class TestReplacingMyOwnSchedule(OwnScheduleTestCase):
             replace=True,
         )
         self.assertEqual(
-            ScheduleOverride.objects.filter(doctor=self.vikram, start_time="10:00:00").count(), 4,
+            DoctorSchedule.objects.filter(doctor=self.vikram, start_time="10:00:00").count(), 4,
         )
 
     def test_replace_still_refuses_a_genuine_cabin_clash_with_another_doctor(self):

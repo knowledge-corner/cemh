@@ -16,8 +16,7 @@ from django.utils import timezone
 
 from appointments import scheduling
 from appointments.models import (
-    ClinicHoliday, DoctorLeave, DoctorSchedule, InvalidTransition,
-    ScheduleOverride, Visit, VisitStatus,
+    ClinicHoliday, DoctorSchedule, InvalidTransition, Visit, VisitStatus,
 )
 
 from .factories import (
@@ -265,86 +264,40 @@ class TestDoctorAvailability(TestCase):
         # A single-doctor clinic never has to fill in any of these tables.
         self.assertTrue(scheduling.day_slots(self.day, self.doctor))
 
-    def test_a_weekly_schedule_replaces_the_clinic_default(self):
+    def test_a_schedule_entry_replaces_the_clinic_default(self):
         DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=self.day.weekday(),
+            doctor=self.doctor, date=self.day,
             start_time=time(10, 0), end_time=time(11, 0), slot_minutes=30,
         )
         slots = scheduling.day_slots(self.day, self.doctor)
         self.assertEqual(len(slots), 2)
 
-    def test_a_doctor_is_not_offered_on_a_weekday_they_do_not_work(self):
+    def test_an_entry_on_another_date_does_not_narrow_this_one(self):
+        # Every entry names its own date now — there is no "doctor's ordinary
+        # week" narrowing every date they have no row for, so an entry
+        # elsewhere leaves this date exactly as bookable as with no rows at all.
         DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=(self.day.weekday() + 1) % 7,
+            doctor=self.doctor, date=self.day + timedelta(days=1),
             start_time=time(10, 0), end_time=time(13, 0),
         )
-        self.assertFalse(scheduling.is_working_day(self.day, self.doctor))
+        self.assertTrue(scheduling.is_working_day(self.day, self.doctor))
 
-    def test_a_one_off_override_wins_over_the_weekly_schedule(self):
+    def test_two_entries_on_one_date_both_contribute_their_slots(self):
+        # A morning and an evening clinic on the same day are two entries, not
+        # one replacing the other — see CalendarEventForm's own note that one
+        # event is one continuous stretch of time.
         DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=self.day.weekday(),
-            start_time=time(10, 0), end_time=time(13, 0),
+            doctor=self.doctor, date=self.day,
+            start_time=time(10, 0), end_time=time(11, 0), slot_minutes=30,
         )
-        ScheduleOverride.objects.create(
+        DoctorSchedule.objects.create(
             doctor=self.doctor, date=self.day,
             start_time=time(17, 0), end_time=time(18, 0), slot_minutes=30,
         )
         slots = scheduling.day_slots(self.day, self.doctor)
-        self.assertEqual(len(slots), 2)
-        self.assertEqual(timezone.localtime(slots[0][0]).hour, 17)
-
-    def test_whole_day_leave_removes_every_slot(self):
-        DoctorLeave.objects.create(doctor=self.doctor, date=self.day)
-        self.assertEqual(scheduling.available_slots(self.doctor, self.day), [])
-
-    def test_part_day_leave_removes_only_that_stretch(self):
-        DoctorLeave.objects.create(
-            doctor=self.doctor, date=self.day,
-            start_time=time(10, 0), end_time=time(12, 0),
-        )
-        hours = {
-            timezone.localtime(start).hour
-            for start, _ in scheduling.available_slots(self.doctor, self.day)
-        }
-        self.assertNotIn(10, hours)
-        self.assertNotIn(11, hours)
-        self.assertTrue(hours)
-
-
-class TestLeaveSurfacesThePatientsToRing(TestCase):
-    def setUp(self):
-        self.receptionist = make_receptionist()
-        self.client.force_login(self.receptionist)
-        self.doctor = make_doctor()
-        self.day = timezone.localdate() + timedelta(days=3)
-        start = timezone.make_aware(
-            timezone.datetime.combine(self.day, time(11, 0)),
-            timezone.get_current_timezone(),
-        )
-        self.visit = make_visit(make_patient(), self.doctor, start=start)
-        self.visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
-
-    def test_affected_visits_lists_the_confirmed_patient(self):
-        leave = DoctorLeave.objects.create(doctor=self.doctor, date=self.day)
-        self.assertIn(self.visit, leave.affected_visits())
-
-    def test_recording_leave_warns_the_receptionist_by_name(self):
-        # Recorded from the calendar's add-event pop-up since KAN-50 took the
-        # availability screen away. The call list is the whole reason the
-        # feature exists, so it had to survive the move.
-        response = self.client.post(
-            reverse("reception_add_calendar_event"),
-            {"event_type": "leave", "doctor": self.doctor.pk,
-             "date": self.day.strftime("%Y-%m-%d")},
-            follow=True,
-        )
-        self.assertContains(response, "must be rung")
-        self.assertContains(response, self.visit.patient.full_name)
-
-    def test_a_cancelled_booking_is_not_in_the_call_list(self):
-        self.visit.transition_to(VisitStatus.CANCELLED, by_user=self.receptionist)
-        leave = DoctorLeave.objects.create(doctor=self.doctor, date=self.day)
-        self.assertEqual(leave.affected_visits(), [])
+        self.assertEqual(len(slots), 4)
+        hours = {timezone.localtime(start).hour for start, _end in slots}
+        self.assertEqual(hours, {10, 17})
 
 
 class TestAmendingABooking(TestCase):
@@ -568,7 +521,7 @@ class TestCalendarAccess(TestCase):
 class TestTheClinicIsOpenEveryDay(TestCase):
     """
     There is no weekend rule. Closure is always something a person recorded —
-    a clinic holiday, or a weekday left out of a doctor's working week.
+    a clinic holiday, or the absence of any schedule entry on that date.
     """
 
     def setUp(self):
@@ -599,14 +552,6 @@ class TestTheClinicIsOpenEveryDay(TestCase):
         self.assertFalse(scheduling.is_working_day(self.sunday, self.doctor))
         self.assertEqual(scheduling.available_slots(self.doctor, self.sunday), [])
 
-    def test_a_doctors_own_week_still_narrows_their_days(self):
-        # Once a doctor has any schedule rows, only those weekdays count.
-        DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=0,   # Mondays only
-            start_time=time(10, 0), end_time=time(13, 0),
-        )
-        self.assertFalse(scheduling.is_working_day(self.sunday, self.doctor))
-
     def test_a_sunday_booking_is_accepted(self):
         patient = make_patient()
         slot = timezone.make_aware(
@@ -627,13 +572,3 @@ class TestTheClinicIsOpenEveryDay(TestCase):
             "doctor": self.doctor.pk, "day": self.sunday.strftime("%Y-%m-%d"),
         })
         self.assertContains(response, "Diwali")
-
-    def test_the_slot_picker_names_the_doctor_when_it_is_their_week(self):
-        DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=0,
-            start_time=time(10, 0), end_time=time(13, 0),
-        )
-        response = self.client.get(reverse("reception_slots"), {
-            "doctor": self.doctor.pk, "day": self.sunday.strftime("%Y-%m-%d"),
-        })
-        self.assertContains(response, "not consulting")
