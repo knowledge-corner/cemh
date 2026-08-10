@@ -154,14 +154,9 @@ class TestYesterdaysQueueIsNotLeftOpen(TestCase):
             make_patient(), self.doctor, start=timezone.now() - timedelta(days=2)
         )
 
-    def test_an_unfinished_visit_from_a_previous_day_is_surfaced(self):
-        response = self.client.get(reverse("reception_home"))
-        self.assertContains(response, "still open")
-
     def test_todays_board_does_not_list_it_as_todays_work(self):
         response = self.client.get(reverse("reception_home"))
         self.assertEqual(response.context["total"], 0)
-        self.assertEqual(response.context["stale_count"], 1)
 
     def test_closing_the_day_lapses_a_booking_nobody_ever_confirmed(self):
         self.client.post(reverse("reception_close_day"))

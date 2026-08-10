@@ -200,11 +200,6 @@ def _queue_context(request, day=None):
     # ever grows through the day is noise on the one screen that has to be
     # scannable at a glance. They stay in the record and on the Bookings screen.
 
-    # Anything still open from a previous day. A patient left showing as in the
-    # cabin overnight is not a record of anything — it is a queue nobody closed,
-    # and it makes today's board lie about who the doctor is seeing.
-    stale = list(Visit.objects.unfinished_before(day))
-
     # KAN-49. Yesterday, if nobody signed it off. Everything else on this board
     # is about today; this is the one thing that has to interrupt it, because
     # an unsigned day means money owed that nobody is looking for any more.
@@ -231,8 +226,6 @@ def _queue_context(request, day=None):
         # only reception works it. Actions are hidden here and refused by the
         # view underneath, so this is presentation, not the access control.
         "can_work_queue": request.user.role == Role.RECEPTIONIST or request.user.is_superuser,
-        "stale": stale,
-        "stale_count": len(stale),
         # KAN-49: the previous day, if it was never signed off, and the visits
         # from it that still owe money. Both are needed — the date alone gives
         # the receptionist nothing to act on.
