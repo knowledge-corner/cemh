@@ -29,7 +29,7 @@ from accounts.models import Role, User
 
 from . import calendar as clinic_calendar
 from . import weekdays as weekday_codes
-from .models import Cabin, ScheduleOverride, Visit
+from .models import Cabin, DoctorSchedule, Visit
 
 COLUMNS = [
     "doctor_email", "cabin", "start_date", "end_date",
@@ -356,7 +356,7 @@ def parse(file_obj, replace=False):
             # the dates this row covers and writes the file fresh, so an
             # exact match today is not left alone — it would be deleted and
             # never rewritten if skipped here as "already there".
-            if not replace and ScheduleOverride.objects.filter(
+            if not replace and DoctorSchedule.objects.filter(
                 doctor=doctor, date=day, cabin=cabin,
                 start_time=start_time, end_time=end_time,
             ).exists():
@@ -364,8 +364,8 @@ def parse(file_obj, replace=False):
                 continue
 
             found = clinic_calendar.find_conflicts(
-                kind="override", doctor=doctor, cabin=cabin,
-                start=start_time, end=end_time, date=day,
+                doctor=doctor, cabin=cabin,
+                start=start_time, end=end_time, dates=[day],
             )
             if replace:
                 # A "doctor" conflict is always this same doctor's own
@@ -430,7 +430,7 @@ def parse(file_obj, replace=False):
         for row in result.planned:
             by_doctor_dates.setdefault(row.doctor, set()).update(row.dates)
         for row_doctor, row_dates in by_doctor_dates.items():
-            existing_count = ScheduleOverride.objects.filter(
+            existing_count = DoctorSchedule.objects.filter(
                 doctor=row_doctor, date__in=row_dates,
             ).count()
             if not existing_count:
@@ -465,7 +465,7 @@ def commit(result, created_by=None, replace=False):
         for row in result.planned:
             by_doctor_dates.setdefault(row.doctor, set()).update(row.dates)
         for row_doctor, row_dates in by_doctor_dates.items():
-            deleted, _detail = ScheduleOverride.objects.filter(
+            deleted, _detail = DoctorSchedule.objects.filter(
                 doctor=row_doctor, date__in=row_dates,
             ).delete()
             removed += deleted
@@ -473,7 +473,7 @@ def commit(result, created_by=None, replace=False):
     written = []
     for row in result.planned:
         for day in row.dates:
-            written.append(ScheduleOverride.objects.create(
+            written.append(DoctorSchedule.objects.create(
                 doctor=row.doctor,
                 date=day,
                 cabin=row.cabin,

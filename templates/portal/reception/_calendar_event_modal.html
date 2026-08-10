@@ -13,7 +13,14 @@ fallback is not a degraded version of this form — it is the Doctor schedule
 screen, which is plain HTML forms and can do everything here except in one step.
 
 The fields for the type not chosen are *disabled* as well as hidden, so a doctor
-half-filled-in before switching to Holiday is not submitted.
+half-filled-in before switching to Holiday is not submitted. "Last date" is two
+separate fields under the hood (holiday's own range, and the recurring booking's
+end date) — see CalendarEventForm — so only one is ever shown at once.
+
+There is no cabin field. Which room a booking gets is worked out once the dates
+and time are known — see appointments.calendar.allocate_cabins — so asking
+reception to pick one here would be asking them to already know the answer this
+form exists to work out.
 {% endcomment %}
 
 <div class="modal-backdrop" id="event-modal" hidden data-close-on-backdrop>
@@ -37,14 +44,16 @@ half-filled-in before switching to Holiday is not submitted.
           {{ event_form.event_type }}
         </div>
 
-        <div class="form-grid">
+        <div class="field">
+          <label class="field__label" for="{{ event_form.date.id_for_label }}">
+            {{ event_form.date.label }}
+          </label>
+          {{ event_form.date }}
+        </div>
+
+        {# ── Holiday's own end date — a plain range, always available ───── #}
+        <div data-event-fields="holiday">
           <div class="field">
-            <label class="field__label" for="{{ event_form.date.id_for_label }}">
-              {{ event_form.date.label }}
-            </label>
-            {{ event_form.date }}
-          </div>
-          <div class="field" data-when="once">
             <label class="field__label" for="{{ event_form.until.id_for_label }}">
               {{ event_form.until.label }}
             </label>
@@ -53,8 +62,8 @@ half-filled-in before switching to Holiday is not submitted.
           </div>
         </div>
 
-        {# ── Who (working hours and leave both need one) ──────────────── #}
-        <div data-event-fields="hours leave">
+        {# ── Working hours ────────────────────────────────────────────── #}
+        <div data-event-fields="hours">
           <div class="field">
             <label class="field__label" for="{{ event_form.doctor.id_for_label }}">
               {{ event_form.doctor.label }}
@@ -69,17 +78,8 @@ half-filled-in before switching to Holiday is not submitted.
               Only doctors who have finished setting up their account appear here.
             </p>
           </div>
-        </div>
 
-        {# ── Working hours ────────────────────────────────────────────── #}
-        <div data-event-fields="hours">
           <div class="form-grid">
-            <div class="field">
-              <label class="field__label" for="{{ event_form.cabin.id_for_label }}">
-                {{ event_form.cabin.label }}
-              </label>
-              {{ event_form.cabin }}
-            </div>
             <div class="field">
               <label class="field__label" for="{{ event_form.start_time.id_for_label }}">
                 {{ event_form.start_time.label }}
@@ -92,66 +92,66 @@ half-filled-in before switching to Holiday is not submitted.
               </label>
               {{ event_form.end_time }}
             </div>
+          </div>
+          <p class="field__help" style="margin-top:-.5rem">
+            One continuous stretch of time. A doctor working a morning and an
+            evening clinic on the same day is two of these, not one.
+          </p>
+
+          <div class="field field--check">
+            <label>
+              {{ event_form.is_recurring }}
+              {{ event_form.is_recurring.label }}
+            </label>
+          </div>
+
+          {% comment %}
+          Shown, and its inputs enabled, only once Recurring is ticked — see
+          calendar.js's applyRecurring(). The end date defaults to the last day
+          of the month the start date falls in when left blank; CalendarEventForm
+          fills that in itself, so nothing has to be pre-filled here.
+          {% endcomment %}
+          <div data-when="recurring" hidden>
             <div class="field">
-              <label class="field__label" for="{{ event_form.repeat.id_for_label }}">
-                {{ event_form.repeat.label }}
+              <label class="field__label" for="{{ event_form.recur_until.id_for_label }}">
+                {{ event_form.recur_until.label }}
               </label>
-              {{ event_form.repeat }}
+              {{ event_form.recur_until }}
+              <p class="field__help">Defaults to the end of the month if left empty.</p>
+            </div>
+
+            {% comment %}
+            KAN-22: "M-W-F", picked as a row of circles rather than a typed
+            code or a plain checkbox list — the day picker already familiar
+            from booking apps on a phone.
+            {% endcomment %}
+            <div class="field">
+              <span class="field__label">{{ event_form.weekdays.label }}</span>
+              <div class="daypick-circles">
+                {% for checkbox in event_form.weekdays %}
+                  <label class="daypick-circle" for="{{ checkbox.data.attrs.id }}"
+                         aria-label="{{ checkbox.data.label }}">
+                    {{ checkbox.tag }}
+                    <span aria-hidden="true">{{ checkbox.data.value }}</span>
+                  </label>
+                {% endfor %}
+              </div>
             </div>
           </div>
 
           {% comment %}
-          KAN-22: "M-W-F". Checkboxes rather than a typed code, because a doctor
-          works Monday, Wednesday and Friday far more often than seven
-          consecutive days, and the only way to say so before this was to add
-          each date by hand and hope none were missed.
-
-          Shown only for the weekday repeat, and disabled with it, so days
-          ticked before changing your mind are not submitted.
+          The escape hatch for a run of dates that cannot all get a cabin.
+          Left unticked, one bad date refuses the whole booking outright — see
+          CalendarEventForm._clean_hours — which is what a receptionist adding
+          a single day normally wants too, so this stays visible rather than
+          only appearing once something has actually clashed.
           {% endcomment %}
-          <div class="field" data-when="selected">
-            <span class="field__label">{{ event_form.weekdays.label }}</span>
-            {{ event_form.weekdays }}
-          </div>
-        </div>
-
-        {# ── Away ─────────────────────────────────────────────────────── #}
-        {% comment %}
-        KAN-50. The calendar took over from the availability screen, and this is
-        the one thing that screen could do which the calendar could not: say a
-        doctor is away on a day they have no weekly pattern to delete.
-
-        Leaving both times empty is the whole day, which is what most leave is.
-        {% endcomment %}
-        <div data-event-fields="leave">
-          <div class="form-grid">
-            <div class="field">
-              <label class="field__label" for="{{ event_form.leave_start_time.id_for_label }}">
-                {{ event_form.leave_start_time.label }}
-              </label>
-              {{ event_form.leave_start_time }}
-            </div>
-            <div class="field">
-              <label class="field__label" for="{{ event_form.leave_end_time.id_for_label }}">
-                {{ event_form.leave_end_time.label }}
-              </label>
-              {{ event_form.leave_end_time }}
-            </div>
-          </div>
-          <p class="field__help" style="margin-top:-.5rem">
-            Leave both empty for the whole day.
-          </p>
-          <div class="field">
-            <label class="field__label" for="{{ event_form.reason.id_for_label }}">
-              {{ event_form.reason.label }}
+          <div class="field field--check">
+            <label>
+              {{ event_form.book_available_dates }}
+              {{ event_form.book_available_dates.label }}
             </label>
-            {{ event_form.reason }}
-            <p class="field__help">{{ event_form.reason.help_text }}</p>
           </div>
-          <p class="field__help">
-            Anyone already booked in is listed after saving, so they can be rung
-            and moved.
-          </p>
         </div>
 
         {# ── Holiday ──────────────────────────────────────────────────── #}

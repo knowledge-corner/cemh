@@ -6,18 +6,17 @@ in step with reality. What a day looks like is decided by the most specific rule
 that applies, in this order:
 
   1. **Clinic holiday** — nobody works, so there are no slots at all.
-  2. **Schedule override** — this doctor's hours for this one date.
-  3. **Weekly schedule** — this doctor's ordinary week.
-  4. **Clinic default** — the consulting hours in ``config/clinic.py``, used
-     when a doctor has no schedule of their own. A single-doctor clinic never
-     has to fill in any of the tables above.
+  2. **Schedule entry** — this doctor's hours for this one date.
+  3. **Clinic default** — the consulting hours in ``config/clinic.py``, used
+     on any date a doctor has no entry of their own. A single-doctor clinic
+     never has to add a single row.
 
 The clinic is **open every day** unless one of those says otherwise. There is no
 weekend rule: a Sunday is a working day until somebody enters it as a holiday or
-leaves it out of a doctor's week. Closure is always something a person recorded,
-never something the software assumed.
+gives a doctor hours that say otherwise. Closure is always something a person
+recorded, never something the software assumed.
 
-Leave is then subtracted, and finally any slot already held by an active visit.
+Any slot already held by an active visit is then subtracted.
 
 The database still has the final say: the exclusion constraint on ``Visit``
 rejects an overlapping booking even if two people are offered the same slot at
@@ -30,7 +29,7 @@ from datetime import datetime, time, timedelta
 from django.conf import settings
 from django.utils import timezone
 
-from .models import ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride, Visit
+from .models import ClinicHoliday, DoctorSchedule, Visit
 
 
 def _parse_time(value):
@@ -68,12 +67,8 @@ def is_working_day(day, doctor=None):
     if doctor is None:
         return day.weekday() in settings.CLINIC.WORKING_DAYS
 
-    if ScheduleOverride.objects.filter(doctor=doctor, date=day).exists():
+    if DoctorSchedule.objects.filter(doctor=doctor, date=day).exists():
         return True
-    if DoctorSchedule.objects.filter(doctor=doctor, is_active=True).exists():
-        return DoctorSchedule.objects.filter(
-            doctor=doctor, weekday=day.weekday(), is_active=True
-        ).exists()
     return day.weekday() in settings.CLINIC.WORKING_DAYS
 
 
@@ -93,20 +88,11 @@ def sittings_for(day, doctor=None):
         return []
 
     if doctor is not None:
-        overrides = ScheduleOverride.objects.filter(doctor=doctor, date=day)
-        if overrides.exists():
+        entries = DoctorSchedule.objects.filter(doctor=doctor, date=day)
+        if entries.exists():
             return [
-                (o.start_time, o.end_time, o.slot_minutes or default_slot_minutes())
-                for o in overrides.order_by("start_time")
-            ]
-
-        if DoctorSchedule.objects.filter(doctor=doctor, is_active=True).exists():
-            rows = DoctorSchedule.objects.filter(
-                doctor=doctor, weekday=day.weekday(), is_active=True
-            ).order_by("start_time")
-            return [
-                (r.start_time, r.end_time, r.slot_minutes or default_slot_minutes())
-                for r in rows
+                (e.start_time, e.end_time, e.slot_minutes or default_slot_minutes())
+                for e in entries.order_by("start_time")
             ]
 
     if day.weekday() not in settings.CLINIC.WORKING_DAYS:
@@ -131,15 +117,10 @@ def day_slots(day, doctor=None):
     return sorted(slots)
 
 
-def leave_for(doctor, day):
-    return list(DoctorLeave.objects.filter(doctor=doctor, date=day))
-
-
 #: Why a slot cannot be booked. ``None`` means it can.
 SLOT_FREE = "free"
 SLOT_BOOKED = "booked"
 SLOT_PAST = "past"
-SLOT_AWAY = "away"
 
 
 def slot_grid(doctor, day):
@@ -165,15 +146,12 @@ def slot_grid(doctor, day):
         doctor=doctor, scheduled_start__date=day,
     ).active().values_list("scheduled_start", "scheduled_end")
 
-    away = leave_for(doctor, day)
     now = timezone.now()
 
     grid = []
     for start, end in slots:
         if any(start < busy_end and busy_start < end for busy_start, busy_end in taken):
             state = SLOT_BOOKED
-        elif any(absence.covers(start, end) for absence in away):
-            state = SLOT_AWAY
         elif start <= now:
             state = SLOT_PAST
         else:

@@ -52,21 +52,14 @@ where holidays are drawn).
               called Adway Kulkarni No.
               {% endcomment %}
               {% for entry in cell.entries %}
-                <p class="chip chip--hours{% if entry.away %} chip--away{% endif %}">
+                <p class="chip chip--hours">
                   <span class="chip__line">
                     <span class="chip__time mono">{{ entry.start|time:"H:i" }}</span>
                     {{ entry.doctor.display_name }}
                   </span>
                   <span class="chip__where">
                     {% if entry.cabin %}{{ entry.cabin.name }}{% else %}No cabin{% endif %}
-                    {% if entry.away %}&middot; <span class="chip__kind">Away</span>{% endif %}
                   </span>
-                </p>
-              {% endfor %}
-
-              {% for absence in cell.leave %}
-                <p class="chip chip--leave">
-                  <span class="chip__kind">Away</span> {{ absence.doctor.display_name }}
                 </p>
               {% endfor %}
 

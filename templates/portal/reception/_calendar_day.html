@@ -32,42 +32,6 @@ form — quietly, and in the direction that puts a patient in front of nobody.
   </div>
 {% endif %}
 
-{% if leave %}
-  <div class="alert-strip" style="margin-bottom:1rem">
-    <div>
-      <span class="alert-strip__title">Away today</span>
-      {% comment %}
-      One line per absence rather than a run-on sentence, because since KAN-50
-      each one is removable and a button needs something to sit beside. Leave
-      recorded on the wrong doctor is otherwise permanent — the screen that used
-      to delete it is gone.
-      {% endcomment %}
-      {% for absence in leave %}
-        <div class="away-line">
-          <span>
-            {{ absence.doctor.display_name }}
-            ({% if absence.whole_day %}all day{% else %}{{ absence.start_time|time:"H:i" }}–{{ absence.end_time|time:"H:i" }}{% endif %})
-            {% if absence.reason %}&middot; {{ absence.reason }}{% endif %}
-          </span>
-          {% comment %}
-          A doctor only ever sees their own leave here — the calendar already
-          scopes their whole view to themselves (see _visible_doctors) — so
-          this needs no extra ownership check, unlike the delete endpoint it
-          posts to, which checks regardless of what this screen shows.
-          {% endcomment %}
-          <form method="post"
-                action="{% url 'reception_delete_calendar_entry' 'leave' absence.pk %}"
-                onsubmit="return confirm('{{ absence.doctor.display_name|escapejs }} is back in on {{ anchor|date:'j M'|escapejs }}?');">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button class="btn btn--secondary" type="submit">Not away after all</button>
-          </form>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-{% endif %}
-
 {% if not columns %}
   <div class="card">
     <div class="card__body empty">
@@ -105,63 +69,44 @@ form — quietly, and in the direction that puts a patient in front of nobody.
               {% endif %}
 
               {% for entry in column.entries %}
-                <div class="sitting{% if entry.away %} sitting--away{% endif %}">
+                <div class="sitting">
                   <p class="sitting__time mono">{{ entry.label }}</p>
                   <p class="sitting__doctor">{{ entry.doctor.display_name }}</p>
-                  <p class="sitting__meta faint">
-                    {% if entry.is_recurring %}
-                      Every {{ anchor|date:"l" }}
-                    {% elif entry.is_editable %}
-                      This date only
-                    {% else %}
-                      Clinic default hours &mdash; no cabin set
-                    {% endif %}
-                  </p>
-                  {% if entry.note %}<p class="sitting__meta">{{ entry.note }}</p>{% endif %}
-                  {% if entry.away %}
-                    <p class="badge badge--warning">Away — recorded as leave</p>
-                  {% endif %}
 
                   {% if entry.is_editable %}
                     {% comment %}
                     A doctor only ever sees their own entries here (see
                     _visible_doctors), so no per-entry ownership check is
                     needed on top of is_doctor_view — the endpoint these post
-                    to checks regardless. "Remove every week" is left out for
-                    a doctor: re-uploading a schedule is the tool for changing
-                    the whole pattern, this is for one event.
+                    to checks regardless. "Remove the whole booking" is left
+                    out for a doctor: re-uploading a schedule is the tool for
+                    changing a recurring pattern of their own.
                     {% endcomment %}
                     <div class="sitting__actions">
-                      {% if entry.is_recurring %}
-                        {% comment %}
-                        FR-16 / AC-14. A weekly pattern cannot lose one date by
-                        deleting the row — the row is every other week too — so
-                        the two are separate buttons with separate wording
-                        rather than one button and a hope.
-                        {% endcomment %}
+                      {% if entry.series_id %}
                         <form method="post"
-                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}">
+                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
+                              onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
                           {% csrf_token %}
                           <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <input type="hidden" name="scope" value="occurrence">
-                          <input type="hidden" name="date" value="{{ anchor|date:'Y-m-d' }}">
+                          <input type="hidden" name="scope" value="date">
                           <button class="btn btn--secondary" type="submit">
-                            Off this {{ anchor|date:"l" }}
+                            Remove this date
                           </button>
                         </form>
                         {% if not is_doctor_view %}
                           <form method="post"
                                 action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
-                                onsubmit="return confirm('Remove {{ entry.doctor.display_name|escapejs }} from every {{ anchor|date:'l'|escapejs }}? This removes the whole weekly pattern, not just {{ anchor|date:'j M'|escapejs }}.');">
+                                onsubmit="return confirm('Remove the whole booking for {{ entry.doctor.display_name|escapejs }}, every date it covers — not just {{ anchor|date:'j M'|escapejs }}?');">
                             {% csrf_token %}
                             <input type="hidden" name="next" value="{{ request.get_full_path }}">
                             <input type="hidden" name="scope" value="series">
-                            <button class="btn btn--secondary" type="submit">Remove every week</button>
+                            <button class="btn btn--secondary" type="submit">Remove whole booking</button>
                           </form>
                         {% endif %}
                       {% else %}
                         <form method="post"
-                              action="{% url 'reception_delete_calendar_entry' 'override' entry.pk %}"
+                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
                               onsubmit="return confirm('Remove these hours on {{ anchor|date:'j M'|escapejs }}?');">
                           {% csrf_token %}
                           <input type="hidden" name="next" value="{{ request.get_full_path }}">

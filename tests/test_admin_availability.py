@@ -17,11 +17,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from appointments.models import (
-    ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride, VisitStatus,
-)
+from appointments.models import ClinicHoliday, DoctorSchedule
 
-from .factories import make_doctor, make_patient, make_visit
+from .factories import make_doctor
 
 PASSWORD = "adminpass12345"
 
@@ -42,7 +40,7 @@ class AdminCase(TestCase):
 
 
 class TestEveryAvailabilityTableIsReachable(AdminCase):
-    MODELS = ("clinicholiday", "doctorschedule", "scheduleoverride", "doctorleave")
+    MODELS = ("clinicholiday", "doctorschedule")
 
     def test_each_changelist_opens(self):
         for model in self.MODELS:
@@ -56,8 +54,7 @@ class TestEveryAvailabilityTableIsReachable(AdminCase):
 
     def test_they_appear_on_the_admin_index(self):
         response = self.client.get(reverse("admin:index"))
-        for label in ("Clinic holiday", "Doctor schedule", "Schedule override",
-                      "Doctor leave"):
+        for label in ("Clinic holiday", "Doctor schedule"):
             self.assertContains(response, label)
 
 
@@ -71,7 +68,7 @@ class TestRowsRenderInTheChangelist(AdminCase):
 
     def test_a_schedule_row_shows_the_slot_length_it_will_actually_use(self):
         DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=self.day.weekday(),
+            doctor=self.doctor, date=self.day,
             start_time=time(10, 0), end_time=time(13, 0),
         )
         response = self.client.get(self._url("doctorschedule"))
@@ -80,60 +77,19 @@ class TestRowsRenderInTheChangelist(AdminCase):
 
     def test_an_explicit_slot_length_is_shown_as_given(self):
         DoctorSchedule.objects.create(
-            doctor=self.doctor, weekday=self.day.weekday(),
+            doctor=self.doctor, date=self.day,
             start_time=time(10, 0), end_time=time(13, 0), slot_minutes=30,
         )
         response = self.client.get(self._url("doctorschedule"))
         self.assertContains(response, "30 min")
 
-    def test_an_override_renders(self):
-        ScheduleOverride.objects.create(
+    def test_a_note_renders(self):
+        DoctorSchedule.objects.create(
             doctor=self.doctor, date=self.day,
             start_time=time(17, 0), end_time=time(19, 0), note="Extra evening clinic",
         )
-        response = self.client.get(self._url("scheduleoverride"))
+        response = self.client.get(self._url("doctorschedule"))
         self.assertContains(response, "Extra evening clinic")
-
-    def test_whole_day_leave_reads_as_all_day(self):
-        DoctorLeave.objects.create(doctor=self.doctor, date=self.day, reason="Conference")
-        response = self.client.get(self._url("doctorleave"))
-        self.assertContains(response, "All day")
-
-    def test_part_day_leave_shows_its_hours(self):
-        DoctorLeave.objects.create(
-            doctor=self.doctor, date=self.day,
-            start_time=time(10, 0), end_time=time(12, 0),
-        )
-        response = self.client.get(self._url("doctorleave"))
-        self.assertContains(response, "10:00–12:00")
-
-
-class TestLeaveWarnsAboutStrandedPatients(AdminCase):
-    """
-    Leave entered here collides with confirmed appointments just as easily as
-    leave entered at reception — and nobody setting up a month of it would think
-    to go and check the queue.
-    """
-
-    def setUp(self):
-        super().setUp()
-        start = timezone.make_aware(
-            timezone.datetime.combine(self.day, time(11, 0)),
-            timezone.get_current_timezone(),
-        )
-        self.visit = make_visit(make_patient(), self.doctor, start=start)
-        self.visit.transition_to(VisitStatus.CONFIRMED, by_user=self.admin)
-
-    def test_the_changelist_counts_the_patients_to_ring(self):
-        DoctorLeave.objects.create(doctor=self.doctor, date=self.day)
-        response = self.client.get(self._url("doctorleave"))
-        self.assertContains(response, "1 to ring")
-
-    def test_leave_with_nobody_booked_shows_a_dash(self):
-        other = make_doctor(username="dr2", email="dr2@example.in")
-        DoctorLeave.objects.create(doctor=other, date=self.day)
-        response = self.client.get(self._url("doctorleave"))
-        self.assertContains(response, "—")
 
 
 class TestOnlyStaffReachTheAdmin(TestCase):
@@ -141,5 +97,5 @@ class TestOnlyStaffReachTheAdmin(TestCase):
         from .factories import make_receptionist
 
         self.client.force_login(make_receptionist())
-        response = self.client.get(reverse("admin:appointments_doctorleave_changelist"))
+        response = self.client.get(reverse("admin:appointments_clinicholiday_changelist"))
         self.assertEqual(response.status_code, 302)

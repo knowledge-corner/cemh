@@ -1,9 +1,6 @@
 from django.contrib import admin
 
-from .models import (
-    ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride, Visit,
-    VisitStatusEvent,
-)
+from .models import ClinicHoliday, DoctorSchedule, Visit, VisitStatusEvent
 
 
 class VisitStatusEventInline(admin.TabularInline):
@@ -60,11 +57,12 @@ class VisitStatusEventAdmin(admin.ModelAdmin):
 
 # ── Doctor availability ───────────────────────────────────────────────────────
 #
-# Reception has its own screen for all four of these, which is where the day-to-
-# day work happens. They are registered here as well because the admin is where
-# the clinic's own administrator sets things up in bulk — a year of public
-# holidays, or every doctor's week at go-live — and because being able to see
-# the rows directly is what makes "why was that slot not offered?" answerable.
+# Reception has its own screen for both of these, which is where the day-to-day
+# work happens. They are registered here as well because the admin is where the
+# clinic's own administrator sets things up in bulk — a year of public
+# holidays, or a doctor's whole first month at go-live — and because being able
+# to see the rows directly is what makes "why was that slot not offered?"
+# answerable.
 
 
 @admin.register(ClinicHoliday)
@@ -78,15 +76,16 @@ class ClinicHolidayAdmin(admin.ModelAdmin):
 
 @admin.register(DoctorSchedule)
 class DoctorScheduleAdmin(admin.ModelAdmin):
-    """A doctor's ordinary week. Two rows for a morning and evening sitting."""
+    """One doctor's hours on one date — the only shape this table has now."""
 
-    list_display = ("doctor", "weekday", "start_time", "end_time",
-                    "effective_slot_minutes", "is_active")
-    list_filter = ("weekday", "is_active", "doctor")
-    search_fields = ("doctor__first_name", "doctor__last_name", "doctor__username")
-    autocomplete_fields = ("doctor",)
-    list_editable = ("is_active",)
-    ordering = ("doctor", "weekday", "start_time")
+    list_display = ("doctor", "date", "start_time", "end_time",
+                    "effective_slot_minutes", "cabin", "note")
+    list_filter = ("date", "doctor")
+    search_fields = ("doctor__first_name", "doctor__last_name", "note")
+    autocomplete_fields = ("doctor", "created_by")
+    date_hierarchy = "date"
+    readonly_fields = ("created_at",)
+    ordering = ("-date",)
 
     @admin.display(description="Slot", ordering="slot_minutes")
     def effective_slot_minutes(self, obj):
@@ -96,47 +95,3 @@ class DoctorScheduleAdmin(admin.ModelAdmin):
         if obj.slot_minutes:
             return f"{obj.slot_minutes} min"
         return f"{settings.CLINIC.SLOT_MINUTES} min (clinic default)"
-
-
-@admin.register(ScheduleOverride)
-class ScheduleOverrideAdmin(admin.ModelAdmin):
-    """Different hours on one date. Absence belongs in DoctorLeave instead."""
-
-    list_display = ("doctor", "date", "start_time", "end_time", "slot_minutes", "note")
-    list_filter = ("date", "doctor")
-    search_fields = ("doctor__first_name", "doctor__last_name", "note")
-    autocomplete_fields = ("doctor", "created_by")
-    date_hierarchy = "date"
-    readonly_fields = ("created_at",)
-    ordering = ("-date",)
-
-
-@admin.register(DoctorLeave)
-class DoctorLeaveAdmin(admin.ModelAdmin):
-    list_display = ("doctor", "date", "when", "reason", "patients_to_reschedule")
-    list_filter = ("date", "doctor")
-    search_fields = ("doctor__first_name", "doctor__last_name", "reason")
-    autocomplete_fields = ("doctor", "created_by")
-    date_hierarchy = "date"
-    readonly_fields = ("created_at",)
-    ordering = ("-date",)
-
-    @admin.display(description="When")
-    def when(self, obj):
-        if obj.whole_day:
-            return "All day"
-        return f"{obj.start_time:%H:%M}–{obj.end_time:%H:%M}"
-
-    @admin.display(description="Patients to move")
-    def patients_to_reschedule(self, obj):
-        """
-        Bookings this leave strands.
-
-        Surfaced in the list rather than only on the reception screen, because
-        leave entered here — a whole month at a time, say — collides with
-        confirmed appointments just as easily, and nobody would think to check.
-        """
-        count = len(obj.affected_visits())
-        if not count:
-            return "—"
-        return f"{count} to ring"

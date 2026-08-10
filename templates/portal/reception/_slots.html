@@ -53,7 +53,7 @@ receptionist guessing, because what to do about it differs.
         colour on its own does not.
         {% endcomment %}
         <button type="button" class="slot slot--{{ slot.state }}" disabled
-                title="{% if slot.state == 'booked' %}Already booked{% elif slot.state == 'past' %}This time has passed{% else %}{{ doctor.display_name }} is on leave{% endif %}">
+                title="{% if slot.state == 'booked' %}Already booked{% else %}This time has passed{% endif %}">
           {{ slot.start|time:"H:i" }}
         </button>
       {% endif %}

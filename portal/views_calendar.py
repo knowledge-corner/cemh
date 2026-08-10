@@ -27,9 +27,7 @@ from accounts.permissions import role_required
 from appointments import calendar as clinic_calendar
 from appointments import holidays
 from appointments import schedules_csv
-from appointments.models import (
-    Cabin, ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride,
-)
+from appointments.models import Cabin, ClinicHoliday, DoctorSchedule
 from audit.models import AuditAction
 from audit.services import record
 from website.models import CallbackRequest, CallbackStatus
@@ -146,9 +144,7 @@ def calendar_view(request):
         "chosen_doctor": chosen_doctor,
         "chosen_specialisation": chosen_specialisation,
         "is_doctor_view": _is_doctor(request.user),
-        "event_form": clinic_forms.CalendarEventForm(
-            initial={"date": anchor, "repeat": clinic_forms.CalendarEventForm.ONCE}
-        ),
+        "event_form": clinic_forms.CalendarEventForm(initial={"date": anchor}),
         "cabin_form": clinic_forms.CabinForm(),
         "all_cabins": all_cabins,
         # Kept on every navigation link so a filter survives moving month
@@ -168,7 +164,6 @@ def calendar_view(request):
         context.update({
             "columns": clinic_calendar.day_columns(anchor, schedule, cabins),
             "holiday": schedule.holidays.get(anchor),
-            "leave": schedule.leave.get(anchor, []),
             "previous": anchor - timedelta(days=1),
             "next": anchor + timedelta(days=1),
         })
@@ -208,19 +203,9 @@ def _back(request, fallback="reception_calendar"):
 
 
 def _cabins_still_scheduled():
-    """
-    Which cabins have a future time slot against them.
-
-    A recurring weekly sitting counts regardless of date — it recurs forever
-    until somebody removes it, so it is never in the past. A one-off override
-    counts only while its date has not yet passed.
-    """
+    """Which cabins have a future dated entry against them."""
     return set(
         DoctorSchedule.objects.filter(
-            is_active=True, cabin_id__isnull=False,
-        ).values_list("cabin_id", flat=True)
-    ) | set(
-        ScheduleOverride.objects.filter(
             date__gte=timezone.localdate(), cabin_id__isnull=False,
         ).values_list("cabin_id", flat=True)
     )
@@ -282,9 +267,8 @@ def retire_cabin(request, pk):
         # button is only a hint — the rule has to hold here too.
         messages.error(
             request,
-            f"{cabin.name} still has a doctor's weekly hours or an upcoming "
-            f"one-off sitting against it, so it cannot be retired yet. Remove "
-            f"those first.",
+            f"{cabin.name} still has a doctor's hours booked against it in "
+            f"the future, so it cannot be retired yet. Remove those first.",
         )
         return _back(request)
 
@@ -318,40 +302,31 @@ def add_calendar_event(request):
     for obj in created:
         record(request, AuditAction.CREATE, obj=obj, description=f"Calendar: {obj}")
 
-    if not created:
+    skipped = getattr(form, "_skipped_dates", [])
+    if skipped:
+        # Only reachable once "book the ones that are free" was ticked — see
+        # CalendarEventForm._clean_hours, which refuses the submission outright
+        # otherwise. The dates are named so the gap is something reception can
+        # act on, not just a number.
+        shown = ", ".join(f"{d:%d %b}" for d in skipped[:5])
+        if len(skipped) > 5:
+            shown += f" and {len(skipped) - 5} more"
+        messages.warning(
+            request,
+            f"{len(created)} entr{'y was' if len(created) == 1 else 'ies were'} "
+            f"added. No cabin was free on {len(skipped)} "
+            f"date{'' if len(skipped) == 1 else 's'} ({shown}), so "
+            f"{'it was' if len(skipped) == 1 else 'those were'} left out — "
+            f"please review and book separately if still needed.",
+        )
+    elif not created:
         messages.warning(request, "Nothing new to add — that was already recorded.")
     elif len(created) == 1:
         messages.success(request, f"Added: {created[0]}.")
     else:
         messages.success(request, f"Added {len(created)} entries.")
 
-    # Leave recorded after patients have been confirmed is the case that
-    # matters: those patients have to be rung and moved, and nobody will do it
-    # if the screen does not say so. Reported after the success message so the
-    # warning is the last thing read, not the first thing scrolled past.
-    _warn_about_stranded_patients(request, created)
     return _back(request)
-
-
-def _warn_about_stranded_patients(request, created):
-    """Name the bookings a newly recorded absence has stranded (KAN-50)."""
-    stranded = []
-    for obj in created:
-        if isinstance(obj, DoctorLeave):
-            stranded.extend(obj.affected_visits())
-    if not stranded:
-        return
-
-    names = ", ".join(
-        f"{v.patient.full_name} "
-        f"({timezone.localtime(v.scheduled_start):%d %b %H:%M})"
-        for v in stranded
-    )
-    messages.warning(
-        request,
-        f"{len(stranded)} patient{'' if len(stranded) == 1 else 's'} already "
-        f"booked must be rung and moved: {names}",
-    )
 
 
 # ── Clinic holidays from a spreadsheet (KAN-24) ──────────────────────────────
@@ -416,42 +391,39 @@ def import_holidays(request):
     })
 
 
-# ── Deleting, which is how leave is recorded (FR-15, FR-16) ──────────────────
+# ── Deleting a schedule entry (FR-15, FR-16) ──────────────────────────────────
 
 @role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def delete_calendar_entry(request, kind, pk):
     """
-    Remove working hours — for one date, or the whole weekly pattern.
+    Remove a schedule entry — just this date, or every date in its booking.
 
-    KAN-22 records leave by deleting entries, and warns in its own open
-    questions that this leaves nothing to report on afterwards. Deleting a
-    single occurrence of a weekly pattern cannot delete the row anyway — the row
-    is every other week too — so that case writes a :class:`DoctorLeave` for the
-    date instead. That both answers FR-16 and leaves the positive record the
-    ticket says is missing.
+    Every entry is one dated row now, so "just this date" is simply deleting
+    that row. A recurring booking's rows share one ``series_id``, generated
+    when it was added; "the whole booking" is deleting every row with that id.
 
     A doctor reaching this is editing their own calendar, not reception's: the
     calendar already shows them only their own entries (see
     ``_visible_doctors``), and the querysets below are additionally scoped to
     ``request.user`` so a crafted request against somebody else's pk 404s
     exactly as if it did not exist, rather than saying whose it really is. A
-    clinic holiday is never a doctor's to remove, and the whole weekly pattern
-    is left to re-uploading a schedule — this is one event, not a series.
+    clinic holiday is never a doctor's to remove, and removing a whole booking
+    in one action is reception's call, not offered here.
     """
     if request.method != "POST":
         return redirect("reception_calendar")
 
-    scope = request.POST.get("scope", "series")
+    scope = request.POST.get("scope", "date")
     is_doctor = _is_doctor(request.user)
 
     if is_doctor:
-        if kind not in ("override", "schedule", "leave"):
+        if kind != "schedule":
             return redirect("reception_calendar")
-        if kind == "schedule" and scope == "series":
+        if scope == "series":
             messages.error(
                 request,
-                "Removing your whole weekly pattern isn't available here — "
-                "upload a corrected schedule instead.",
+                "Removing a whole booking isn't available here — ask reception, "
+                "or upload a corrected schedule for your own recurring hours.",
             )
             return _back(request)
 
@@ -463,27 +435,6 @@ def delete_calendar_entry(request, kind, pk):
         messages.success(request, f"{description} removed.")
         return _back(request)
 
-    if kind == "leave":
-        leave_qs = DoctorLeave.objects.filter(doctor=request.user) if is_doctor else DoctorLeave.objects.all()
-        leave = get_object_or_404(leave_qs, pk=pk)
-        description = str(leave)
-        leave.delete()
-        record(request, AuditAction.DELETE, description=f"Leave removed: {description}")
-        messages.success(request, "Leave removed.")
-        return _back(request)
-
-    if kind == "override":
-        override_qs = (
-            ScheduleOverride.objects.filter(doctor=request.user)
-            if is_doctor else ScheduleOverride.objects.all()
-        )
-        override = get_object_or_404(override_qs, pk=pk)
-        description = str(override)
-        override.delete()
-        record(request, AuditAction.DELETE, description=f"Hours removed: {description}")
-        messages.success(request, "Those hours were removed.")
-        return _back(request)
-
     if kind != "schedule":
         return redirect("reception_calendar")
 
@@ -491,54 +442,30 @@ def delete_calendar_entry(request, kind, pk):
         DoctorSchedule.objects.filter(doctor=request.user)
         if is_doctor else DoctorSchedule.objects.all()
     )
-    sitting = get_object_or_404(schedule_qs, pk=pk)
+    entry = get_object_or_404(schedule_qs, pk=pk)
 
-    if scope == "series":
-        description = str(sitting)
-        sitting.delete()
-        record(request, AuditAction.DELETE,
-               description=f"Weekly hours removed: {description}")
-        messages.success(request, "The whole weekly pattern was removed.")
-        return _back(request)
-
-    try:
-        day = datetime.strptime(request.POST.get("date", ""), "%Y-%m-%d").date()
-    except ValueError:
-        messages.error(
-            request,
-            "Which date to remove was not given, so nothing was changed.",
+    if scope == "series" and entry.series_id:
+        series_qs = DoctorSchedule.objects.filter(
+            doctor=entry.doctor, series_id=entry.series_id,
         )
-        return _back(request)
-
-    leave = DoctorLeave.objects.create(
-        doctor=sitting.doctor,
-        date=day,
-        start_time=sitting.start_time,
-        end_time=sitting.end_time,
-        reason="Removed from the calendar",
-        created_by=request.user,
-    )
-    record(request, AuditAction.CREATE, obj=leave,
-           description=f"One occurrence removed: {leave}")
-
-    stranded = leave.affected_visits()
-    if stranded:
-        names = ", ".join(
-            f"{v.patient.full_name} ({timezone.localtime(v.scheduled_start):%H:%M})"
-            for v in stranded
+        count = series_qs.count()
+        series_qs.delete()
+        record(
+            request, AuditAction.DELETE,
+            description=f"Whole booking removed: {entry.doctor.display_name}, "
+                        f"{count} date{'' if count == 1 else 's'}",
         )
-        messages.warning(
-            request,
-            f"{len(stranded)} patient{'' if len(stranded) == 1 else 's'} already "
-            f"booked with {sitting.doctor.display_name} on {day:%d %b} must be "
-            f"rung and moved: {names}",
-        )
-    else:
         messages.success(
             request,
-            f"{sitting.doctor.display_name} is off on {day:%d %b}. The rest of "
-            f"the weekly pattern is untouched.",
+            f"The whole booking was removed — {count} "
+            f"date{'' if count == 1 else 's'} for {entry.doctor.display_name}.",
         )
+        return _back(request)
+
+    description = str(entry)
+    entry.delete()
+    record(request, AuditAction.DELETE, description=f"Hours removed: {description}")
+    messages.success(request, "Those hours were removed.")
     return _back(request)
 
 

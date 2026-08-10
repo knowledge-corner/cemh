@@ -6,6 +6,7 @@ Every form here follows the same shape so the generic edit view in
 form class plus a registry entry rather than a new view.
 """
 
+import uuid
 from datetime import timedelta
 
 from django import forms
@@ -769,139 +770,6 @@ class CabinForm(forms.ModelForm):
         return name
 
 
-class ConflictCheckedScheduleForm(forms.ModelForm):
-    """
-    Shared conflict checking for the two kinds of working-hours row.
-
-    Both ask the same question of :mod:`appointments.calendar` — would this put
-    two doctors in one cabin, or one doctor in two — and both must ask it before
-    the row is committed rather than after (KAN-22 UI-14).
-    """
-
-    #: "schedule" for the weekly pattern, "override" for a single date.
-    conflict_kind = None
-
-    def _conflict_window(self):
-        """``(date, weekday)`` — exactly one of which is set."""
-        raise NotImplementedError
-
-    def clean(self):
-        cleaned = super().clean()
-
-        doctor = cleaned.get("doctor")
-        start = cleaned.get("start_time")
-        end = cleaned.get("end_time")
-
-        if start and end and end <= start:
-            self.add_error("end_time", "The end time must be after the start time.")
-            return cleaned
-        if not (doctor and start and end):
-            return cleaned
-
-        from appointments import calendar as clinic_calendar
-
-        date, weekday = self._conflict_window()
-        if date is None and weekday is None:
-            return cleaned
-
-        conflicts = clinic_calendar.find_conflicts(
-            kind=self.conflict_kind,
-            doctor=doctor,
-            cabin=cleaned.get("cabin"),
-            start=start,
-            end=end,
-            date=date,
-            weekday=weekday,
-            exclude_pk=self.instance.pk,
-        )
-        for conflict in conflicts[:5]:
-            self.add_error(None, str(conflict))
-        if len(conflicts) > 5:
-            self.add_error(
-                None, f"…and {len(conflicts) - 5} more dates with the same clash."
-            )
-        return cleaned
-
-
-class DoctorScheduleForm(ConflictCheckedScheduleForm):
-    """One sitting in a doctor's ordinary week — the weekly repeat (FR-20)."""
-
-    conflict_kind = "schedule"
-
-    doctor = DoctorChoiceField(
-        queryset=User.objects.none(), widget=forms.Select(attrs=INPUT),
-    )
-
-    class Meta:
-        from appointments.models import DoctorSchedule as _DoctorSchedule
-
-        model = _DoctorSchedule
-        fields = ["doctor", "weekday", "cabin", "start_time", "end_time", "slot_minutes"]
-        widgets = {
-            "doctor": forms.Select(attrs=INPUT),
-            "weekday": forms.Select(attrs=INPUT),
-            "cabin": forms.Select(attrs=INPUT),
-            "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-            "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-            "slot_minutes": forms.NumberInput(attrs={**INPUT, "placeholder": "Clinic default"}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from appointments.models import Cabin
-
-        self.fields["doctor"].queryset = _all_doctors()
-        self.fields["cabin"].queryset = Cabin.objects.filter(is_active=True)
-        self.fields["cabin"].empty_label = "No cabin set"
-
-    def _conflict_window(self):
-        weekday = self.cleaned_data.get("weekday")
-        return None, (None if weekday in (None, "") else int(weekday))
-
-
-class ScheduleOverrideForm(ConflictCheckedScheduleForm):
-    """Different hours for one doctor on one date."""
-
-    conflict_kind = "override"
-
-    doctor = DoctorChoiceField(
-        queryset=User.objects.none(), widget=forms.Select(attrs=INPUT),
-    )
-
-    class Meta:
-        from appointments.models import ScheduleOverride as _ScheduleOverride
-
-        model = _ScheduleOverride
-        fields = ["doctor", "date", "cabin", "start_time", "end_time",
-                  "slot_minutes", "note"]
-        widgets = {
-            "doctor": forms.Select(attrs=INPUT),
-            "date": forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
-            "cabin": forms.Select(attrs=INPUT),
-            "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-            "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-            "slot_minutes": forms.NumberInput(attrs={**INPUT, "placeholder": "Clinic default"}),
-            "note": forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Extra evening clinic"}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from appointments.models import Cabin
-
-        self.fields["doctor"].queryset = _all_doctors()
-        self.fields["cabin"].queryset = Cabin.objects.filter(is_active=True)
-        self.fields["cabin"].empty_label = "No cabin set"
-
-    def clean_date(self):
-        day = self.cleaned_data["date"]
-        if day < timezone.localdate():
-            raise forms.ValidationError("That date has passed.")
-        return day
-
-    def _conflict_window(self):
-        return self.cleaned_data.get("date"), None
-
-
 class ClinicHolidayForm(forms.ModelForm):
     """A day the clinic is shut to everyone."""
 
@@ -917,46 +785,12 @@ class ClinicHolidayForm(forms.ModelForm):
         }
 
 
-class DoctorLeaveForm(forms.ModelForm):
-    """
-    A doctor away for a day, or part of one.
+def _end_of_month(day):
+    """The last calendar date of the month ``day`` falls in."""
+    import calendar as _stdlib_calendar
 
-    Leave taken after patients are already booked is the case that matters, so
-    nothing here refuses a clash — the view surfaces who has to be rung instead.
-    Refusing would only push the receptionist into recording it somewhere else.
-    """
-
-    class Meta:
-        from appointments.models import DoctorLeave as _DoctorLeave
-
-        model = _DoctorLeave
-        fields = ["doctor", "date", "start_time", "end_time", "reason"]
-        widgets = {
-            "doctor": forms.Select(attrs=INPUT),
-            "date": forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
-            "start_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-            "end_time": forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-            "reason": forms.TextInput(attrs={**INPUT, "placeholder": "Optional"}),
-        }
-        help_texts = {
-            "start_time": "Leave both times empty for a whole day.",
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from accounts.models import Role, User
-
-        self.fields["doctor"].queryset = User.objects.filter(
-            role=Role.DOCTOR, is_active=True
-        )
-        self.fields["start_time"].required = False
-        self.fields["end_time"].required = False
-
-
-#: A date range creating more rows than this is a mis-keyed year, not an
-#: intention. 400 lets a full year plus a margin through and stops 2026 being
-#: typed as 2260.
-MAX_RANGE_DAYS = 400
+    last_day = _stdlib_calendar.monthrange(day.year, day.month)[1]
+    return day.replace(day=last_day)
 
 
 class CalendarEventForm(forms.Form):
@@ -968,34 +802,29 @@ class CalendarEventForm(forms.Form):
     choice they make inside it, and making that choice before the pop-up opens
     would mean knowing the answer to get to the question.
 
-    Working hours land in the same two tables the availability screen already
-    writes — a weekly repeat is a :class:`DoctorSchedule` row, a one-off is a
-    :class:`ScheduleOverride` — so there is one answer to "when does this doctor
-    work" rather than a calendar's answer and a booking form's answer.
+    Working hours all land in :class:`DoctorSchedule` — one row per date,
+    whether the booking is a single day or a recurring run of chosen weekdays
+    between two dates. There is no "recurs forever" shape any more: a
+    recurring booking always names an end date, so it is simply several rows
+    generated up front, sharing one ``series_id``.
 
-    KAN-50 removed that availability screen, and leave was the one thing on it
-    the calendar could not do: the calendar *showed* who was away but the only
-    way to record it was to delete one occurrence of a weekly pattern. A doctor
-    on the clinic's default hours has no pattern to delete, so there was no way
-    at all to say they were away. Leave is therefore a third event type here.
+    One event is one continuous stretch of time. A doctor running a morning
+    and an evening clinic on the same day submits this form twice — that is
+    what lets "which cabin is this doctor in right now" stay a single lookup
+    rather than a doctor's whole day being one row with two ranges inside it.
+
+    The cabin is never chosen here — it is allocated once the dates and time
+    are known, by :func:`appointments.calendar.allocate_cabins`. "Which room"
+    is a question about what else is booked, and asking reception to work
+    that out by eye against the day view before typing an answer is exactly
+    the step this removes.
     """
 
     HOURS = "hours"
-    LEAVE = "leave"
     HOLIDAY = "holiday"
     EVENT_TYPES = [
         (HOURS, "Doctor working hours"),
-        (LEAVE, "Doctor away"),
         (HOLIDAY, "Clinic holiday"),
-    ]
-
-    ONCE = "once"
-    SELECTED = "selected"
-    WEEKLY = "weekly"
-    REPEATS = [
-        (ONCE, "Does not repeat"),
-        (SELECTED, "On chosen weekdays, until the end date"),
-        (WEEKLY, "Every week, until removed"),
     ]
 
     event_type = forms.ChoiceField(
@@ -1007,11 +836,11 @@ class CalendarEventForm(forms.Form):
         label="Date",
         widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
     )
-    #: Not "Repeat daily until": this one field is the end of the range for all
-    #: four things the dialog adds, and only one of them repeats daily. Under
-    #: "Doctor away" it read as though leave were being repeated, and under
-    #: "On chosen weekdays" it contradicted the picker directly beneath it. The
-    #: repeat select beside it already says what happens between the two dates.
+    #: The clinic holiday's own end date — a plain range, never gated behind
+    #: anything, exactly as it always was. Kept separate from the recurring
+    #: booking's end date below: two fields rendered as one shared "Last date"
+    #: input would need the same HTML id twice, which no label or script can
+    #: point at unambiguously.
     until = forms.DateField(
         label="Last date", required=False,
         help_text="Leave empty for a single day.",
@@ -1023,10 +852,6 @@ class CalendarEventForm(forms.Form):
         label="Doctor", queryset=User.objects.none(), required=False,
         widget=forms.Select(attrs=INPUT),
     )
-    cabin = forms.ModelChoiceField(
-        label="Cabin", queryset=None, required=False,
-        widget=forms.Select(attrs=INPUT),
-    )
     start_time = forms.TimeField(
         label="From", required=False,
         widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
@@ -1035,35 +860,27 @@ class CalendarEventForm(forms.Form):
         label="To", required=False,
         widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
     )
-    repeat = forms.ChoiceField(
-        label="Repeat", choices=REPEATS, initial=ONCE, required=False,
-        widget=forms.Select(attrs={**INPUT, "id": "id_repeat"}),
+    #: A checkbox rather than the old three-way "repeat" choice: off is one
+    #: day, on asks for an end date and which weekdays.
+    is_recurring = forms.BooleanField(
+        label="Recurring", required=False,
+        widget=forms.CheckboxInput(attrs={"id": "id_is_recurring"}),
     )
-    #: KAN-22: "M-W-F", chosen as checkboxes rather than typed. A doctor works
-    #: Monday, Wednesday and Friday far more often than they work seven
-    #: consecutive days, and before this the only way to say so was to add each
-    #: date by hand and hope none were missed.
+    recur_until = forms.DateField(
+        label="Last date", required=False,
+        widget=forms.DateInput(attrs={**INPUT, "type": "date"}, format="%Y-%m-%d"),
+    )
+    #: "M-W-F", chosen as circles rather than typed or a plain checkbox list —
+    #: the calendar-app picker reception already knows from a phone.
     weekdays = forms.MultipleChoiceField(
         label="On these days", choices=weekday_codes.CHOICES, required=False,
-        widget=forms.CheckboxSelectMultiple(attrs={"class": "daypick"}),
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "daypick-input"}),
     )
-
-    # Away (KAN-50). Separate time fields from the working-hours pair rather
-    # than shared ones: the hours section is disabled wholesale when another
-    # event type is chosen, and a field that is required in one section and
-    # optional in another is a field nobody can reason about.
-    leave_start_time = forms.TimeField(
-        label="Away from", required=False,
-        widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-    )
-    leave_end_time = forms.TimeField(
-        label="Away until", required=False,
-        widget=forms.TimeInput(attrs={**INPUT, "type": "time"}, format="%H:%M"),
-    )
-    reason = forms.CharField(
-        label="Reason", max_length=200, required=False,
-        help_text="Optional, and shown to reception only.",
-        widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Conference"}),
+    #: The escape hatch for a recurring run that cannot get a cabin on every
+    #: date: without this, one bad date would refuse the whole booking.
+    book_available_dates = forms.BooleanField(
+        label="Book the dates a cabin is free for, and skip the rest",
+        required=False,
     )
 
     # Holiday
@@ -1074,17 +891,10 @@ class CalendarEventForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from appointments.models import Cabin
-
         self.fields["doctor"].queryset = _all_doctors()
-        self.fields["cabin"].queryset = Cabin.objects.filter(is_active=True)
-
-        # Both fields are required for working hours, so neither empty option
-        # may read as a choice. Django's "---------" is noise, and offering
-        # "No cabin set" — which the schedule screen does, because a cabin is
-        # optional there — would be offering an answer that is then refused.
+        # Django's "---------" empty option is noise on a field that is
+        # effectively required the moment "Doctor working hours" is chosen.
         self.fields["doctor"].empty_label = "Select a doctor"
-        self.fields["cabin"].empty_label = "Select a cabin"
 
     # ── Validation ───────────────────────────────────────────────────────────
 
@@ -1094,33 +904,35 @@ class CalendarEventForm(forms.Form):
 
         if event_type == self.HOURS:
             self._clean_hours(cleaned)
-        elif event_type == self.LEAVE:
-            self._clean_leave(cleaned)
         elif event_type == self.HOLIDAY:
             self._clean_holiday(cleaned)
         return cleaned
 
-    def _dates(self, cleaned):
+    def _dates(self, cleaned, *, start_field="date", until_field="until",
+               recurring=False):
         """Every date the event covers, or ``None`` when the range is unusable."""
-        start = cleaned.get("date")
+        start = cleaned.get(start_field)
         if start is None:
             return None
-        until = cleaned.get("until") or start
+        if not recurring:
+            return [start]
+
+        until = cleaned.get(until_field) or _end_of_month(start)
         if until < start:
-            self.add_error("until", "The last day cannot be before the first.")
+            self.add_error(until_field, "The last day cannot be before the first.")
             return None
         span = (until - start).days + 1
-        if span > MAX_RANGE_DAYS:
+        if span > weekday_codes.MAX_RANGE_DAYS:
             self.add_error(
-                "until",
+                until_field,
                 f"That is {span} days. Check the year — the most that can be "
-                f"added at once is {MAX_RANGE_DAYS}.",
+                f"added at once is {weekday_codes.MAX_RANGE_DAYS}.",
             )
             return None
         return [start + timedelta(days=offset) for offset in range(span)]
 
     def _clean_hours(self, cleaned):
-        for field in ("doctor", "cabin", "start_time", "end_time"):
+        for field in ("doctor", "start_time", "end_time"):
             if not cleaned.get(field):
                 self.add_error(field, "Required for working hours.")
 
@@ -1130,45 +942,24 @@ class CalendarEventForm(forms.Form):
         if start and end and start == end:
             self.add_error("end_time", "An entry with no length is not working hours.")
 
-        repeat = cleaned.get("repeat")
+        recurring = bool(cleaned.get("is_recurring"))
         chosen_days = cleaned.get("weekdays") or []
-
-        if repeat == self.SELECTED:
-            # Both halves are the point of this mode: which days, and how far.
-            if not chosen_days:
-                self.add_error("weekdays", "Choose at least one day of the week.")
-            if not cleaned.get("until"):
-                self.add_error(
-                    "until",
-                    "Give the last date. Chosen weekdays repeat between the two "
-                    "dates, so without an end date there is nothing to generate.",
-                )
-        elif chosen_days:
-            # Ticked, then the mode changed. Acting on them anyway would create
-            # a rota nobody asked for.
+        if recurring and not chosen_days:
+            self.add_error("weekdays", "Choose at least one day of the week.")
+        elif not recurring and chosen_days:
+            # Ticked, then Recurring was switched off. Acting on them anyway
+            # would create a rota nobody asked for.
             self.add_error(
                 "weekdays",
-                "Days of the week only apply to 'On chosen weekdays'. Change "
-                "the repeat, or clear these.",
+                "Days of the week only apply to a recurring booking. Tick "
+                "Recurring, or clear these.",
             )
 
-        weekly = repeat == self.WEEKLY
-        if weekly and cleaned.get("until"):
-            # A weekly pattern has no end date in the model, and pretending it
-            # honours one would quietly create hours that never stop.
-            self.add_error(
-                "until",
-                "A weekly pattern runs until it is removed. Leave the end date "
-                "empty, or choose 'Does not repeat' to add a fixed range.",
-            )
-
-        dates = self._dates(cleaned)
+        dates = self._dates(cleaned, until_field="recur_until", recurring=recurring)
         if self.errors or dates is None:
             return
 
-        from appointments import calendar as clinic_calendar
-
-        if repeat == self.SELECTED:
+        if recurring:
             wanted = {weekday_codes.CODE_TO_WEEKDAY[c] for c in chosen_days}
             dates = [d for d in dates if d.weekday() in wanted]
             if not dates:
@@ -1181,86 +972,50 @@ class CalendarEventForm(forms.Form):
                 return
             if len(dates) > weekday_codes.MAX_GENERATED:
                 self.add_error(
-                    "until",
+                    "recur_until",
                     f"That would create {len(dates)} entries. Check the dates — "
                     f"the most that can be added at once is "
                     f"{weekday_codes.MAX_GENERATED}.",
                 )
                 return
-            self._generated = dates
 
-        if weekly:
-            conflicts = clinic_calendar.find_conflicts(
-                kind="schedule", doctor=cleaned["doctor"], cabin=cleaned["cabin"],
-                start=start, end=end, weekday=dates[0].weekday(),
-            )
-        else:
-            conflicts = []
-            for day in dates:
-                conflicts.extend(clinic_calendar.find_conflicts(
-                    kind="override", doctor=cleaned["doctor"], cabin=cleaned["cabin"],
-                    start=start, end=end, date=day,
-                ))
-
-        for conflict in conflicts[:5]:
-            self.add_error(None, str(conflict))
-        if len(conflicts) > 5:
-            self.add_error(
-                None, f"…and {len(conflicts) - 5} more dates with the same clash."
-            )
-
-    def _clean_leave(self, cleaned):
-        """
-        A doctor is away — the whole day, or a stretch of it (KAN-50).
-
-        No conflict check: leave is allowed to land on top of working hours,
-        because that is the entire point of recording it. What it must not do
-        is land silently on top of *patients*, which the view reports after
-        saving.
-        """
         if not cleaned.get("doctor"):
-            self.add_error("doctor", "Say who is away.")
-
-        start = cleaned.get("leave_start_time")
-        end = cleaned.get("leave_end_time")
-
-        # Both or neither. One alone is somebody who started filling in a part
-        # day and stopped, and storing it as a whole day would mark a doctor
-        # away for hours they are in.
-        if bool(start) != bool(end):
-            self.add_error(
-                "leave_end_time" if start else "leave_start_time",
-                "Give both times, or leave both empty for the whole day.",
-            )
-        elif start and end and end <= start:
-            self.add_error("leave_end_time", "The end time must be after the start time.")
-
-        if cleaned.get("weekdays"):
-            self.add_error(
-                "weekdays",
-                "Days of the week only apply to working hours.",
-            )
-
-        dates = self._dates(cleaned)
-        if self.errors or dates is None:
             return
 
-        from appointments.models import DoctorLeave
+        from appointments import calendar as clinic_calendar
 
-        # Already recorded is not an error — somebody extending a week of leave
-        # by a day should not have to work out which days are new.
-        self._existing_leave = set(
-            DoctorLeave.objects.filter(
-                doctor=cleaned["doctor"], date__in=dates,
-                start_time=start, end_time=end,
-            ).values_list("date", flat=True)
+        doctor_clashes = clinic_calendar.find_conflicts(
+            doctor=cleaned["doctor"], cabin=None, start=start, end=end, dates=dates,
         )
-        if len(self._existing_leave) == len(dates):
+        for conflict in doctor_clashes[:5]:
+            self.add_error(None, str(conflict))
+        if len(doctor_clashes) > 5:
             self.add_error(
-                "date",
-                f"{cleaned['doctor'].display_name} is already recorded as away "
-                + ("that day." if len(dates) == 1 else "on every one of those days."),
+                None, f"…and {len(doctor_clashes) - 5} more dates with the same clash."
             )
+        if self.errors:
+            return
+
+        by_date, unavailable = clinic_calendar.allocate_cabins(
+            doctor=cleaned["doctor"], dates=dates, start=start, end=end,
+        )
+        if unavailable and not cleaned.get("book_available_dates"):
+            shown = ", ".join(f"{d:%d %b}" for d in unavailable[:5])
+            if len(unavailable) > 5:
+                shown += f" and {len(unavailable) - 5} more"
+            self.add_error(
+                None,
+                f"No cabin is free on {len(unavailable)} of {len(dates)} "
+                f"selected dates ({shown}). Tick "
+                f"“{self.fields['book_available_dates'].label}” to add the "
+                f"other {len(dates) - len(unavailable)}, or change the "
+                f"doctor, time or dates and try again.",
+            )
+            return
+
+        self._planned_dates = dates
+        self._cabin_by_date = by_date
+        self._skipped_dates = unavailable
 
     def _clean_holiday(self, cleaned):
         from appointments.models import ClinicHoliday
@@ -1268,7 +1023,7 @@ class CalendarEventForm(forms.Form):
         if not cleaned.get("name"):
             self.add_error("name", "Give the holiday a name.")
 
-        dates = self._dates(cleaned)
+        dates = self._dates(cleaned, recurring=True)
         if dates is None:
             return
 
@@ -1282,32 +1037,20 @@ class CalendarEventForm(forms.Form):
                 + ", ".join(f"{d:%d %b %Y}" for d in sorted(taken)) + ".",
             )
         self._existing_holidays = taken
+        self._planned_dates = dates
 
     # ── Saving ───────────────────────────────────────────────────────────────
 
     def save(self, created_by=None):
-        """Create the rows and return them, newest question first."""
-        from appointments.models import (
-            ClinicHoliday, DoctorLeave, DoctorSchedule, ScheduleOverride,
-        )
+        """Create the rows and return them."""
+        from appointments.models import ClinicHoliday, DoctorSchedule
 
         cleaned = self.cleaned_data
-        dates = self._dates(cleaned)
         created = []
-
-        # Chosen weekdays narrow the range to the days actually ticked. Worked
-        # out again rather than carried over from validation, so save() cannot
-        # write a different set of dates from the one that was checked for
-        # clashes.
-        if cleaned.get("repeat") == self.SELECTED and cleaned.get("weekdays"):
-            wanted = {
-                weekday_codes.CODE_TO_WEEKDAY[c] for c in cleaned["weekdays"]
-            }
-            dates = [d for d in dates if d.weekday() in wanted]
 
         if cleaned["event_type"] == self.HOLIDAY:
             skipped = getattr(self, "_existing_holidays", set())
-            for day in dates:
+            for day in self._planned_dates:
                 if day in skipped:
                     continue
                 created.append(ClinicHoliday.objects.create(
@@ -1315,38 +1058,18 @@ class CalendarEventForm(forms.Form):
                 ))
             return created
 
-        if cleaned["event_type"] == self.LEAVE:
-            already = getattr(self, "_existing_leave", set())
-            for day in dates:
-                if day in already:
-                    continue
-                created.append(DoctorLeave.objects.create(
-                    doctor=cleaned["doctor"],
-                    date=day,
-                    start_time=cleaned.get("leave_start_time") or None,
-                    end_time=cleaned.get("leave_end_time") or None,
-                    reason=cleaned.get("reason", ""),
-                    created_by=created_by,
-                ))
-            return created
-
-        if cleaned.get("repeat") == self.WEEKLY:
+        series_id = uuid.uuid4() if cleaned.get("is_recurring") else None
+        for day in self._planned_dates:
+            cabin = self._cabin_by_date.get(day)
+            if cabin is None:
+                continue
             created.append(DoctorSchedule.objects.create(
                 doctor=cleaned["doctor"],
-                weekday=dates[0].weekday(),
-                cabin=cleaned["cabin"],
-                start_time=cleaned["start_time"],
-                end_time=cleaned["end_time"],
-            ))
-            return created
-
-        for day in dates:
-            created.append(ScheduleOverride.objects.create(
-                doctor=cleaned["doctor"],
                 date=day,
-                cabin=cleaned["cabin"],
+                cabin=cabin,
                 start_time=cleaned["start_time"],
                 end_time=cleaned["end_time"],
+                series_id=series_id,
                 created_by=created_by,
             ))
         return created

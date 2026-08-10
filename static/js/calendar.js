@@ -10,9 +10,10 @@
  *      Holiday would otherwise still be submitted, and the server would be
  *      validating a field the user could no longer see.
  *
- * Nothing here is load-bearing for correctness: the server validates by event
- * type regardless, and the Doctor schedule screen is plain HTML forms that can
- * do all of this without JavaScript, just not in one step.
+ * Nothing here is load-bearing for correctness: the server validates the
+ * event type, the recurring range and the weekdays regardless of what this
+ * script has hidden or disabled — uploading a rota CSV is the plain-HTML-form
+ * way to do the same thing, just not in one step.
  */
 (function () {
   "use strict";
@@ -21,6 +22,7 @@
   if (!modal) return;
 
   var typeField = document.getElementById("id_event_type");
+  var recurringField = document.getElementById("id_is_recurring");
   var dateField = modal.querySelector('input[name="date"]');
   var lastOpener = null;
 
@@ -34,9 +36,6 @@
     }
   }
 
-  /* Space-separated, because a couple of fields belong to more than one type:
-   * "who is away" and "whose hours are these" are the same question and the
-   * same picker, and duplicating it would let the two drift apart. */
   function belongsTo(section, chosen) {
     var owners = (section.getAttribute("data-event-fields") || "").split(/\s+/);
     for (var i = 0; i < owners.length; i++) {
@@ -51,46 +50,27 @@
     for (var i = 0; i < sections.length; i++) {
       setEnabled(sections[i], belongsTo(sections[i], chosen));
     }
-    applyRepeat();
+    applyRecurring();
   }
 
-  /* Three repeats, and each wants a different pair of fields:
-   *
-   *   "Does not repeat"     end date, no weekdays
-   *   "On chosen weekdays"  end date *and* weekdays  (KAN-22)
-   *   "Every week"          neither
-   *
-   * A weekly pattern runs until it is removed, so an end date would be a
-   * promise the model cannot keep; the server refuses the combination, and
-   * this stops it being offered. Days ticked and then abandoned by changing
-   * the repeat are cleared as well as hidden — the server rejects them rather
-   * than ignoring them, and a rejection naming a field the user can no longer
-   * see is a dead end.
-   */
-  function applyRepeat() {
-    var repeat = modal.querySelector('select[name="repeat"]');
-    var value = repeat && !repeat.disabled ? repeat.value : "once";
+  /* The end date and the weekday circles only mean anything once Recurring is
+   * ticked — unticking it clears them as well as hiding them, so the server
+   * never rejects a field the user can no longer see (a dead end, not a
+   * correction they can act on). Left alone if the "hours" section is itself
+   * disabled — applyType() has already cleared everything in that case. */
+  function applyRecurring() {
+    var section = modal.querySelector('[data-when="recurring"]');
+    if (!section) return;
 
-    var range = modal.querySelector('[data-when="once"]');
-    if (range) {
-      var weekly = value === "weekly";
-      range.hidden = weekly;
-      var input = range.querySelector("input");
-      if (input) {
-        input.disabled = weekly;
-        if (weekly) input.value = "";
-      }
-    }
+    var hoursOn = recurringField && !recurringField.disabled;
+    var on = hoursOn && recurringField.checked;
+    section.hidden = !on;
 
-    var picker = modal.querySelector('[data-when="selected"]');
-    if (picker) {
-      var selected = value === "selected";
-      picker.hidden = !selected;
-      var boxes = picker.querySelectorAll('input[type="checkbox"]');
-      for (var i = 0; i < boxes.length; i++) {
-        boxes[i].disabled = !selected;
-        if (!selected) boxes[i].checked = false;
-      }
+    var controls = section.querySelectorAll("input");
+    for (var i = 0; i < controls.length; i++) {
+      controls[i].disabled = !on;
+      if (!on && controls[i].type === "checkbox") controls[i].checked = false;
+      if (!on && controls[i].type === "date") controls[i].value = "";
     }
   }
 
@@ -161,7 +141,7 @@
 
   modal.addEventListener("change", function (event) {
     if (event.target === typeField) applyType();
-    if (event.target.name === "repeat") applyRepeat();
+    if (event.target === recurringField) applyRecurring();
   });
 
   applyType();
