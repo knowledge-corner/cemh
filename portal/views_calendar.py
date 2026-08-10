@@ -117,6 +117,15 @@ def calendar_view(request):
 
     cabins = clinic_calendar.active_cabins()
 
+    # Retired cabins included, so a cabin that has vanished from the dropdowns
+    # can be found and brought back rather than added twice. Each one carries
+    # whether it still has a future time slot against it, so the template can
+    # refuse to offer Retire on a cabin doctors are still working out of.
+    still_scheduled = _cabins_still_scheduled()
+    all_cabins = list(Cabin.objects.all())
+    for cabin in all_cabins:
+        cabin.still_scheduled = cabin.pk in still_scheduled
+
     if view == DAY:
         span_start = span_end = anchor
     else:
@@ -138,9 +147,7 @@ def calendar_view(request):
             initial={"date": anchor, "repeat": clinic_forms.CalendarEventForm.ONCE}
         ),
         "cabin_form": clinic_forms.CabinForm(),
-        # Retired cabins included, so a cabin that has vanished from the
-        # dropdowns can be found and brought back rather than added twice.
-        "all_cabins": Cabin.objects.all(),
+        "all_cabins": all_cabins,
         # Kept on every navigation link so a filter survives moving month
         # (AC-9). Built here rather than in the template: a half-built query
         # string in three places is how one of them loses the filter.
@@ -197,6 +204,25 @@ def _back(request, fallback="reception_calendar"):
     return redirect(fallback)
 
 
+def _cabins_still_scheduled():
+    """
+    Which cabins have a future time slot against them.
+
+    A recurring weekly sitting counts regardless of date — it recurs forever
+    until somebody removes it, so it is never in the past. A one-off override
+    counts only while its date has not yet passed.
+    """
+    return set(
+        DoctorSchedule.objects.filter(
+            is_active=True, cabin_id__isnull=False,
+        ).values_list("cabin_id", flat=True)
+    ) | set(
+        ScheduleOverride.objects.filter(
+            date__gte=timezone.localdate(), cabin_id__isnull=False,
+        ).values_list("cabin_id", flat=True)
+    )
+
+
 # ── Cabins (FR-1, FR-2) ──────────────────────────────────────────────────────
 
 @role_required(Role.RECEPTIONIST)
@@ -246,6 +272,17 @@ def retire_cabin(request, pk):
             return _back(request)
         record(request, AuditAction.DELETE, description=f"Cabin deleted: {name}")
         messages.success(request, f"{name} deleted.")
+        return _back(request)
+
+    if cabin.is_active and cabin.pk in _cabins_still_scheduled():
+        # The button is disabled for exactly this reason, but a disabled
+        # button is only a hint — the rule has to hold here too.
+        messages.error(
+            request,
+            f"{cabin.name} still has a doctor's weekly hours or an upcoming "
+            f"one-off sitting against it, so it cannot be retired yet. Remove "
+            f"those first.",
+        )
         return _back(request)
 
     cabin.is_active = not cabin.is_active

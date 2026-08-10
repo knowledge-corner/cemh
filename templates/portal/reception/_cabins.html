@@ -52,10 +52,22 @@ because a room's history should not disappear to tidy a dropdown.
                         style="display:inline">
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="btn btn--secondary" type="submit">
-                      {% if cabin.is_active %}Retire{% else %}Bring back{% endif %}
-                    </button>
+                    {% if cabin.is_active and cabin.still_scheduled %}
+                      <button class="btn btn--secondary" type="submit" disabled
+                              title="Still on a doctor's weekly hours or an upcoming one-off sitting. Remove those first.">
+                        Retire
+                      </button>
+                    {% else %}
+                      <button class="btn btn--secondary" type="submit">
+                        {% if cabin.is_active %}Retire{% else %}Bring back{% endif %}
+                      </button>
+                    {% endif %}
                   </form>
+                  {% if cabin.is_active and cabin.still_scheduled %}
+                    <p class="faint small" style="margin:.25rem 0 0">
+                      Still on a doctor's hours — cannot be retired yet.
+                    </p>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
