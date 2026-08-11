@@ -217,12 +217,18 @@ class ReferenceLetter(models.Model):
     A letter written for the patient — school, insurance, travel, fitness — in
     the doctor's own words rather than a structured form.
 
-    Not tied to a visit: the request for one often has nothing to do with why
-    the patient was last seen, and can arrive well after the consultation it
-    concerns.
+    At most one per consultation, the same cap as a clinical note or
+    prescription. ``visit`` is nullable for the same reason it is on
+    Prescription: a letter can still be written with nobody currently in the
+    cabin, in which case it stands alone rather than being forced onto a
+    visit — see ``portal.views_edit._attach_reference_letter``.
     """
 
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="reference_letters")
+    visit = models.ForeignKey(
+        Visit, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reference_letters",
+    )
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="reference_letters_issued"
     )

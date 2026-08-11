@@ -3,13 +3,17 @@ Prescriptions, newest first. Written, edited and printed here — reception
 does not print these any more, except for one released to them when its
 visit's consultation is completed, which still prints from Stage 4 unchanged.
 
-Not tied to a visit: a doctor can write one for a patient at any time, so a
-patient can carry more than one, each independently editable and printable.
+At most one prescription per consultation, and only the latest is ever
+editable — see services.can_add_consultation_record /
+is_latest_consultation_record. A prescription can still be written with
+nobody in the cabin; it just stands alone rather than attaching to a visit.
 {% endcomment %}
 
 <div class="section-head">
   <h3>Prescriptions</h3>
-  {% include "portal/doctor/_edit_button.html" with kind="prescription" label="+ New prescription" solid=1 %}
+  {% if can_add_prescription %}
+    {% include "portal/doctor/_edit_button.html" with kind="prescription" label="+ New prescription" solid=1 %}
+  {% endif %}
 </div>
 
 {% if prescriptions %}
@@ -24,7 +28,9 @@ patient can carry more than one, each independently editable and printable.
             {% endif %}
             <a class="btn-edit" target="_blank"
                href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
-            {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
+            {% if forloop.first %}
+              {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
+            {% endif %}
           </span>
         </div>
         <div class="card__body">

@@ -102,6 +102,63 @@ def summary_context(patient):
     return context
 
 
+#: The record types capped at one per consultation, and whether adding one
+#: requires a visit to attach it to right now — a note is written *during* a
+#: consultation and has nowhere else to go; a prescription or reference
+#: letter can still be written with nobody in the cabin, standing alone.
+CONSULTATION_CAPPED = {
+    "note": (ClinicalNote, True),
+    "prescription": (Prescription, False),
+    "reference_letter": (ReferenceLetter, False),
+}
+
+
+def consultation_anchor(patient):
+    """
+    The visit a new note/prescription/reference letter counts against right
+    now — the same query Prescription's own attach logic already used, so
+    behaviour from before this cap existed is unchanged: today's visit if the
+    patient still has one open or just finished, ``None`` otherwise.
+    """
+    return patient.visits.active().order_by("-scheduled_start").first()
+
+
+def can_add_consultation_record(patient, kind):
+    """
+    Whether a new note/prescription/reference letter can be added right now.
+
+    With a visit to attach to, capped at one per visit: refused once that
+    visit already has one of this kind. Without one, a note has nowhere to go
+    at all; a prescription or reference letter falls back to the patient's
+    own most recent record of that kind as the reference point — if one
+    already exists there is nothing new to add, its Edit button is where
+    changes belong.
+    """
+    model, requires_anchor = CONSULTATION_CAPPED[kind]
+    anchor = consultation_anchor(patient)
+    if anchor is not None:
+        return not model.objects.filter(visit=anchor).exists()
+    if requires_anchor:
+        return False
+    return not model.objects.filter(patient=patient).exists()
+
+
+def is_latest_consultation_record(patient, kind, pk):
+    """The single record of this kind still open for editing — everything before it is locked."""
+    model, _requires_anchor = CONSULTATION_CAPPED[kind]
+    latest = model.objects.filter(patient=patient).order_by("-created_at").first()
+    return latest is not None and latest.pk == pk
+
+
+def capped_add_flags(patient):
+    """Context flags for the three tabs capped at one record per consultation."""
+    return {
+        "can_add_note": can_add_consultation_record(patient, "note"),
+        "can_add_prescription": can_add_consultation_record(patient, "prescription"),
+        "can_add_reference_letter": can_add_consultation_record(patient, "reference_letter"),
+    }
+
+
 def notes_context(patient):
     notes = (
         ClinicalNote.objects.filter(patient=patient)

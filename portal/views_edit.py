@@ -116,8 +116,14 @@ def _attach_prescription(obj, patient, request):
 
 
 def _attach_reference_letter(obj, patient, request):
+    """
+    Attach to the current consultation the same way a prescription does — see
+    ``_attach_prescription`` — so the one-per-consultation cap (enforced in
+    ``edit_record``) has something to check against.
+    """
     obj.patient = patient
     obj.doctor = request.user
+    obj.visit = services.consultation_anchor(patient)
 
 
 def _measurement_model():
@@ -207,6 +213,7 @@ def _refreshed_panels(request, patient, tab):
     # A save just went through, which edit_record already gated on
     # _is_editable — so the chart these panels belong to is editable.
     tab_context["is_editable"] = True
+    tab_context.update(services.capped_add_flags(patient))
     tab_html = render_to_string(template, tab_context, request=request)
 
     sidebar_context = services.summary_context(patient)
@@ -220,6 +227,16 @@ def _refreshed_panels(request, patient, tab):
         {"tab_html": tab_html, "sidebar_html": sidebar_html},
         request=request,
     )
+
+
+#: Records capped at one per consultation, and locked to editing only the
+#: patient's most recent one — see services.can_add_consultation_record and
+#: services.is_latest_consultation_record.
+_CONSULTATION_CAPPED_NOUNS = {
+    "note": "clinical note",
+    "prescription": "prescription",
+    "reference_letter": "reference letter",
+}
 
 
 @role_required(Role.DOCTOR)
@@ -259,6 +276,24 @@ def edit_record(request, patient_id, kind, pk=None):
 
     form_class = spec.form_class()
     is_new = instance is None
+
+    noun = _CONSULTATION_CAPPED_NOUNS.get(kind)
+    if noun is not None:
+        if is_new:
+            if not services.can_add_consultation_record(patient, kind):
+                return _blocked(
+                    request,
+                    f"This consultation already has a {noun}",
+                    f"Only one {noun} can be added per consultation — edit "
+                    "the existing one instead of adding another.",
+                )
+        elif not services.is_latest_consultation_record(patient, kind, instance.pk):
+            return _blocked(
+                request,
+                "This record is locked",
+                f"Only the most recent {noun} can be edited. Older ones are "
+                "kept exactly as written at the time.",
+            )
 
     formset = None
     show_items = kind == "prescription"

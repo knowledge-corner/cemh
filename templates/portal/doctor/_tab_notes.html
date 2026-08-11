@@ -4,11 +4,16 @@ gets printed on the prescription written for the same visit. Notes recorded
 before this change still show their original complaint / examination /
 assessment / plan structure, read-only — nothing already written is hidden,
 the form just does not collect that shape any more.
+
+At most one note per consultation, and only the latest is ever editable —
+see services.can_add_consultation_record / is_latest_consultation_record.
 {% endcomment %}
 
 <div class="section-head">
   <h3>Clinical notes</h3>
-  {% include "portal/doctor/_edit_button.html" with kind="note" label="+ New note" solid=1 %}
+  {% if can_add_note %}
+    {% include "portal/doctor/_edit_button.html" with kind="note" label="+ New note" solid=1 %}
+  {% endif %}
 </div>
 
 {% if notes %}
@@ -19,7 +24,9 @@ the form just does not collect that shape any more.
           <h3 class="card__title">{{ note.created_at|date:"j F Y" }}</h3>
           <span>
             <span class="faint small">{{ note.author.display_name }}</span>
-            {% include "portal/doctor/_edit_button.html" with kind="note" pk=note.pk label="Edit" %}
+            {% if forloop.first %}
+              {% include "portal/doctor/_edit_button.html" with kind="note" pk=note.pk label="Edit" %}
+            {% endif %}
           </span>
         </div>
         <div class="card__body">

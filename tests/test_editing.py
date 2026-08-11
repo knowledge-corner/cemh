@@ -36,9 +36,15 @@ class EditingTestCase(TestCase):
     def edit_url(self, kind, pk):
         return reverse("doctor_edit_record", args=[self.patient.patient_id, kind, pk])
 
-    def open_visit(self):
-        """A visit the patient is currently here for — notes attach to it."""
-        visit = make_visit(self.patient, self.doctor, start=timezone.now())
+    def open_visit(self, *, hours=0):
+        """
+        A visit the patient is currently here for — notes attach to it.
+
+        ``hours`` offsets the start so a second call for the same doctor (a
+        later consultation) does not overlap the first and trip the
+        no-double-booking constraint.
+        """
+        visit = make_visit(self.patient, self.doctor, start=timezone.now() + timedelta(hours=hours))
         visit.transition_to(VisitStatus.CONFIRMED, by_user=self.doctor)
         visit.transition_to(VisitStatus.ARRIVED, by_user=self.doctor)
         visit.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
@@ -62,9 +68,9 @@ class TestFormsOpen(EditingTestCase):
 
     def test_note_cannot_be_added_without_an_open_visit(self):
         # There is nothing to write a consultation note against.
-        self.assertEqual(self.client.get(self.add_url("note")).status_code, 200)
+        self.assertEqual(self.client.get(self.add_url("note")).status_code, 403)
         response = self.client.post(self.add_url("note"), {"complaints": "Tired"})
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 403)
 
 
 class TestSaving(EditingTestCase):
@@ -202,6 +208,32 @@ class TestSaving(EditingTestCase):
         self.assertContains(response, "Fatigue")
         self.assertContains(response, "Hypothyroid, uncontrolled")
 
+    def test_a_second_note_on_the_same_visit_is_refused(self):
+        self.open_visit()
+        self.client.post(self.add_url("note"), {"clinical_notes": "First note"})
+        response = self.client.post(self.add_url("note"), {"clinical_notes": "Second note"})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(ClinicalNote.objects.count(), 1)
+
+    def test_a_new_visit_allows_another_note(self):
+        first = self.open_visit()
+        self.client.post(self.add_url("note"), {"clinical_notes": "First note"})
+        first.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.open_visit(hours=2)
+        response = self.client.post(self.add_url("note"), {"clinical_notes": "Second note"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ClinicalNote.objects.count(), 2)
+
+    def test_only_the_latest_note_can_be_edited(self):
+        first = self.open_visit()
+        self.client.post(self.add_url("note"), {"clinical_notes": "First note"})
+        older = ClinicalNote.objects.get()
+        first.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.open_visit(hours=2)
+        self.client.post(self.add_url("note"), {"clinical_notes": "Second note"})
+        response = self.client.get(self.edit_url("note", older.pk))
+        self.assertEqual(response.status_code, 403)
+
     def test_invalid_form_redisplays_rather_than_saving(self):
         response = self.client.post(self.add_url("diagnosis"), {
             "description": "", "status": Diagnosis.Status.ACTIVE,
@@ -243,10 +275,46 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertEqual(prescription.patient, self.patient)
         self.assertEqual(prescription.doctor, self.doctor)
 
-    def test_a_patient_can_carry_more_than_one_prescription(self):
+    def test_a_second_prescription_is_refused_without_a_new_consultation(self):
+        # At most one prescription per consultation — the existing one is
+        # what "Edit" is for, not a second "+ New prescription".
         self.client.post(self.add_url("prescription"), self._item_formset())
+        response = self.client.post(self.add_url("prescription"), self._item_formset())
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Prescription.objects.filter(patient=self.patient).count(), 1)
+
+    def test_a_second_consultation_allows_another_prescription(self):
         self.client.post(self.add_url("prescription"), self._item_formset())
+        self.open_visit()
+        response = self.client.post(self.add_url("prescription"), self._item_formset())
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(Prescription.objects.filter(patient=self.patient).count(), 2)
+
+    def test_only_the_latest_prescription_can_be_edited(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        older = Prescription.objects.get()
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        response = self.client.get(self.edit_url("prescription", older.pk))
+        self.assertEqual(response.status_code, 403)
+
+    def test_the_add_button_is_hidden_once_the_consultation_has_one(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        response = self.client.get(
+            reverse("doctor_patient_tab", args=[self.patient.patient_id, "prescriptions"])
+        )
+        self.assertNotContains(response, "New prescription")
+
+    def test_the_edit_button_is_hidden_on_an_older_prescription(self):
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        response = self.client.get(
+            reverse("doctor_patient_tab", args=[self.patient.patient_id, "prescriptions"])
+        )
+        self.assertEqual(response.content.decode().count("btn-edit--solid"), 0)
+        # One "Edit" button rendered — for the latest prescription only.
+        self.assertEqual(response.content.decode().count(">Edit<"), 1)
 
     def test_editing_an_existing_prescription_updates_it_not_duplicates_it(self):
         self.client.post(self.add_url("prescription"), self._item_formset())
@@ -323,9 +391,10 @@ class TestPrescriptionWorkflow(EditingTestCase):
 class TestReferenceLetterWorkflow(EditingTestCase):
     """
     A letter for school, insurance, travel or fitness — written in the
-    doctor's own words, not tied to a visit the way a note or prescription is,
-    since the request for one often has nothing to do with why the patient was
-    last seen.
+    doctor's own words. Written any time, whether or not a visit is open —
+    the request for one often has nothing to do with why the patient was
+    last seen — but capped at one per consultation like a note or
+    prescription, and only ever editable while it is the latest one.
     """
 
     def _post(self, **overrides):
@@ -335,7 +404,6 @@ class TestReferenceLetterWorkflow(EditingTestCase):
         return self.client.post(self.add_url("reference_letter"), payload)
 
     def test_no_open_visit_is_required(self):
-        # Unlike a note or prescription — the whole point of this record type.
         response = self._post()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ReferenceLetter.objects.count(), 1)
@@ -347,10 +415,26 @@ class TestReferenceLetterWorkflow(EditingTestCase):
         self.assertEqual(letter.doctor, self.doctor)
         self.assertEqual(letter.to, "The Principal, Green Valley School")
 
-    def test_multiple_letters_can_be_added(self):
+    def test_a_second_letter_is_refused_without_a_new_consultation(self):
         self._post(to="The Principal, Green Valley School")
-        self._post(to="ABC Insurance Co.")
+        response = self._post(to="ABC Insurance Co.")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(ReferenceLetter.objects.count(), 1)
+
+    def test_a_new_consultation_allows_another_letter(self):
+        self._post(to="The Principal, Green Valley School")
+        self.open_visit()
+        response = self._post(to="ABC Insurance Co.")
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(ReferenceLetter.objects.count(), 2)
+
+    def test_only_the_latest_letter_can_be_edited(self):
+        self._post()
+        older = ReferenceLetter.objects.get()
+        self.open_visit()
+        self._post(to="ABC Insurance Co.")
+        response = self.client.get(self.edit_url("reference_letter", older.pk))
+        self.assertEqual(response.status_code, 403)
 
     def test_editing_an_existing_letter_updates_it_not_duplicates_it(self):
         self._post()

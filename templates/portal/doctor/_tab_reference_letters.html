@@ -1,8 +1,15 @@
-{% comment %}Letters written for the patient — school, insurance, travel, fitness — newest first.{% endcomment %}
+{% comment %}
+Letters written for the patient — school, insurance, travel, fitness —
+newest first. At most one per consultation, and only the latest is ever
+editable — see services.can_add_consultation_record /
+is_latest_consultation_record.
+{% endcomment %}
 
 <div class="section-head">
   <h3>Reference Letters</h3>
-  {% include "portal/doctor/_edit_button.html" with kind="reference_letter" label="+ New reference letter" solid=1 %}
+  {% if can_add_reference_letter %}
+    {% include "portal/doctor/_edit_button.html" with kind="reference_letter" label="+ New reference letter" solid=1 %}
+  {% endif %}
 </div>
 
 {% if reference_letters %}
@@ -15,7 +22,9 @@
             <span class="faint small">{{ letter.created_at|date:"j F Y" }}</span>
             <a class="btn-edit" target="_blank"
                href="{% url 'print_reference_letter' letter.pk %}">Print</a>
-            {% include "portal/doctor/_edit_button.html" with kind="reference_letter" pk=letter.pk label="Edit" %}
+            {% if forloop.first %}
+              {% include "portal/doctor/_edit_button.html" with kind="reference_letter" pk=letter.pk label="Edit" %}
+            {% endif %}
           </span>
         </div>
         <div class="card__body">

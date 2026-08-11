@@ -284,6 +284,7 @@ def patient_tab(request, patient_id, tab):
 
     context["active_tab"] = tab
     context["is_editable"] = _is_editable(patient)
+    context.update(services.capped_add_flags(patient))
     return render(request, template, context)
 
 
