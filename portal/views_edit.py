@@ -35,7 +35,7 @@ from pharmacy.models import Prescription
 
 from . import forms as clinic_forms
 from . import services
-from .views_doctor import TABS, _visible_tabs
+from .views_doctor import TABS, _is_editable, _visible_tabs
 
 
 @dataclass(frozen=True)
@@ -204,9 +204,13 @@ def _refreshed_panels(request, patient, tab):
     template, builder = TABS[tab]
     tab_context = builder(patient) or {}
     tab_context["active_tab"] = tab
+    # A save just went through, which edit_record already gated on
+    # _is_editable — so the chart these panels belong to is editable.
+    tab_context["is_editable"] = True
     tab_html = render_to_string(template, tab_context, request=request)
 
     sidebar_context = services.summary_context(patient)
+    sidebar_context["is_editable"] = True
     sidebar_html = render_to_string(
         "portal/doctor/_storyboard.html", sidebar_context, request=request
     )
@@ -226,6 +230,18 @@ def edit_record(request, patient_id, kind, pk=None):
         raise Http404("Unknown record type")
 
     patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
+
+    # The chart is read-only until the patient is sent in — enforced here too,
+    # not just by hiding the button, since this is a POST endpoint a doctor's
+    # browser can be pointed at directly.
+    if not _is_editable(patient):
+        return _blocked(
+            request,
+            "This file is read-only",
+            f"{patient.full_name} has not been sent in yet. Use \"Send in\" "
+            "from today's queue to start the consultation before editing the file.",
+        )
+
     model = spec.model()
 
     if kind == "patient":
@@ -380,6 +396,14 @@ def generate_prescription(request, patient_id, pk):
     """
     patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
     prescription = get_object_or_404(Prescription, pk=pk, patient=patient)
+
+    if not _is_editable(patient):
+        return _blocked(
+            request,
+            "This file is read-only",
+            f"{patient.full_name} has not been sent in yet. Use \"Send in\" "
+            "from today's queue to start the consultation before editing the file.",
+        )
 
     if request.method == "POST":
         prescription.generate()

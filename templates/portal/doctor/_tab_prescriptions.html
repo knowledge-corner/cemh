@@ -27,7 +27,7 @@ patient can carry more than one, each independently editable and printable.
             <a class="btn-edit" target="_blank"
                href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
             {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
-            {% if not prescription.is_generated %}
+            {% if not prescription.is_generated and is_editable %}
               {% comment %}
               Sending to reception is optional now that the doctor prints
               directly — this is only for a prescription reception should

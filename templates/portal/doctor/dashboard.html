@@ -25,6 +25,16 @@
   </div>
 </div>
 
+{% if not is_editable %}
+  <div class="alert-strip alert-strip--warning">
+    <div>
+      <span class="alert-strip__title">Read-only</span><br>
+      {{ patient.full_name }} has not been sent in yet. Use "Send in" from
+      today's queue to start the consultation and open the file for editing.
+    </div>
+  </div>
+{% endif %}
+
 <div class="chart">
 
   {# ── Patient sidebar: stays on screen while the doctor works ──────────── #}

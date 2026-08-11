@@ -6,9 +6,14 @@ and looks identically.
     pk     — omit to create a new record, pass to edit an existing one
     label  — button text
     solid  — set truthy for a more prominent "add" control
+
+Hidden outright when the chart is read-only (is_editable is False) — see
+_is_editable in views_doctor.py.
 {% endcomment %}
-<button type="button"
-        class="btn-edit {% if solid %}btn-edit--solid{% endif %}"
-        hx-get="{% if pk %}{% url 'doctor_edit_record' patient.patient_id kind pk %}{% else %}{% url 'doctor_add_record' patient.patient_id kind %}{% endif %}"
-        hx-target="#modal-host"
-        hx-swap="innerHTML">{{ label }}</button>
+{% if is_editable %}
+  <button type="button"
+          class="btn-edit {% if solid %}btn-edit--solid{% endif %}"
+          hx-get="{% if pk %}{% url 'doctor_edit_record' patient.patient_id kind pk %}{% else %}{% url 'doctor_add_record' patient.patient_id kind %}{% endif %}"
+          hx-target="#modal-host"
+          hx-swap="innerHTML">{{ label }}</button>
+{% endif %}

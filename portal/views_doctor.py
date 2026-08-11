@@ -65,6 +65,20 @@ def _current_visit(patient):
     )
 
 
+def _is_editable(patient):
+    """
+    Whether this chart takes new edits right now.
+
+    Read-only for a patient who has arrived but not yet been sent in —
+    clicking "Open" on the queue is a glance at the file, not an invitation
+    to write in it. "Send in" is what moves a visit to IN_CABIN, so that
+    transition is what unlocks it. Everything else — no active visit at all,
+    or one already past ARRIVED — stays editable exactly as before.
+    """
+    visit = _current_visit(patient)
+    return not (visit and visit.status == VisitStatus.ARRIVED)
+
+
 def _visible_tabs(patient):
     """
     Tabs this patient actually warrants.
@@ -238,11 +252,14 @@ def patient_dashboard(request, patient_id):
 
     record_patient_view(request, patient, "Opened patient dashboard")
 
+    active_visit = _current_visit(patient)
+
     context = {
         "patient": patient,
         "tabs": list(_visible_tabs(patient)),
         "active_tab": "summary",
-        "active_visit": _current_visit(patient),
+        "active_visit": active_visit,
+        "is_editable": not (active_visit and active_visit.status == VisitStatus.ARRIVED),
     }
     context.update(services.summary_context(patient))
     return render(request, "portal/doctor/dashboard.html", context)
@@ -266,6 +283,7 @@ def patient_tab(request, patient_id, tab):
         raise Http404("This section is not enabled")
 
     context["active_tab"] = tab
+    context["is_editable"] = _is_editable(patient)
     return render(request, template, context)
 
 
