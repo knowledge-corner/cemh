@@ -148,6 +148,23 @@ def later_today(hours=1):
     return min(target, end_of_day)
 
 
+def set_clinic_setting(test_case, name, value):
+    """
+    Toggle one attribute on ``settings.CLINIC`` for one test, restoring
+    whatever it was before.
+
+    ``settings.CLINIC`` is ``config/clinic.py`` itself assigned directly —
+    not something Django's test isolation resets between tests. A test that
+    hardcodes what it leaves behind is gambling on which test happens to run
+    next, in its own file or any other that reads the same setting.
+    """
+    from django.conf import settings
+
+    original = getattr(settings.CLINIC, name)
+    setattr(settings.CLINIC, name, value)
+    test_case.addCleanup(setattr, settings.CLINIC, name, original)
+
+
 def today_at(hour, minute=0, days=0):
     """
     A fixed time of day, today — or ``days`` from today.

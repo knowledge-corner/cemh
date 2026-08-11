@@ -21,7 +21,7 @@ from appointments.models import (
 
 from .factories import (
     give_wide_open_hours, make_doctor, make_patient, make_receptionist, make_visit,
-    today_at,
+    set_clinic_setting, today_at,
 )
 
 
@@ -147,7 +147,16 @@ class TestOnlyOneInCabin(TestCase):
 
 
 class TestYesterdaysQueueIsNotLeftOpen(TestCase):
+    """
+    The plain end-of-day sweep — what "Close them off" did before KAN-48, and
+    what it still does with sign-off switched off. See
+    appointments.signoff._sweep_only's own docstring: with sign-off on, an
+    old visit still IN_CABIN instead refuses the close outright rather than
+    being swept, which is covered separately in test_day_signoff.py.
+    """
+
     def setUp(self):
+        set_clinic_setting(self, "DAY_SIGN_OFF_ENABLED", False)
         self.receptionist = make_receptionist()
         self.client.force_login(self.receptionist)
         self.doctor = make_doctor()

@@ -27,13 +27,18 @@ from billing.models import Charge, Payment
 from portal import services
 
 from .factories import (
-    make_doctor, make_patient, make_receptionist, make_visit, today_at,
+    make_doctor, make_patient, make_receptionist, make_visit,
+    set_clinic_setting, today_at,
 )
 
 
 #: What config/clinic.py ships with. Read rather than repeated, so a clinic
 #: changing its own address does not have to change a test to match.
 DEFAULT_SIGN_OFF = signoff.settings.CLINIC.SIGN_OFF_EMAILS
+
+
+def _set_sign_off_enabled(test_case, value):
+    set_clinic_setting(test_case, "DAY_SIGN_OFF_ENABLED", value)
 
 
 def MID_MORNING():
@@ -68,10 +73,7 @@ class SignOffTestCase(TestCase):
     """
 
     def setUp(self):
-        signoff.settings.CLINIC.DAY_SIGN_OFF_ENABLED = True
-        self.addCleanup(
-            setattr, signoff.settings.CLINIC, "DAY_SIGN_OFF_ENABLED", False,
-        )
+        _set_sign_off_enabled(self, True)
         self.receptionist = make_receptionist()
         self.doctor = make_doctor()
         self.client.force_login(self.receptionist)
@@ -554,9 +556,10 @@ class TestSignOffCanBeSwitchedOff(TestCase):
     """
 
     def setUp(self):
-        # The shipped default. Set explicitly so this reads as the case under
-        # test rather than as whatever config happens to say today.
-        signoff.settings.CLINIC.DAY_SIGN_OFF_ENABLED = False
+        # Forced off, regardless of what config ships with today, so this
+        # reads as the case under test rather than as whatever the ambient
+        # setting happens to be.
+        _set_sign_off_enabled(self, False)
         self.receptionist = make_receptionist()
         self.doctor = make_doctor()
         self.client.force_login(self.receptionist)
@@ -566,7 +569,7 @@ class TestSignOffCanBeSwitchedOff(TestCase):
         visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
         self.stale = visit
 
-    def test_the_default_is_off(self):
+    def test_it_can_be_switched_off(self):
         from config import clinic
 
         self.assertFalse(clinic.DAY_SIGN_OFF_ENABLED)
@@ -670,7 +673,7 @@ class TestTheSweepCanActuallyClearTheBoard(TestCase):
     """
 
     def setUp(self):
-        signoff.settings.CLINIC.DAY_SIGN_OFF_ENABLED = False
+        _set_sign_off_enabled(self, False)
         self.receptionist = make_receptionist()
         self.doctor = make_doctor()
         self.client.force_login(self.receptionist)
