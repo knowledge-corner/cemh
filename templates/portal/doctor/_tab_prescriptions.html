@@ -1,7 +1,7 @@
 {% comment %}
 Prescriptions, newest first. Written, edited and printed here — reception
-does not print these any more, except for one already sent to them (see
-"Send to reception" below), which still prints from Stage 4 unchanged.
+does not print these any more, except for one released to them when its
+visit's consultation is completed, which still prints from Stage 4 unchanged.
 
 Not tied to a visit: a doctor can write one for a patient at any time, so a
 patient can carry more than one, each independently editable and printable.
@@ -21,8 +21,6 @@ patient can carry more than one, each independently editable and printable.
           <span>
             {% if prescription.is_generated %}
               <span class="badge badge--success">Sent to reception</span>
-            {% else %}
-              <span class="badge badge--warning">Not sent to reception</span>
             {% endif %}
             <a class="btn-edit" target="_blank"
                href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
