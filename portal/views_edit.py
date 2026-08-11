@@ -319,11 +319,12 @@ def complete_consultation(request, patient_id):
     """
     End the consultation: record the fee and the work done, move the visit on.
 
-    Prescriptions and reference letters are the doctor's own documents now —
-    written, edited and printed from their own tabs, independently of this
-    action — so this is just the fee, exactly what the clinic asked for:
-    "enter fees and work done". It still moves the visit to CONSULTED, which
-    is what puts the patient on reception's billing list.
+    Reference letters stay the doctor's own documents, written, edited and
+    printed from their own tab independently of this action. The visit's
+    prescription is different: finishing the consultation is what makes it
+    final, so completing here also releases it to reception — a doctor does
+    not separately decide to "send" it. It still moves the visit to
+    CONSULTED, which is what puts the patient on reception's billing list.
     """
     patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
     visit = (
@@ -363,6 +364,10 @@ def complete_consultation(request, patient_id):
 
                 visit.transition_to(VisitStatus.CONSULTED, by_user=request.user)
 
+                prescription = getattr(visit, "prescription", None)
+                if prescription is not None:
+                    prescription.generate()
+
             record(
                 request, AuditAction.UPDATE, obj=visit, patient=patient,
                 description="Consultation completed; fee recorded",
@@ -384,32 +389,3 @@ def complete_consultation(request, patient_id):
             "action": request.path,
         },
     )
-
-
-@role_required(Role.DOCTOR)
-def generate_prescription(request, patient_id, pk):
-    """
-    Finalise a prescription and release it to reception.
-
-    Until this happens the prescription is a draft the receptionist must not
-    print — this is the handover point in the clinic's workflow.
-    """
-    patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
-    prescription = get_object_or_404(Prescription, pk=pk, patient=patient)
-
-    if not _is_editable(patient):
-        return _blocked(
-            request,
-            "This file is read-only",
-            f"{patient.full_name} has not been sent in yet. Use \"Send in\" "
-            "from today's queue to start the consultation before editing the file.",
-        )
-
-    if request.method == "POST":
-        prescription.generate()
-        record(
-            request, AuditAction.UPDATE, obj=prescription, patient=patient,
-            description="Generated prescription for reception",
-        )
-
-    return HttpResponse(_refreshed_panels(request, patient, "prescriptions"))

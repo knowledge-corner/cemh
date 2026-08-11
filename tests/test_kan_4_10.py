@@ -17,6 +17,7 @@ from django.urls import reverse
 
 from appointments.models import BACKWARD_TRANSITIONS, InvalidTransition, VisitStatus
 from billing.models import Charge, Payment, Receipt
+from pharmacy.models import Prescription
 from portal.forms import PaymentForm
 
 from .factories import (
@@ -242,6 +243,29 @@ class TestCompletingTheConsultation(TestCase):
         self.client.post(reverse("doctor_send_for_patient", args=[nxt.pk]))
         nxt.refresh_from_db()
         self.assertEqual(nxt.status, VisitStatus.IN_CABIN)
+
+    def test_completing_releases_the_visits_prescription_to_reception(self):
+        # There is no separate "send to reception" step any more — finishing
+        # the consultation is what makes the prescription final.
+        prescription = Prescription.objects.create(
+            visit=self.visit, patient=self.patient, doctor=self.doctor
+        )
+        self._complete()
+        prescription.refresh_from_db()
+        self.assertTrue(prescription.is_generated)
+
+    def test_completing_with_no_prescription_written_is_unaffected(self):
+        response = self._complete()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._status(), VisitStatus.CONSULTED)
+
+    def test_a_refused_completion_does_not_generate_the_prescription(self):
+        prescription = Prescription.objects.create(
+            visit=self.visit, patient=self.patient, doctor=self.doctor
+        )
+        self._complete(consultation_fee="-500")
+        prescription.refresh_from_db()
+        self.assertFalse(prescription.is_generated)
 
 
 class TestReadyToBillShowsTheAmount(TestCase):

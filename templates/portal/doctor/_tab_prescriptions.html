@@ -27,17 +27,6 @@ patient can carry more than one, each independently editable and printable.
             <a class="btn-edit" target="_blank"
                href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
             {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
-            {% if not prescription.is_generated and is_editable %}
-              {% comment %}
-              Sending to reception is optional now that the doctor prints
-              directly — this is only for a prescription reception should
-              also be able to print from Stage 4 alongside the receipt.
-              {% endcomment %}
-              <button type="button" class="btn-edit btn-edit--solid"
-                      hx-post="{% url 'doctor_generate_prescription' patient.patient_id prescription.pk %}"
-                      hx-target="#modal-host"
-                      hx-swap="innerHTML">Send to reception</button>
-            {% endif %}
           </span>
         </div>
         <div class="card__body">

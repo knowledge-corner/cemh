@@ -37,11 +37,6 @@ urlpatterns = [
         name="doctor_edit_record",
     ),
     path(
-        "patient/<str:patient_id>/prescription/<int:pk>/generate/",
-        views_edit.generate_prescription,
-        name="doctor_generate_prescription",
-    ),
-    path(
         "patient/<str:patient_id>/complete/",
         views_edit.complete_consultation,
         name="doctor_complete_consultation",

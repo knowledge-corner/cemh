@@ -259,17 +259,6 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertEqual(Prescription.objects.count(), 1)
         self.assertEqual(prescription.investigations_advised, "Repeat TSH in 6 weeks")
 
-    def test_sending_to_reception_marks_it_generated(self):
-        visit = self.open_visit()
-        prescription = Prescription.objects.create(
-            visit=visit, patient=self.patient, doctor=self.doctor
-        )
-        self.client.post(reverse(
-            "doctor_generate_prescription", args=[self.patient.patient_id, prescription.pk]
-        ))
-        prescription.refresh_from_db()
-        self.assertTrue(prescription.is_generated)
-
     def test_it_can_be_printed_from_its_own_tab(self):
         self.client.post(self.add_url("prescription"), self._item_formset())
         prescription = Prescription.objects.get()
