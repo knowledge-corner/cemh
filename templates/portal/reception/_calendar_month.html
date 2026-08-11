@@ -33,11 +33,9 @@ where holidays are drawn).
               <div class="calendar__daynum">
                 <a href="?view=day&amp;date={{ cell.date|date:'Y-m-d' }}{{ filter_query }}"
                    aria-label="Open {{ cell.date|date:'l j F Y' }}">{{ cell.date|date:"j" }}</a>
-                {% if not is_doctor_view %}
-                  <button type="button" class="calendar__add" title="Add an event on {{ cell.date|date:'j M' }}"
-                          aria-label="Add an event on {{ cell.date|date:'l j F Y' }}"
-                          data-add-event data-date="{{ cell.date|date:'Y-m-d' }}">+</button>
-                {% endif %}
+                <button type="button" class="calendar__add" title="Add working hours on {{ cell.date|date:'j M' }}"
+                        aria-label="Add working hours on {{ cell.date|date:'l j F Y' }}"
+                        data-add-event data-date="{{ cell.date|date:'Y-m-d' }}">+</button>
               </div>
 
               {% if cell.holiday %}

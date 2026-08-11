@@ -834,6 +834,12 @@ class CalendarEventForm(forms.Form):
     is a question about what else is booked, and asking reception to work
     that out by eye against the day view before typing an answer is exactly
     the step this removes.
+
+    The same form edits one existing row too — pass it as ``instance`` — so
+    correcting a typo in a time or swapping a cabin goes through the same
+    conflict check and the same cabin allocation a fresh booking does, rather
+    than a second code path that could disagree with the first about what
+    counts as a clash.
     """
 
     HOURS = "hours"
@@ -899,12 +905,17 @@ class CalendarEventForm(forms.Form):
         widget=forms.TextInput(attrs={**INPUT, "placeholder": "e.g. Diwali"}),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["doctor"].queryset = _all_doctors()
         # Django's "---------" empty option is noise on a field that is
         # effectively required the moment "Doctor working hours" is chosen.
         self.fields["doctor"].empty_label = "Select a doctor"
+        #: The single row being edited, or None while adding. Editing never
+        #: recurs — it changes the one occurrence that was clicked, not the
+        #: pattern that generated it — so a recurring booking is corrected by
+        #: editing each date that needs it, the same as any other date.
+        self.instance = instance
 
     # ── Validation ───────────────────────────────────────────────────────────
 
@@ -952,8 +963,11 @@ class CalendarEventForm(forms.Form):
         if start and end and start == end:
             self.add_error("end_time", "An entry with no length is not working hours.")
 
-        recurring = bool(cleaned.get("is_recurring"))
-        chosen_days = cleaned.get("weekdays") or []
+        # Editing a row never recurs — see __init__ — so whatever the
+        # Recurring checkbox and its fields happen to carry is ignored rather
+        # than validated, the same way the client already hides them.
+        recurring = bool(cleaned.get("is_recurring")) and self.instance is None
+        chosen_days = [] if self.instance is not None else (cleaned.get("weekdays") or [])
         if recurring and not chosen_days:
             self.add_error("weekdays", "Choose at least one day of the week.")
         elif not recurring and chosen_days:
@@ -994,8 +1008,14 @@ class CalendarEventForm(forms.Form):
 
         from appointments import calendar as clinic_calendar
 
+        # Editing excludes the row itself from its own conflict check —
+        # otherwise saving a booking unchanged would clash with the one row
+        # it is.
+        exclude_pk = self.instance.pk if self.instance is not None else None
+
         doctor_clashes = clinic_calendar.find_conflicts(
             doctor=cleaned["doctor"], cabin=None, start=start, end=end, dates=dates,
+            exclude_pk=exclude_pk,
         )
         clashed = {conflict.day for conflict in doctor_clashes}
         occurrences = [_conflict_occurrence(conflict) for conflict in doctor_clashes]
@@ -1007,6 +1027,7 @@ class CalendarEventForm(forms.Form):
         if remaining:
             by_date, unavailable = clinic_calendar.allocate_cabins(
                 doctor=cleaned["doctor"], dates=remaining, start=start, end=end,
+                exclude_pk=exclude_pk,
             )
         else:
             by_date, unavailable = {}, []
@@ -1077,6 +1098,19 @@ class CalendarEventForm(forms.Form):
                     date=day, name=cleaned["name"],
                 ))
             return created
+
+        if self.instance is not None:
+            # One row, in place — its series_id (if any) is untouched, so it
+            # stays grouped with the booking it came from for "remove whole
+            # booking" purposes.
+            day = self._planned_dates[0]
+            self.instance.doctor = cleaned["doctor"]
+            self.instance.date = day
+            self.instance.cabin = self._cabin_by_date[day]
+            self.instance.start_time = cleaned["start_time"]
+            self.instance.end_time = cleaned["end_time"]
+            self.instance.save()
+            return [self.instance]
 
         series_id = uuid.uuid4() if cleaned.get("is_recurring") else None
         for day in self._planned_dates:

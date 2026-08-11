@@ -499,8 +499,11 @@ class TestTheHistoryWithRealMoneyOnIt(TestCase):
 class TestCalendarAccess(TestCase):
     """
     KAN-50 replaced the availability screen with the calendar, and the two do
-    not have the same access rule. The old screen was reception-only; a doctor
-    may open the calendar, scoped to themselves, but may not write to it.
+    not have the same access rule. The old screen was reception-only; a
+    doctor may open the calendar, scoped to themselves, and — since the
+    add/edit parity work — write their own working hours to it too. What a
+    doctor still may not do is anything reception-only: add a cabin, or add
+    a clinic holiday.
     """
 
     def test_a_receptionist_may_open_it(self):
@@ -515,14 +518,19 @@ class TestCalendarAccess(TestCase):
             self.client.get(reverse("reception_calendar")).status_code, 200
         )
 
-    def test_a_doctor_may_not_write_to_it(self):
-        # The scoping is a rule about who may do what, not a filter, so it has
-        # to be refused at the view rather than by leaving the button off.
+    def test_a_doctor_may_write_their_own_hours_to_it(self):
+        doctor = make_doctor()
+        self.client.force_login(doctor)
+        response = self.client.post(reverse("reception_add_calendar_event"), {
+            "event_type": "hours", "date": timezone.localdate().isoformat(),
+            "start_time": "10:00", "end_time": "12:00",
+        })
+        self.assertRedirects(response, reverse("reception_calendar"))
+
+    def test_a_doctor_may_not_add_a_cabin(self):
         self.client.force_login(make_doctor())
-        self.assertEqual(
-            self.client.post(reverse("reception_add_calendar_event"), {}).status_code,
-            403,
-        )
+        response = self.client.post(reverse("reception_add_cabin"), {"name": "Cabin 9"})
+        self.assertEqual(response.status_code, 403)
 
 
 class TestTheClinicIsOpenEveryDay(TestCase):

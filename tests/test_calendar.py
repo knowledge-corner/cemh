@@ -381,28 +381,30 @@ class TestDoctorScoping(CalendarTestCase):
         response = self._monday(specialisation=Specialisation.objects.first().pk)
         self.assertContains(response, "Asha Rao")
 
-    def test_a_doctor_cannot_add_an_event(self):
+    def test_a_doctor_can_add_their_own_event(self):
+        # Superseded: a doctor now has the same reach into their own working
+        # hours reception has — add, edit and remove — see
+        # test_doctor_calendar_edit.py for the full add/edit/remove suite.
+        # This just confirms the endpoint is open to a doctor at all.
         response = self.client.post(reverse("reception_add_calendar_event"), {
             "event_type": "hours", "date": self.monday.isoformat(),
             "doctor": self.asha.pk, "start_time": "15:00", "end_time": "17:00",
         })
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 1)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 2)
 
-    def test_a_doctor_cannot_delete_a_whole_booking_from_here(self):
-        # Superseded by the doctor-scoped calendar-edit feature: a doctor may
-        # now remove their own single-date entries (see
-        # test_doctor_calendar_edit.py), but removing a whole recurring
-        # booking in one action is still reception's call. Refused with a
-        # message now rather than a flat 403, since the endpoint is no longer
-        # closed to doctors altogether.
+    def test_a_doctor_can_delete_a_whole_booking_of_their_own(self):
+        # Superseded: removing a whole recurring booking used to be
+        # reception's call only — see test_doctor_calendar_edit.py's
+        # TestADoctorCanRemoveTheirWholeSeries for the full coverage. This
+        # just confirms the endpoint is open to a doctor at all.
         sitting = DoctorSchedule.objects.get(doctor=self.asha)
         response = self.client.post(
             reverse("reception_delete_calendar_entry", args=["schedule", sitting.pk]),
             {"scope": "series"},
         )
-        self.assertNotEqual(response.status_code, 200)
-        self.assertTrue(DoctorSchedule.objects.filter(pk=sitting.pk).exists())
+        self.assertRedirects(response, reverse("reception_calendar"))
+        self.assertFalse(DoctorSchedule.objects.filter(pk=sitting.pk).exists())
 
 
 # ── The effective schedule ───────────────────────────────────────────────────
@@ -760,6 +762,178 @@ class TestTheAddEventPopUp(CalendarTestCase):
         self._post(doctor=self.vikram.pk)
         page = self.client.get(reverse("reception_calendar"))
         self.assertContains(page, "has not set their password yet")
+
+
+# ── Editing an existing row ───────────────────────────────────────────────────
+
+class TestEditingAnEvent(CalendarTestCase):
+    """
+    The same pop-up, the same conflict check and the same cabin allocation as
+    adding — see CalendarEventForm's ``instance`` — but changing one row in
+    place rather than creating a new one.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sitting = DoctorSchedule.objects.create(
+            doctor=self.asha, date=self.monday, cabin=self.one,
+            start_time=time(10), end_time=time(13),
+        )
+
+    def _edit(self, pk, **overrides):
+        payload = {
+            "event_type": "hours",
+            "doctor": self.asha.pk,
+            "date": self.monday.isoformat(),
+            "start_time": "10:00",
+            "end_time": "13:00",
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("reception_edit_calendar_event", args=[pk]), payload
+        )
+
+    def test_the_time_can_be_changed(self):
+        self._edit(self.sitting.pk, start_time="11:00", end_time="14:00")
+        self.sitting.refresh_from_db()
+        self.assertEqual((self.sitting.start_time, self.sitting.end_time),
+                          (time(11), time(14)))
+
+    def test_it_stays_one_row_not_two(self):
+        self._edit(self.sitting.pk, start_time="11:00", end_time="14:00")
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 1)
+
+    def test_the_date_can_be_moved(self):
+        moved = self.monday + timedelta(weeks=1)
+        self._edit(self.sitting.pk, date=moved.isoformat())
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.date, moved)
+
+    def test_unchanged_values_save_without_complaint(self):
+        # The row does not clash with itself.
+        response = self._edit(self.sitting.pk)
+        self.assertRedirects(response, reverse("reception_calendar"))
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertNotContains(page, "Conflict Detected")
+
+    def test_moving_onto_another_entry_is_a_conflict(self):
+        DoctorSchedule.objects.create(
+            doctor=self.asha, date=self.monday + timedelta(weeks=1), cabin=self.two,
+            start_time=time(9), end_time=time(11),
+        )
+        self._edit(self.sitting.pk, date=(self.monday + timedelta(weeks=1)).isoformat(),
+                    start_time="10:00", end_time="12:00")
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.date, self.monday)
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertContains(page, "Conflict Detected")
+
+    def test_the_cabin_is_reallocated_without_clashing_with_itself(self):
+        # Stretching Asha's own hours later still overlaps her old 10-13
+        # slot, still in Cabin 1. Without excluding her own row from the
+        # cabin check, Cabin 1 would look taken by nobody but herself.
+        self._edit(self.sitting.pk, start_time="11:00", end_time="14:00")
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.cabin, self.one)
+
+    def test_recurring_fields_are_ignored_when_editing(self):
+        # Ticking Recurring on an edit must not turn one row into a series —
+        # editing only ever touches the row that was clicked.
+        self._edit(
+            self.sitting.pk, is_recurring="1", weekdays=["M"],
+            recur_until=(self.monday + timedelta(weeks=3)).isoformat(),
+        )
+        self.assertEqual(DoctorSchedule.objects.filter(doctor=self.asha).count(), 1)
+        self.sitting.refresh_from_db()
+        self.assertIsNone(self.sitting.series_id)
+
+    def test_a_series_row_keeps_its_series_id_after_being_edited(self):
+        series = uuid.uuid4()
+        self.sitting.series_id = series
+        self.sitting.save(update_fields=["series_id"])
+        self._edit(self.sitting.pk, start_time="11:00", end_time="14:00")
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.series_id, series)
+
+    def test_the_doctor_can_be_reassigned(self):
+        self._edit(self.sitting.pk, doctor=self.vikram.pk)
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.doctor, self.vikram)
+
+    def test_the_change_is_audited(self):
+        from audit.models import AccessLog, AuditAction
+        self._edit(self.sitting.pk, start_time="11:00", end_time="14:00")
+        self.assertTrue(AccessLog.objects.filter(action=AuditAction.UPDATE).exists())
+
+    def test_a_get_changes_nothing(self):
+        self.client.get(reverse("reception_edit_calendar_event", args=[self.sitting.pk]))
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.start_time, time(10))
+
+    def test_the_day_view_offers_an_edit_button(self):
+        response = self.client.get(
+            reverse("reception_calendar"),
+            {"view": "day", "date": self.monday.isoformat()},
+        )
+        self.assertContains(response, "Edit")
+
+
+class TestEditConflictDialogMatchesAdd(CalendarTestCase):
+    """
+    Editing into a clash goes through the exact same held-submission,
+    Skip/Redo flow as adding — see TestConflictDialog — just posting back to
+    the row being edited instead of creating a new one.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sitting = DoctorSchedule.objects.create(
+            doctor=self.asha, date=self.monday, cabin=self.one,
+            start_time=time(10), end_time=time(13),
+        )
+        self.other = DoctorSchedule.objects.create(
+            doctor=self.asha, date=self.monday + timedelta(weeks=1), cabin=self.two,
+            start_time=time(9), end_time=time(11),
+        )
+
+    def _edit_onto_other(self):
+        return self.client.post(
+            reverse("reception_edit_calendar_event", args=[self.sitting.pk]),
+            {
+                "event_type": "hours", "doctor": self.asha.pk,
+                "date": (self.monday + timedelta(weeks=1)).isoformat(),
+                "start_time": "10:00", "end_time": "12:00",
+            },
+        )
+
+    def test_nothing_is_written_yet(self):
+        self._edit_onto_other()
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.date, self.monday)
+
+    def test_skipping_leaves_the_row_where_it_was(self):
+        # A single-date edit has nowhere to go once its only date is skipped
+        # — see CalendarEventForm._clean_hours' "every date conflicts" path
+        # — so the row is refused and left exactly as it was.
+        self._edit_onto_other()
+        self.client.post(
+            reverse("reception_edit_calendar_event", args=[self.sitting.pk]),
+            {
+                "event_type": "hours", "doctor": self.asha.pk,
+                "date": (self.monday + timedelta(weeks=1)).isoformat(),
+                "start_time": "10:00", "end_time": "12:00",
+                "skip_conflicts": "1",
+            },
+        )
+        self.sitting.refresh_from_db()
+        self.assertEqual(self.sitting.date, self.monday)
+
+    def test_the_dialog_reopens_pointing_at_the_edit_url_not_add(self):
+        self._edit_onto_other()
+        page = self.client.get(reverse("reception_calendar"))
+        self.assertContains(
+            page, reverse("reception_edit_calendar_event", args=[self.sitting.pk])
+        )
 
 
 # ── Removing an entry ─────────────────────────────────────────────────────────

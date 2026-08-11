@@ -135,14 +135,18 @@ def calendar_view(request):
     schedule = clinic_calendar.Schedule(doctors, start=span_start, end=span_end)
 
     # A submission that came back with conflicts to resolve — see
-    # add_calendar_event, which stashes the raw POST data here rather than
-    # rendering a response itself, so the add-event pop-up can be reopened
-    # exactly as it was left, values intact, with the Conflict Detected
-    # dialog on top of it. Read once and discarded, the same as a Django
-    # message, so refreshing this page never reopens it a second time.
+    # add_calendar_event and edit_calendar_event, which stash the raw POST
+    # data here rather than rendering a response themselves, so the pop-up
+    # can be reopened exactly as it was left, values intact, with the
+    # Conflict Detected dialog on top of it. Read once and discarded, the
+    # same as a Django message, so refreshing this page never reopens it a
+    # second time. pending_event_pk marks an edit rather than an add, so the
+    # reopened form posts back to the same row instead of creating a new one.
     pending = request.session.pop("pending_event_conflict", None)
+    editing_pk = request.session.pop("pending_event_pk", None)
     if pending:
-        event_form = clinic_forms.CalendarEventForm(QueryDict(pending))
+        instance = get_object_or_404(DoctorSchedule, pk=editing_pk) if editing_pk else None
+        event_form = clinic_forms.CalendarEventForm(QueryDict(pending), instance=instance)
         event_form.is_valid()
         event_conflicts = getattr(event_form, "_conflicts", [])
     else:
@@ -161,6 +165,7 @@ def calendar_view(request):
         "is_doctor_view": _is_doctor(request.user),
         "event_form": event_form,
         "reopen_event_modal": bool(pending),
+        "editing_pk": editing_pk,
         "event_conflicts": event_conflicts,
         "cabin_form": clinic_forms.CabinForm(),
         "all_cabins": all_cabins,
@@ -300,14 +305,31 @@ def retire_cabin(request, pk):
     return _back(request)
 
 
-# ── The add-event pop-up (FR-8 … FR-13, FR-20) ───────────────────────────────
+# ── The add/edit-event pop-up (FR-8 … FR-13, FR-20) ──────────────────────────
 
-@role_required(Role.RECEPTIONIST)
+def _locked_event_data(request):
+    """
+    ``request.POST``, with the fields a doctor may not choose pinned to
+    themselves — the same protection ``delete_calendar_entry`` already gives
+    a doctor's own entries, applied here before the form ever sees the data:
+    a doctor adds or edits only their own working hours, never a holiday and
+    never another doctor's row, no matter what a crafted request carries.
+    """
+    if not _is_doctor(request.user):
+        return request.POST
+    data = request.POST.copy()
+    data["event_type"] = clinic_forms.CalendarEventForm.HOURS
+    data["doctor"] = str(request.user.pk)
+    return data
+
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def add_calendar_event(request):
     if request.method != "POST":
         return redirect("reception_calendar")
 
-    form = clinic_forms.CalendarEventForm(request.POST)
+    data = _locked_event_data(request)
+    form = clinic_forms.CalendarEventForm(data)
     is_valid = form.is_valid()
 
     if getattr(form, "_conflicts", None):
@@ -315,7 +337,8 @@ def add_calendar_event(request):
         # refused outright — calendar_view reopens this same form, values
         # intact, with the conflicting dates named and a choice: skip just
         # those dates, or go back and change the booking.
-        request.session["pending_event_conflict"] = request.POST.urlencode()
+        request.session["pending_event_conflict"] = data.urlencode()
+        request.session.pop("pending_event_pk", None)
         return _back(request)
 
     if not is_valid:
@@ -336,6 +359,52 @@ def add_calendar_event(request):
     else:
         messages.success(request, f"Added {len(created)} entries.")
 
+    return _back(request)
+
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
+def edit_calendar_event(request, pk):
+    """
+    Change one existing working-hours row — time, cabin, or the date itself.
+
+    Always one row, never the pattern that generated it: a doctor's whole
+    recurring booking is not touched by editing one of its dates, the same
+    as removing "just this date" leaves the rest of the series alone.
+    """
+    if request.method != "POST":
+        return redirect("reception_calendar")
+
+    is_doctor = _is_doctor(request.user)
+    schedule_qs = (
+        DoctorSchedule.objects.filter(doctor=request.user)
+        if is_doctor else DoctorSchedule.objects.all()
+    )
+    entry = get_object_or_404(schedule_qs, pk=pk)
+
+    # A DoctorSchedule row is always "hours" — there is no path from here to
+    # a holiday, whoever is editing, regardless of what a crafted request
+    # carries. Holiday editing has its own view, edit_holiday, untouched by
+    # this one.
+    data = _locked_event_data(request).copy()
+    data["event_type"] = clinic_forms.CalendarEventForm.HOURS
+    form = clinic_forms.CalendarEventForm(data, instance=entry)
+    is_valid = form.is_valid()
+
+    if getattr(form, "_conflicts", None):
+        request.session["pending_event_conflict"] = data.urlencode()
+        request.session["pending_event_pk"] = entry.pk
+        return _back(request)
+
+    if not is_valid:
+        for field, errors in form.errors.items():
+            for error in errors:
+                label = "" if field == "__all__" else f"{form.fields[field].label}: "
+                messages.error(request, f"{label}{error}")
+        return _back(request)
+
+    form.save()
+    record(request, AuditAction.UPDATE, obj=entry, description=f"Calendar changed: {entry}")
+    messages.success(request, "Those hours were updated.")
     return _back(request)
 
 
@@ -417,8 +486,9 @@ def delete_calendar_entry(request, kind, pk):
     ``_visible_doctors``), and the querysets below are additionally scoped to
     ``request.user`` so a crafted request against somebody else's pk 404s
     exactly as if it did not exist, rather than saying whose it really is. A
-    clinic holiday is never a doctor's to remove, and removing a whole booking
-    in one action is reception's call, not offered here.
+    clinic holiday is never a doctor's to remove — that stays reception-only —
+    but a doctor otherwise has the same reach into their own working hours
+    reception has: one date, or the whole booking.
     """
     if request.method != "POST":
         return redirect("reception_calendar")
@@ -426,16 +496,8 @@ def delete_calendar_entry(request, kind, pk):
     scope = request.POST.get("scope", "date")
     is_doctor = _is_doctor(request.user)
 
-    if is_doctor:
-        if kind != "schedule":
-            return redirect("reception_calendar")
-        if scope == "series":
-            messages.error(
-                request,
-                "Removing a whole booking isn't available here — ask reception, "
-                "or upload a corrected schedule for your own recurring hours.",
-            )
-            return _back(request)
+    if is_doctor and kind != "schedule":
+        return redirect("reception_calendar")
 
     if kind == "holiday":
         holiday = get_object_or_404(ClinicHoliday, pk=pk)

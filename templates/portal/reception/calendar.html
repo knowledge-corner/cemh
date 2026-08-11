@@ -102,10 +102,10 @@ it.
          href="?view=day&amp;date={{ anchor|date:'Y-m-d' }}{% if chosen_doctor %}&amp;doctor={{ chosen_doctor.pk }}{% endif %}{% if chosen_specialisation %}&amp;specialisation={{ chosen_specialisation.pk }}{% endif %}">Day</a>
     </div>
 
-    {% if not is_doctor_view %}
-      <button class="btn btn--primary" type="button"
-              data-add-event data-date="{{ anchor|date:'Y-m-d' }}">Add event</button>
-    {% endif %}
+    <button class="btn btn--primary" type="button"
+            data-add-event data-date="{{ anchor|date:'Y-m-d' }}">
+      {% if is_doctor_view %}Add working hours{% else %}Add event{% endif %}
+    </button>
   </div>
 </nav>
 
@@ -154,8 +154,8 @@ it.
 
 {% if not is_doctor_view %}
   {% include "portal/reception/_cabins.html" %}
-  {% include "portal/reception/_calendar_event_modal.html" %}
 {% endif %}
+{% include "portal/reception/_calendar_event_modal.html" %}
 
 {% endblock %}
 

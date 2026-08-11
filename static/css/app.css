@@ -815,6 +815,10 @@ p { margin: 0 0 .75rem; }
 .form-grid .field:has(textarea) { grid-column: 1 / -1; }
 .field--check { display: flex; align-items: center; gap: .5rem; }
 .field--check .field__label { margin-bottom: 0; }
+/* Same trap as .modal-backdrop above: display:flex beats the browser's own
+   [hidden] { display: none } on cascade origin, so calendar.js hiding the
+   Recurring row while editing (it is add-only) left it laid out anyway. */
+.field--check[hidden] { display: none; }
 
 /* Days of the week, as a row of circles rather than a checkbox list (KAN-22) —
    the day picker already familiar from booking apps on a phone. Wrapping

@@ -1,9 +1,13 @@
 {% comment %}
-The add-event pop-up (FR-8, FR-9).
+The add/edit-event pop-up (FR-8, FR-9).
 
 One dialog whose fields follow the event type, rather than a separate pop-up per
 type. What reception is adding is a choice made *inside* the dialog — asking
-before it opens would mean knowing the answer to reach the question.
+before it opens would mean knowing the answer to reach the question. A doctor
+gets the same dialog scoped to themselves: no event-type choice (always
+working hours) and no doctor picker (always their own), both left out of the
+markup entirely rather than merely hidden, so nothing about them is even
+submitted.
 
 Rendered into the page and hidden, not fetched: the form is small, and a dialog
 that needs a round trip before it appears is a dialog that sometimes does not.
@@ -22,6 +26,14 @@ and time are known — see appointments.calendar.allocate_cabins — so asking
 reception to pick one here would be asking them to already know the answer this
 form exists to work out.
 
+The same dialog edits one existing row, opened by clicking its own Edit button
+rather than a day cell — calendar.js repoints the form at
+reception_edit_calendar_event and pre-fills it, and hides the Recurring section
+entirely: editing changes the one occurrence that was clicked, never the
+pattern that generated it. A conflict on save reopens this exact state — see
+calendar_view's "pending_event_conflict" / "pending_event_pk" handling — with
+editing_pk telling the template which action the form posts back to.
+
 A submission with conflicting dates does not fail outright. It is held —
 see calendar_view's "pending_event_conflict" handling — and this pop-up is
 reopened exactly as it was left, values intact, underneath the Conflict
@@ -36,21 +48,28 @@ the form open to edit.
        aria-labelledby="event-modal-title">
 
     <div class="modal__header">
-      <h2 class="modal__title" id="event-modal-title">Add to the calendar</h2>
+      <h2 class="modal__title" id="event-modal-title">
+        {% if editing_pk %}Edit working hours{% else %}Add to the calendar{% endif %}
+      </h2>
       <button type="button" class="modal__close" aria-label="Close" data-close-modal>&times;</button>
     </div>
 
-    <form method="post" action="{% url 'reception_add_calendar_event' %}" id="event-modal-form">
+    <form method="post" id="event-modal-form"
+          data-add-url="{% url 'reception_add_calendar_event' %}"
+          data-edit-url-template="{% url 'reception_edit_calendar_event' 0 %}"
+          action="{% if editing_pk %}{% url 'reception_edit_calendar_event' editing_pk %}{% else %}{% url 'reception_add_calendar_event' %}{% endif %}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
 
       <div class="modal__body">
-        <div class="field">
-          <label class="field__label" for="{{ event_form.event_type.id_for_label }}">
-            {{ event_form.event_type.label }}
-          </label>
-          {{ event_form.event_type }}
-        </div>
+        {% if not is_doctor_view %}
+          <div class="field" id="event-type-field" {% if editing_pk %}hidden{% endif %}>
+            <label class="field__label" for="{{ event_form.event_type.id_for_label }}">
+              {{ event_form.event_type.label }}
+            </label>
+            {{ event_form.event_type }}
+          </div>
+        {% endif %}
 
         <div class="field">
           <label class="field__label" for="{{ event_form.date.id_for_label }}">
@@ -72,20 +91,22 @@ the form open to edit.
 
         {# ── Working hours ────────────────────────────────────────────── #}
         <div data-event-fields="hours">
-          <div class="field">
-            <label class="field__label" for="{{ event_form.doctor.id_for_label }}">
-              {{ event_form.doctor.label }}
-            </label>
-            {{ event_form.doctor }}
-            {% comment %}
-            KAN-21 FR-10 / AC-8: a doctor who has not set a password is not in
-            this list, because hours for somebody who cannot sign in put a
-            patient in front of an empty cabin.
-            {% endcomment %}
-            <p class="field__help">
-              Only doctors who have finished setting up their account appear here.
-            </p>
-          </div>
+          {% if not is_doctor_view %}
+            <div class="field">
+              <label class="field__label" for="{{ event_form.doctor.id_for_label }}">
+                {{ event_form.doctor.label }}
+              </label>
+              {{ event_form.doctor }}
+              {% comment %}
+              KAN-21 FR-10 / AC-8: a doctor who has not set a password is not in
+              this list, because hours for somebody who cannot sign in put a
+              patient in front of an empty cabin.
+              {% endcomment %}
+              <p class="field__help">
+                Only doctors who have finished setting up their account appear here.
+              </p>
+            </div>
+          {% endif %}
 
           <div class="form-grid">
             <div class="field">
@@ -106,7 +127,14 @@ the form open to edit.
             evening clinic on the same day is two of these, not one.
           </p>
 
-          <div class="field field--check">
+          {% comment %}
+          Recurring is add-only — editing changes the one occurrence that was
+          clicked, never the pattern that generated it. calendar.js hides
+          this whole block when it opens the dialog to edit a row; editing_pk
+          covers the same case on a server-rendered reopen after a conflict.
+          {% endcomment %}
+          <div class="field field--check" id="recurring-checkbox-field"
+               {% if editing_pk %}hidden{% endif %}>
             <label>
               {{ event_form.is_recurring }}
               {{ event_form.is_recurring.label }}

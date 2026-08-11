@@ -52,6 +52,8 @@ urlpatterns = [
          name="reception_retire_cabin"),
     path("calendar/event/add/", views_calendar.add_calendar_event,
          name="reception_add_calendar_event"),
+    path("calendar/event/<int:pk>/edit/", views_calendar.edit_calendar_event,
+         name="reception_edit_calendar_event"),
     path("calendar/<str:kind>/<int:pk>/delete/", views_calendar.delete_calendar_entry,
          name="reception_delete_calendar_entry"),
 

@@ -36,14 +36,16 @@ agree on who is actually working.
     <div class="card__body empty">
       {% if holiday %}
         The clinic is closed.
-      {% elif not cabins %}
+      {% elif not cabins and not is_doctor_view %}
         No cabins yet. Add one below, then give a doctor hours in it.
       {% else %}
-        Nobody is down to work on {{ anchor|date:"j F" }}.
-        {% if not is_doctor_view %}
-          <button class="btn btn--primary" type="button"
-                  data-add-event data-date="{{ anchor|date:'Y-m-d' }}">Add working hours</button>
+        {% if is_doctor_view %}
+          You are not down to work on {{ anchor|date:"j F" }}.
+        {% else %}
+          Nobody is down to work on {{ anchor|date:"j F" }}.
         {% endif %}
+        <button class="btn btn--primary" type="button"
+                data-add-event data-date="{{ anchor|date:'Y-m-d' }}">Add working hours</button>
       {% endif %}
     </div>
   </div>
@@ -75,12 +77,17 @@ agree on who is actually working.
                   {% comment %}
                   A doctor only ever sees their own entries here (see
                   _visible_doctors), so no per-entry ownership check is
-                  needed on top of is_doctor_view — the endpoint these post
-                  to checks regardless. "Remove the whole booking" is left
-                  out for a doctor: re-uploading a schedule is the tool for
-                  changing a recurring pattern of their own.
+                  needed on top of is_doctor_view — every endpoint these post
+                  or open to is scoped to request.user regardless.
                   {% endcomment %}
                   <div class="sitting__actions">
+                    <button class="btn btn--secondary" type="button"
+                            data-edit-event
+                            data-pk="{{ entry.pk }}"
+                            data-doctor="{{ entry.doctor.pk }}"
+                            data-date="{{ anchor|date:'Y-m-d' }}"
+                            data-start="{{ entry.start|time:'H:i' }}"
+                            data-end="{{ entry.end|time:'H:i' }}">Edit</button>
                     {% if entry.series_id %}
                       <form method="post"
                             action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
@@ -92,16 +99,14 @@ agree on who is actually working.
                           Remove this date
                         </button>
                       </form>
-                      {% if not is_doctor_view %}
-                        <form method="post"
-                              action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
-                              onsubmit="return confirm('Remove the whole booking for {{ entry.doctor.display_name|escapejs }}, every date it covers — not just {{ anchor|date:'j M'|escapejs }}?');">
-                          {% csrf_token %}
-                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <input type="hidden" name="scope" value="series">
-                          <button class="btn btn--secondary" type="submit">Remove whole booking</button>
-                        </form>
-                      {% endif %}
+                      <form method="post"
+                            action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
+                            onsubmit="return confirm('Remove the whole booking for {{ entry.doctor.display_name|escapejs }}, every date it covers — not just {{ anchor|date:'j M'|escapejs }}?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input type="hidden" name="scope" value="series">
+                        <button class="btn btn--secondary" type="submit">Remove whole booking</button>
+                      </form>
                     {% else %}
                       <form method="post"
                             action="{% url 'reception_delete_calendar_entry' 'schedule' entry.pk %}"
