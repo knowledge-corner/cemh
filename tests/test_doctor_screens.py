@@ -194,12 +194,13 @@ class TestTheQueueTagsWalkIns(TestCase):
         self.assertNotContains(response, "Walk-in")
 
 
-class TestBookedNotConfirmedFromTodaysClinic(TestCase):
+class TestConfirmedNotYetArrivedFromTodaysClinic(TestCase):
     """
-    Booked and Confirmed share a column on the board, and the queue below only
-    ever shows today, so a doctor had no way to see a booking on their own
-    diary that reception never got round to confirming. This pop-up, off
-    Today's clinic, is that list — scoped to this doctor's own patients only.
+    A booking is confirmed the moment it is made — there is no separate
+    confirmation call any more — so "unconfirmed" on the queue now means
+    "confirmed for today but not yet walked in", the thing actually worth a
+    doctor's attention. This pop-up, off Today's clinic, is that list —
+    scoped to today and to this doctor's own patients only.
     """
 
     def setUp(self):
@@ -220,36 +221,63 @@ class TestBookedNotConfirmedFromTodaysClinic(TestCase):
             body.index(reverse("doctor_unconfirmed_appointments")),
         )
 
-    def test_a_booked_visit_is_listed(self):
-        patient = make_patient()
-        visit = make_visit(patient, self.doctor, start=later_today())
-        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
-        self.assertContains(response, patient.patient_id)
-        self.assertEqual(list(response.context["visits"]), [visit])
-
-    def test_a_confirmed_visit_is_not_listed(self):
+    def test_a_confirmed_visit_today_is_listed(self):
         patient = make_patient()
         visit = make_visit(patient, self.doctor, start=later_today())
         visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
         response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertContains(response, patient.patient_id)
+        self.assertEqual(list(response.context["visits"]), [visit])
+
+    def test_a_still_booked_visit_is_not_listed(self):
+        # A booking starts CONFIRMED now — BOOKED only lingers on old data or
+        # a step back on the board — but either way it is not "unconfirmed"
+        # in the sense this pop-up cares about.
+        patient = make_patient()
+        make_visit(patient, self.doctor, start=later_today())
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
         self.assertNotContains(response, patient.patient_id)
 
-    def test_another_doctors_unconfirmed_booking_does_not_show_here(self):
+    def test_an_arrived_visit_is_not_listed(self):
+        # Arrived is "waiting", not "unconfirmed" — the two badges must not
+        # double-count the same patient.
+        patient = make_patient()
+        visit = make_visit(patient, self.doctor, start=later_today())
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+        visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertNotContains(response, patient.patient_id)
+
+    def test_a_confirmed_visit_on_another_day_is_not_listed(self):
+        patient = make_patient()
+        visit = make_visit(
+            patient, self.doctor, start=timezone.now() + timedelta(days=2)
+        )
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+        response = self.client.get(reverse("doctor_unconfirmed_appointments"))
+        self.assertNotContains(response, patient.patient_id)
+
+    def test_another_doctors_confirmed_booking_does_not_show_here(self):
         other = make_doctor(username="dr2", email="dr2@example.in")
         patient = make_patient()
-        make_visit(patient, other, start=later_today())
+        visit = make_visit(patient, other, start=later_today())
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
 
         response = self.client.get(reverse("doctor_unconfirmed_appointments"))
         self.assertNotContains(response, patient.patient_id)
 
-    def test_nothing_booked_says_so(self):
+    def test_nothing_confirmed_says_so(self):
         response = self.client.get(reverse("doctor_unconfirmed_appointments"))
-        self.assertContains(response, "Nothing of yours is waiting on a confirmation call")
+        self.assertContains(
+            response, "Nobody of yours is confirmed for today without having arrived"
+        )
 
     def test_the_count_on_the_link_matches_this_doctors_own(self):
         other = make_doctor(username="dr3", email="dr3@example.in")
-        make_visit(make_patient(), self.doctor, start=later_today())
-        make_visit(make_patient(phone="9820011133"), other, start=later_today())
+        mine = make_visit(make_patient(), self.doctor, start=later_today())
+        mine.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
+        theirs = make_visit(make_patient(phone="9820011133"), other, start=later_today())
+        theirs.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
 
         response = self.client.get(reverse("doctor_home"))
         self.assertEqual(response.context["unconfirmed_count"], 1)
@@ -257,9 +285,10 @@ class TestBookedNotConfirmedFromTodaysClinic(TestCase):
 
     def test_the_polled_queue_fragment_carries_the_same_count(self):
         # _queue.html is swapped in wholesale every 15s, so the count has to be
-        # refreshed by that same view or it goes stale the moment reception
-        # confirms or adds a booking.
-        make_visit(make_patient(), self.doctor, start=later_today())
+        # refreshed by that same view or it goes stale the moment somebody
+        # arrives or a new booking is confirmed.
+        visit = make_visit(make_patient(), self.doctor, start=later_today())
+        visit.transition_to(VisitStatus.CONFIRMED, by_user=self.receptionist)
         response = self.client.get(reverse("doctor_queue"))
         self.assertEqual(response.context["unconfirmed_count"], 1)
         self.assertContains(response, "1 unconfirmed")
@@ -268,6 +297,74 @@ class TestBookedNotConfirmedFromTodaysClinic(TestCase):
         self.client.force_login(self.receptionist)
         response = self.client.get(reverse("doctor_unconfirmed_appointments"))
         self.assertEqual(response.status_code, 403)
+
+
+class TestWaitingOnlyCountsArrived(TestCase):
+    """
+    "Waiting" used to be the length of the whole queue — every status from a
+    confirmed booking hours away to an already-billed visit. Only a patient
+    physically present and not yet with the doctor (ARRIVED) is actually
+    waiting; everything else still shows in the list, just not in this count.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.receptionist = make_receptionist()
+        self.client.force_login(self.doctor)
+
+    def _visit(self, status, *, hours=1, **kwargs):
+        visit = make_visit(make_patient(**kwargs), self.doctor, start=later_today(hours=hours))
+        path = [VisitStatus.CONFIRMED, VisitStatus.ARRIVED, VisitStatus.IN_CABIN,
+                VisitStatus.CONSULTED, VisitStatus.BILLED]
+        for step in path:
+            if visit.status == status:
+                break
+            visit.transition_to(step, by_user=self.receptionist)
+        return visit
+
+    def test_a_confirmed_visit_does_not_count_as_waiting(self):
+        self._visit(VisitStatus.CONFIRMED)
+        response = self.client.get(reverse("doctor_home"))
+        self.assertEqual(response.context["waiting_count"], 0)
+        self.assertContains(response, "0 waiting")
+
+    def test_an_arrived_visit_counts_as_waiting(self):
+        self._visit(VisitStatus.ARRIVED)
+        response = self.client.get(reverse("doctor_home"))
+        self.assertEqual(response.context["waiting_count"], 1)
+        self.assertContains(response, "1 waiting")
+
+    def test_an_in_cabin_visit_no_longer_counts_as_waiting(self):
+        # Being seen is not the same as waiting to be seen, even though the
+        # row itself stays on screen.
+        self._visit(VisitStatus.IN_CABIN)
+        response = self.client.get(reverse("doctor_home"))
+        self.assertEqual(response.context["waiting_count"], 0)
+        self.assertContains(response, "0 waiting")
+
+    def test_a_billed_visit_does_not_count_as_waiting(self):
+        self._visit(VisitStatus.BILLED)
+        response = self.client.get(reverse("doctor_home"))
+        self.assertEqual(response.context["waiting_count"], 0)
+
+    def test_the_row_stays_listed_once_in_cabin(self):
+        visit = self._visit(VisitStatus.IN_CABIN)
+        response = self.client.get(reverse("doctor_home"))
+        self.assertContains(response, visit.patient.patient_id)
+
+    def test_mixed_statuses_only_count_the_arrived_ones(self):
+        self._visit(VisitStatus.CONFIRMED, hours=1, phone="9820011111")
+        self._visit(VisitStatus.ARRIVED, hours=2, phone="9820022222")
+        self._visit(VisitStatus.ARRIVED, hours=3, phone="9820033333")
+        self._visit(VisitStatus.IN_CABIN, hours=4, phone="9820044444")
+        response = self.client.get(reverse("doctor_home"))
+        self.assertEqual(response.context["waiting_count"], 2)
+
+    def test_the_polled_queue_fragment_carries_the_same_count(self):
+        self._visit(VisitStatus.ARRIVED)
+        response = self.client.get(reverse("doctor_queue"))
+        self.assertEqual(response.context["waiting_count"], 1)
+        self.assertContains(response, "1 waiting")
 
 
 class TestVisitHistoryShowsOnlyWhatHappened(TestCase):

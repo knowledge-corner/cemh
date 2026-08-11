@@ -1,17 +1,13 @@
 {% comment %}
-This doctor's own bookings still waiting on a confirmation call.
-
-Booked and Confirmed share a column on the board, so a booking that never got
-its call looks the same there as one that did — and the doctor's queue below
-only ever shows today. This is the one place they can see everything still
-unconfirmed on their own diary, whichever day it falls on.
+Today's confirmed bookings this doctor has that have not yet arrived — see
+views_doctor._unconfirmed_count for why "unconfirmed" means this now.
 {% endcomment %}
 
 <div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="unconfirmed-title">
 
     <div class="modal__header">
-      <h2 class="modal__title" id="unconfirmed-title">Booked, not yet confirmed</h2>
+      <h2 class="modal__title" id="unconfirmed-title">Confirmed, not yet arrived</h2>
       <button type="button" class="modal__close" aria-label="Close"
               onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
     </div>
@@ -21,12 +17,11 @@ unconfirmed on their own diary, whichever day it falls on.
         <div class="table-scroll">
           <table class="table table--middle">
             <thead>
-              <tr><th>Date</th><th>Time</th><th>Patient</th><th>Phone</th></tr>
+              <tr><th>Time</th><th>Patient</th><th>Phone</th></tr>
             </thead>
             <tbody>
               {% for visit in visits %}
                 <tr>
-                  <td>{{ visit.scheduled_start|date:"j M Y" }}</td>
                   <td>{{ visit.scheduled_start|date:"H:i" }}</td>
                   <td>
                     {{ visit.patient.full_name }}
@@ -39,7 +34,7 @@ unconfirmed on their own diary, whichever day it falls on.
           </table>
         </div>
       {% else %}
-        <p class="faint">Nothing of yours is waiting on a confirmation call right now.</p>
+        <p class="faint">Nobody of yours is confirmed for today without having arrived.</p>
       {% endif %}
     </div>
 

@@ -114,14 +114,14 @@ class TestReceptionBooking(TestCase):
         payload.update(overrides)
         return payload
 
-    def test_reception_booking_starts_unconfirmed(self):
+    def test_reception_booking_starts_confirmed(self):
         response = self.client.post(reverse("reception_new_booking"), self.booking_payload())
         self.assertEqual(response.status_code, 302)
 
         visit = Visit.objects.get()
-        # The receptionist still has to ring the patient on the day, so the
-        # booking is not confirmed until she has.
-        self.assertEqual(visit.status, VisitStatus.BOOKED)
+        # Picking a slot is itself the confirmation — there is no separate
+        # phone call to wait on any more.
+        self.assertEqual(visit.status, VisitStatus.CONFIRMED)
         self.assertEqual(visit.booked_by, self.receptionist)
 
     def test_booking_a_taken_slot_is_refused_with_a_readable_error(self):

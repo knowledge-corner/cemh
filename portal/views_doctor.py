@@ -96,7 +96,28 @@ def _visible_tabs(patient):
 
 
 def _unconfirmed_count(doctor):
-    return Visit.objects.filter(doctor=doctor, status=VisitStatus.BOOKED).count()
+    """
+    Today's confirmed bookings still waiting to walk in.
+
+    A booking is CONFIRMED the moment it is made — there is no separate
+    phone-call step any more — so "unconfirmed" here means "confirmed for
+    today but not yet arrived", the thing actually worth a doctor's
+    attention. A future day's confirmed booking is not unconfirmed in this
+    sense; it just has not happened yet.
+    """
+    return Visit.objects.for_date().filter(doctor=doctor, status=VisitStatus.CONFIRMED).count()
+
+
+def _waiting_count(queue):
+    """
+    How many of today's queue are actually waiting to be seen.
+
+    Not the whole queue — that includes everything from a confirmed booking
+    still hours away to an already-billed visit. Only ARRIVED counts: once
+    the doctor calls someone in (IN_CABIN), they are being seen, not waiting,
+    even though the row stays on screen.
+    """
+    return sum(1 for visit in queue if visit.status == VisitStatus.ARRIVED)
 
 
 @role_required(Role.DOCTOR)
@@ -116,11 +137,13 @@ def doctor_home(request):
             f"No patient found matching “{query}”. Try typing part of their name.",
         )
 
+    queue = services.todays_queue(request.user)
     return render(
         request,
         "portal/doctor/home.html",
         {
-            "queue": services.todays_queue(request.user), "query": query,
+            "queue": queue, "query": query,
+            "waiting_count": _waiting_count(queue),
             "unconfirmed_count": _unconfirmed_count(request.user),
         },
     )
@@ -182,10 +205,12 @@ def doctor_queue(request):
     header, so it is refreshed on the same 15-second poll rather than only
     ever matching what was true when the page first loaded.
     """
+    queue = services.todays_queue(request.user)
     return render(
         request, "portal/doctor/_queue.html",
         {
-            "queue": services.todays_queue(request.user),
+            "queue": queue,
+            "waiting_count": _waiting_count(queue),
             "unconfirmed_count": _unconfirmed_count(request.user),
         },
     )
@@ -194,17 +219,12 @@ def doctor_queue(request):
 @role_required(Role.DOCTOR)
 def unconfirmed_appointments(request):
     """
-    This doctor's own bookings still waiting on reception's confirmation call,
-    in a pop-up off Today's clinic.
-
-    Booked and Confirmed share a column on the board, so a booking that never
-    got its confirmation call looks the same there as one that did — and the
-    doctor's queue only shows today besides. This is the one place a doctor
-    can see everything still unconfirmed on their own diary, whichever day it
-    falls on.
+    Today's confirmed bookings not yet arrived, in a pop-up off Today's
+    clinic — see ``_unconfirmed_count`` for why "unconfirmed" means this now.
     """
     visits = (
-        Visit.objects.filter(doctor=request.user, status=VisitStatus.BOOKED)
+        Visit.objects.for_date()
+        .filter(doctor=request.user, status=VisitStatus.CONFIRMED)
         .with_related()
         .order_by("scheduled_start")
     )

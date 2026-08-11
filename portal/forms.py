@@ -549,12 +549,12 @@ class BookingForm(forms.Form):
             reason=self.cleaned_data.get("reason", ""),
             is_follow_up=self.cleaned_data.get("is_follow_up", False),
             booked_by=booked_by,
-            # Every booking starts unconfirmed, and the receptionist telephones
-            # the patient on the day to confirm — except a walk-in, who is
-            # standing at the desk right now. Landing them on BOOKED would put
-            # them behind a phone call that will never happen, so a walk-in
-            # goes straight into today's waiting room instead.
-            status=VisitStatus.ARRIVED if walk_in else VisitStatus.BOOKED,
+            # Picking a slot off the grid is itself the confirmation — there is
+            # no separate phone call to wait on, so a booking starts CONFIRMED
+            # rather than sitting behind a step nobody performs. A walk-in
+            # skips even that: standing at the desk right now, they go
+            # straight into today's waiting room instead.
+            status=VisitStatus.ARRIVED if walk_in else VisitStatus.CONFIRMED,
             arrived_at=timezone.now() if walk_in else None,
             is_walk_in=bool(walk_in),
         )
