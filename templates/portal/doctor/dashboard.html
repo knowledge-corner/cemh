@@ -12,16 +12,8 @@
       <a href="{% url 'doctor_home' %}">&larr; Back to today's clinic</a>
     </p>
   </div>
-  <div style="display:flex;align-items:center;gap:.75rem">
-    {% if active_visit %}
-      {% include "portal/doctor/_status_badge.html" with status=active_visit.status label=active_visit.get_status_display %}
-    {% endif %}
-    {% if active_visit and active_visit.status == "IN_CABIN" %}
-      {# The one action that ends the consultation: fee plus prescription, together. #}
-      <button type="button" class="btn btn--primary"
-              hx-get="{% url 'doctor_complete_consultation' patient.patient_id %}"
-              hx-target="#modal-host" hx-swap="innerHTML">Complete consultation</button>
-    {% endif %}
+  <div id="chart-header-actions" style="display:flex;align-items:center;gap:.75rem">
+    {% include "portal/doctor/_chart_header_actions.html" %}
   </div>
 </div>
 
@@ -30,7 +22,7 @@
     <div>
       <span class="alert-strip__title">Read-only</span><br>
       {{ patient.full_name }} has not been sent in yet. Use "Send in" from
-      today's queue to start the consultation and open the file for editing.
+      today's queue, or "Start consultation" above, to open the file for editing.
     </div>
   </div>
 {% endif %}

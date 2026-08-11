@@ -17,7 +17,8 @@ from django.utils import timezone
 
 from accounts.permissions import role_required
 from accounts.models import Role
-from appointments.models import Visit, VisitStatus
+from appointments import scheduling
+from appointments.models import InvalidTransition, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from patients import matching
@@ -69,14 +70,27 @@ def _is_editable(patient):
     """
     Whether this chart takes new edits right now.
 
-    Read-only for a patient who has arrived but not yet been sent in —
-    clicking "Open" on the queue is a glance at the file, not an invitation
-    to write in it. "Send in" is what moves a visit to IN_CABIN, so that
-    transition is what unlocks it. Everything else — no active visit at all,
-    or one already past ARRIVED — stays editable exactly as before.
+    Read-only unless the patient is actually in the cabin. "Open" — from the
+    queue or from search, the same read-only view either way — is a glance
+    at the file; "Send in" and "Start consultation" are the only two things
+    that move a visit to IN_CABIN, so that transition is what unlocks it.
+
+    One rule, checked in one place, so if the clinic ever wants "Open" itself
+    to be editable again, this is the only line that has to change.
     """
     visit = _current_visit(patient)
-    return not (visit and visit.status == VisitStatus.ARRIVED)
+    return bool(visit and visit.status == VisitStatus.IN_CABIN)
+
+
+def _editable_for_tab(patient, tab):
+    """
+    ``_is_editable``, with the one deliberate exception reference letters get
+    — see ``edit_record``'s own comment on the same carve-out. Kept next to
+    ``_is_editable`` so the two cannot quietly drift apart.
+    """
+    if tab == "reference_letters":
+        return True
+    return _is_editable(patient)
 
 
 def _visible_tabs(patient):
@@ -279,7 +293,7 @@ def patient_dashboard(request, patient_id):
         "tabs": list(_visible_tabs(patient)),
         "active_tab": "summary",
         "active_visit": active_visit,
-        "is_editable": not (active_visit and active_visit.status == VisitStatus.ARRIVED),
+        "is_editable": _is_editable(patient),
     }
     context.update(services.summary_context(patient))
     return render(request, "portal/doctor/dashboard.html", context)
@@ -303,7 +317,7 @@ def patient_tab(request, patient_id, tab):
         raise Http404("This section is not enabled")
 
     context["active_tab"] = tab
-    context["is_editable"] = _is_editable(patient)
+    context["is_editable"] = _editable_for_tab(patient, tab)
     context.update(services.capped_add_flags(patient))
     return render(request, template, context)
 
@@ -320,8 +334,6 @@ def send_for_patient(request, pk):
     The one-patient-per-cabin rule lives in ``Visit.transition_to``, so a second
     send is refused there and reported here rather than being re-checked.
     """
-    from appointments.models import InvalidTransition, Visit
-
     visit = get_object_or_404(
         Visit.objects.select_related("patient", "doctor"), pk=pk
     )
@@ -356,20 +368,110 @@ def send_for_patient(request, pk):
 
 
 @role_required(Role.DOCTOR)
+def start_consultation(request, patient_id):
+    """
+    The doctor taking a patient in themselves — no reception, no appointment.
+
+    Lives on the read-only chart, not the queue: "Open" from search and
+    "Open" from the queue already land on the same read-only view, and this
+    is the one action there that unlocks it, exactly as "Send in" does from
+    the queue.
+
+    If reception (or the doctor, via an earlier booking) already has this
+    patient waiting, that visit is reused — the same transition "Send in"
+    makes, so the two end up identical and the visit keeps whatever it
+    already was (an appointment or a walk-in). Only when there is no visit
+    at all does this create one, and only that one is marked direct: reception
+    has no record of it, so its billing does not go through reception either.
+    """
+    patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
+
+    if request.method != "POST":
+        return redirect("doctor_patient_dashboard", patient_id=patient.patient_id)
+
+    visit = (
+        patient.visits.filter(doctor=request.user, status=VisitStatus.ARRIVED)
+        .order_by("scheduled_start")
+        .first()
+    )
+
+    try:
+        if visit is not None:
+            visit.transition_to(VisitStatus.IN_CABIN, by_user=request.user)
+        else:
+            # Visit.objects.create() bypasses transition_to, so the
+            # one-patient-per-cabin rule it enforces has to be checked here
+            # instead — otherwise a doctor already with someone in the cabin
+            # could start a second, ad-hoc consultation straight past it.
+            occupied = (
+                Visit.objects.filter(
+                    doctor=request.user,
+                    status=VisitStatus.IN_CABIN,
+                    scheduled_start__date=timezone.localdate(),
+                )
+                .select_related("patient")
+                .first()
+            )
+            if occupied is not None:
+                raise InvalidTransition(
+                    f"{occupied.patient.full_name} is already in your cabin. "
+                    "Finish that consultation first."
+                )
+            start = scheduling.next_free_moment(request.user)
+            now = timezone.now()
+            visit = Visit.objects.create(
+                patient=patient,
+                doctor=request.user,
+                scheduled_start=start,
+                scheduled_end=start + scheduling.slot_length(),
+                status=VisitStatus.IN_CABIN,
+                is_direct=True,
+                booked_by=request.user,
+                arrived_at=now,
+                entered_cabin_at=now,
+            )
+    except InvalidTransition as exc:
+        messages.error(request, str(getattr(exc, "message", exc)))
+        return redirect("doctor_patient_dashboard", patient_id=patient.patient_id)
+
+    record(
+        request, AuditAction.UPDATE, obj=visit, patient=patient,
+        description="Consultation started directly by the doctor",
+    )
+    messages.success(request, f"Consultation started for {patient.full_name}.")
+    return redirect("doctor_patient_dashboard", patient_id=patient.patient_id)
+
+
+def _own_patients_only(request, chosen):
+    """
+    Pin the filters to this doctor's own patients.
+
+    A doctor's analytics is implicitly their own patients, so the Doctor and
+    Specialisation pickers were removed from the filter bar — but that is
+    only true if it is enforced here too. Overwriting whatever the
+    querystring says, rather than trusting the absent fields, keeps that true
+    for a request built by hand as well as one built by the form.
+    """
+    chosen["doctor"] = request.user.pk
+    chosen["specialisation"] = None
+    return chosen
+
+
+@role_required(Role.DOCTOR)
 def analytics_view(request):
     """
-    Research on the clinic's own patients: a filtered download, and a
+    Research on the doctor's own patients: a full records table, and a
     dashboard built from the same filters.
 
     Every filter is optional. Leaving all of them blank is not an error state
-    — it is "every patient the clinic has", which is what the dashboard and
-    the CSV both show until the doctor narrows them.
+    — it is "every patient of mine the clinic has", which is what the
+    dashboard and the records table both show until the doctor narrows them.
     """
     tab = request.GET.get("tab", "dashboard")
     if tab not in ("dashboard", "download"):
         tab = "dashboard"
 
-    chosen = analytics.parse_filters(request.GET)
+    chosen = _own_patients_only(request, analytics.parse_filters(request.GET))
     patients = analytics.filtered_patients(chosen)
     visits = analytics.visits_for(patients, chosen)
 
@@ -384,6 +486,7 @@ def analytics_view(request):
         context.update(analytics.dashboard_stats(patients, visits, chosen))
     else:
         context["download_count"] = patients.count()
+        context["rows"] = analytics.patient_rows(patients)
 
     return render(request, "portal/doctor/analytics.html", context)
 
@@ -397,7 +500,7 @@ def analytics_export(request):
     reason reception's own bookings export is: a doctor pulling years of
     history should not be limited by how much of it fits in RAM.
     """
-    chosen = analytics.parse_filters(request.GET)
+    chosen = _own_patients_only(request, analytics.parse_filters(request.GET))
     patients = analytics.filtered_patients(chosen).select_related().order_by(
         "last_name", "first_name"
     )

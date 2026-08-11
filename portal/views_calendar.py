@@ -27,7 +27,7 @@ from accounts.permissions import role_required
 from appointments import calendar as clinic_calendar
 from appointments import holidays
 from appointments import schedules_csv
-from appointments.models import Cabin, ClinicHoliday, DoctorSchedule
+from appointments.models import Cabin, ClinicHoliday, DoctorSchedule, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record
 from website.models import CallbackRequest, CallbackStatus
@@ -76,6 +76,27 @@ def _pending_doctors(request):
     return User.objects.filter(
         role=Role.DOCTOR, doctor_profile__activated_at__isnull=True,
     ).select_related("doctor_profile").order_by("first_name")
+
+
+def _unclosed_direct_visits(request):
+    """
+    Direct consultations nobody has finished yet (see the sign-off sweep,
+    which deliberately leaves these alone rather than sweeping them into
+    reception's billing worklist).
+
+    Scoped the same way ``_visible_doctors`` is — a doctor sees only their
+    own, reception sees every doctor's — rather than by whatever filter is
+    currently applied to the calendar, since this is telling somebody why a
+    cabin will not take a new patient, not a view they chose to narrow.
+    """
+    doctors = _visible_doctors(request)
+    return (
+        Visit.objects.filter(
+            doctor__in=doctors, status=VisitStatus.IN_CABIN, is_direct=True,
+        )
+        .select_related("patient", "doctor")
+        .order_by("scheduled_start")
+    )
 
 
 def _apply_filters(request, doctors):
@@ -180,6 +201,7 @@ def calendar_view(request):
         # rather than as a step nobody has finished. The availability screen
         # used to say so; this is the only screen left that can.
         "pending_doctors": _pending_doctors(request),
+        "unclosed_direct_visits": _unclosed_direct_visits(request),
     }
 
     if view == DAY:

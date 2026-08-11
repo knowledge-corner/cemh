@@ -300,6 +300,33 @@ class TestWhatTheSweepTouches(SignOffTestCase):
         visit.refresh_from_db()
         self.assertEqual(visit.status, VisitStatus.CONSULTED)
 
+    def test_an_unclosed_direct_consultation_is_left_in_the_cabin(self):
+        # Reception never saw this visit — there is no fee on file for her to
+        # bill, and no worklist it can land on. It stays IN_CABIN, blocking
+        # that doctor's cabin, until the doctor closes it out themselves; see
+        # the red banner on the calendar for the other half of this rule.
+        patient = make_patient()
+        visit = make_visit(
+            patient, self.doctor, start=_yesterday_at(10),
+            status=VisitStatus.IN_CABIN, is_direct=True,
+        )
+        signoff.sign_off(self.yesterday)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.IN_CABIN)
+
+    def test_an_ordinary_unclosed_consultation_is_still_swept_as_before(self):
+        # The direct exception must not widen into "leave every open cabin
+        # alone" — an appointment or walk-in left IN_CABIN overnight is swept
+        # to CONSULTED exactly as it always was.
+        patient = make_patient()
+        visit = make_visit(
+            patient, self.doctor, start=_yesterday_at(10),
+            status=VisitStatus.IN_CABIN,
+        )
+        signoff.sign_off(self.yesterday)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONSULTED)
+
     def test_the_sign_off_reports_what_is_still_owed(self):
         self._consulted()
         report = signoff.build_report(self.yesterday)

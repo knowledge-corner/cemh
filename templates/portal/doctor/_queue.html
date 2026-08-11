@@ -47,7 +47,9 @@ empty list with somebody already waiting outside the door.
               it has moved through the queue, so this is stored on the visit
               rather than guessed from timing.
               {% endcomment %}
-              {% if visit.is_walk_in %}
+              {% if visit.is_direct %}
+                <span class="badge badge--teal">Direct</span>
+              {% elif visit.is_walk_in %}
                 <span class="badge badge--info">Walk-in</span>
               {% else %}
                 <span class="badge badge--grey">Appointment</span>

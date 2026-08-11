@@ -169,6 +169,11 @@ class Visit(models.Model):
     #: moved through the board, appeared in the doctor's queue, or been swept
     #: into a day sheet.
     is_walk_in = models.BooleanField(default=False)
+    #: The doctor ran this consultation themselves — no appointment, no
+    #: walk-in registered at the desk, reception has no idea it exists until
+    #: it is finished. Set only when "Start consultation" creates a brand new
+    #: visit rather than reusing one reception or a booking already made.
+    is_direct = models.BooleanField(default=False)
 
     booked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -308,6 +313,15 @@ class Visit(models.Model):
     @property
     def is_active(self):
         return self.status not in INACTIVE_STATUSES
+
+    @property
+    def visit_type_label(self):
+        """One consistent name for how this visit came to exist, wherever it is shown."""
+        if self.is_direct:
+            return "Direct"
+        if self.is_walk_in:
+            return "Walk-in"
+        return "Appointment"
 
     # ── Corrections and the edit lock (KAN-9) ────────────────────────────────
 

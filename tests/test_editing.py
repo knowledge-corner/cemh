@@ -53,6 +53,7 @@ class EditingTestCase(TestCase):
 
 class TestFormsOpen(EditingTestCase):
     def test_each_add_form_opens(self):
+        self.open_visit()
         for kind in ("history", "diagnosis", "investigation", "measurement",
                      "reference_letter"):
             response = self.client.get(self.add_url(kind))
@@ -60,6 +61,7 @@ class TestFormsOpen(EditingTestCase):
             self.assertContains(response, "<form")
 
     def test_patient_details_form_opens(self):
+        self.open_visit()
         response = self.client.get(self.edit_url("patient", self.patient.pk))
         self.assertContains(response, self.patient.first_name)
 
@@ -75,6 +77,7 @@ class TestFormsOpen(EditingTestCase):
 
 class TestSaving(EditingTestCase):
     def test_adding_a_diagnosis_persists_it(self):
+        self.open_visit()
         response = self.client.post(self.add_url("diagnosis"), {
             "description": "Thyroid disorders in children",
             "status": Diagnosis.Status.ACTIVE,
@@ -87,6 +90,7 @@ class TestSaving(EditingTestCase):
         self.assertEqual(diagnosis.description, "Thyroid disorders in children")
 
     def test_adding_an_investigation_persists_it(self):
+        self.open_visit()
         self.client.post(self.add_url("investigation"), {
             "test_name": "TSH", "category": "THYROID",
             "performed_on": timezone.localdate().isoformat(),
@@ -100,6 +104,7 @@ class TestSaving(EditingTestCase):
         self.assertEqual(result.recorded_by, self.doctor)
 
     def test_adding_a_measurement_persists_it(self):
+        self.open_visit()
         self.client.post(self.add_url("measurement"), {
             "measured_on": timezone.localdate().isoformat(),
             "height_cm": "123.1", "weight_kg": "23.60",
@@ -114,6 +119,7 @@ class TestSaving(EditingTestCase):
         # bone_age_years is optional — most measurements never have an X-ray
         # behind them, so leaving it out of the post (as the form does) must
         # not be refused.
+        self.open_visit()
         self.client.post(self.add_url("measurement"), {
             "measured_on": timezone.localdate().isoformat(),
             "height_cm": "123.1", "weight_kg": "23.60",
@@ -124,6 +130,7 @@ class TestSaving(EditingTestCase):
         self.assertIsNone(measurement.bone_age_years)
 
     def test_a_bone_age_is_persisted(self):
+        self.open_visit()
         self.client.post(self.add_url("measurement"), {
             "measured_on": timezone.localdate().isoformat(),
             "height_cm": "123.1", "weight_kg": "23.60",
@@ -135,6 +142,7 @@ class TestSaving(EditingTestCase):
         self.assertEqual(measurement.bone_age_years, Decimal("8.3"))
 
     def test_editing_history_updates_the_existing_record(self):
+        self.open_visit()
         make_history(self.patient, allergies="")
         self.client.post(self.add_url("history"), {
             "presenting_complaints": "", "past_medical_history": "",
@@ -148,6 +156,7 @@ class TestSaving(EditingTestCase):
         self.assertEqual(self.patient.history_set.count() if hasattr(self.patient, "history_set") else 1, 1)
 
     def test_editing_patient_details_persists(self):
+        self.open_visit()
         self.client.post(self.edit_url("patient", self.patient.pk), {
             "first_name": "Aarav", "last_name": "Deshpande",
             "date_of_birth": self.patient.date_of_birth.isoformat(),
@@ -161,6 +170,7 @@ class TestSaving(EditingTestCase):
         self.assertEqual(self.patient.guardian_name, "Meera Deshpande")
 
     def test_uhid_is_not_editable(self):
+        self.open_visit()
         original = self.patient.patient_id
         self.client.post(self.edit_url("patient", self.patient.pk), {
             "first_name": "Aarav", "last_name": "Deshpande",
@@ -235,6 +245,7 @@ class TestSaving(EditingTestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_invalid_form_redisplays_rather_than_saving(self):
+        self.open_visit()
         response = self.client.post(self.add_url("diagnosis"), {
             "description": "", "status": Diagnosis.Status.ACTIVE,
             "diagnosed_on": "", "icd10_code": "", "notes": "", "resolved_on": "",
@@ -266,39 +277,43 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertFalse(prescription.is_generated, "Must not auto-issue on save")
         self.assertEqual(prescription.items.count(), 1)
 
-    def test_a_prescription_can_be_created_without_an_open_visit(self):
-        # The whole point of this change: no consultation needs to be open.
+    def test_a_prescription_cannot_be_created_without_an_open_visit(self):
+        # Unlike a reference letter, a prescription is clinical: it needs the
+        # chart unlocked the same way everything else on it does.
         response = self.client.post(self.add_url("prescription"), self._item_formset())
-        self.assertEqual(response.status_code, 200)
-        prescription = Prescription.objects.get()
-        self.assertIsNone(prescription.visit)
-        self.assertEqual(prescription.patient, self.patient)
-        self.assertEqual(prescription.doctor, self.doctor)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Prescription.objects.exists())
 
     def test_a_second_prescription_is_refused_without_a_new_consultation(self):
         # At most one prescription per consultation — the existing one is
         # what "Edit" is for, not a second "+ New prescription".
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
         response = self.client.post(self.add_url("prescription"), self._item_formset())
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Prescription.objects.filter(patient=self.patient).count(), 1)
 
     def test_a_second_consultation_allows_another_prescription(self):
+        first = self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
-        self.open_visit()
+        first.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.open_visit(hours=2)
         response = self.client.post(self.add_url("prescription"), self._item_formset())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Prescription.objects.filter(patient=self.patient).count(), 2)
 
     def test_only_the_latest_prescription_can_be_edited(self):
+        first = self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
         older = Prescription.objects.get()
-        self.open_visit()
+        first.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.open_visit(hours=2)
         self.client.post(self.add_url("prescription"), self._item_formset())
         response = self.client.get(self.edit_url("prescription", older.pk))
         self.assertEqual(response.status_code, 403)
 
     def test_the_add_button_is_hidden_once_the_consultation_has_one(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
         response = self.client.get(
             reverse("doctor_patient_tab", args=[self.patient.patient_id, "prescriptions"])
@@ -306,8 +321,10 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertNotContains(response, "New prescription")
 
     def test_the_edit_button_is_hidden_on_an_older_prescription(self):
+        first = self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
-        self.open_visit()
+        first.transition_to(VisitStatus.CONSULTED, by_user=self.doctor)
+        self.open_visit(hours=2)
         self.client.post(self.add_url("prescription"), self._item_formset())
         response = self.client.get(
             reverse("doctor_patient_tab", args=[self.patient.patient_id, "prescriptions"])
@@ -317,6 +334,7 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertEqual(response.content.decode().count(">Edit<"), 1)
 
     def test_editing_an_existing_prescription_updates_it_not_duplicates_it(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
         prescription = Prescription.objects.get()
         self.client.post(
@@ -328,12 +346,14 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertEqual(prescription.investigations_advised, "Repeat TSH in 6 weeks")
 
     def test_it_can_be_printed_from_its_own_tab(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
         prescription = Prescription.objects.get()
         response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
         self.assertContains(response, "Levothyroxine")
 
     def test_the_printed_sheet_says_gender_not_sex(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
         prescription = Prescription.objects.get()
         response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
@@ -352,6 +372,7 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertIsNotNone(prescription.printed_at)
 
     def test_the_follow_up_dropdowns_compute_a_tentative_date(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset(
             follow_up_number="3", follow_up_unit="MONTH",
         ))
@@ -360,6 +381,7 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertEqual(prescription.tentative_follow_up_date, expected)
 
     def test_no_follow_up_chosen_means_no_tentative_date(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset(
             follow_up_number="", follow_up_unit="",
         ))
@@ -367,6 +389,7 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertIsNone(prescription.tentative_follow_up_date)
 
     def test_the_printed_sheet_shows_the_tentative_date_and_a_confirm_message(self):
+        self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset(
             follow_up_number="2", follow_up_unit="YEAR",
         ))
@@ -502,6 +525,7 @@ class TestReferenceLetterWorkflow(EditingTestCase):
 
 class TestEditingIsAudited(EditingTestCase):
     def test_creating_a_record_is_logged_against_the_patient(self):
+        self.open_visit()
         self.client.post(self.add_url("diagnosis"), {
             "description": "Childhood obesity", "status": Diagnosis.Status.ACTIVE,
             "diagnosed_on": timezone.localdate().isoformat(),
@@ -512,6 +536,7 @@ class TestEditingIsAudited(EditingTestCase):
         self.assertEqual(entry.username, self.doctor.username)
 
     def test_updating_a_record_is_logged_as_an_update(self):
+        self.open_visit()
         measurement = make_measurement(self.patient)
         self.client.post(self.edit_url("measurement", measurement.pk), {
             "measured_on": timezone.localdate().isoformat(),
@@ -542,6 +567,7 @@ class TestEditingAccessControl(EditingTestCase):
         self.assertEqual(response.status_code, 302)
 
     def test_cannot_edit_a_record_belonging_to_another_patient(self):
+        self.open_visit()
         other = make_patient(phone="9820099999")
         measurement = make_measurement(other)
         # The URL names this patient but the record belongs to someone else.

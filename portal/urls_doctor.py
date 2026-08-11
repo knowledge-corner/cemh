@@ -13,6 +13,11 @@ urlpatterns = [
     path("unconfirmed/", views_doctor.unconfirmed_appointments,
          name="doctor_unconfirmed_appointments"),
     path("send/<int:pk>/", views_doctor.send_for_patient, name="doctor_send_for_patient"),
+    path(
+        "patient/<str:patient_id>/start/",
+        views_doctor.start_consultation,
+        name="doctor_start_consultation",
+    ),
     path("search/", views_doctor.doctor_patient_search, name="doctor_patient_search"),
     path(
         "patient/<str:patient_id>/",
@@ -40,5 +45,10 @@ urlpatterns = [
         "patient/<str:patient_id>/complete/",
         views_edit.complete_consultation,
         name="doctor_complete_consultation",
+    ),
+    path(
+        "patient/<str:patient_id>/end/",
+        views_edit.end_consultation,
+        name="doctor_end_consultation",
     ),
 ]

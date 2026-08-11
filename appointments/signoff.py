@@ -343,7 +343,7 @@ def _rows(day):
             "patient_id": visit.patient.patient_id,
             "patient": visit.patient.full_name,
             "doctor": visit.doctor.display_name,
-            "type": "Walk-in" if visit.is_walk_in else "Appointment",
+            "type": visit.visit_type_label,
             "status": visit.get_status_display(),
             "charged": charge.total if charge else "",
             "collected": paid if charge else "",
@@ -388,6 +388,13 @@ def sweep(day, by_user=None):
     """
     closed = 0
     for visit in Visit.objects.filter(scheduled_start__date=day).active():
+        # A direct consultation the doctor never closed is not reception's to
+        # sweep — nobody at the desk knows it exists, and there is no fee on
+        # file for her to bill. It stays IN_CABIN, blocking that doctor's
+        # cabin, until the doctor finishes it themselves; see the red banner
+        # on the calendar for the same rule.
+        if visit.status == VisitStatus.IN_CABIN and visit.is_direct:
+            continue
         target = SWEEP_TARGETS.get(visit.status)
         if target is None:
             continue

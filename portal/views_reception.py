@@ -540,6 +540,15 @@ def _as_date(value):
         return None
 
 
+#: Appointment type filter, Completed Bookings only — how the visit came to
+#: exist, mirroring Visit.visit_type_label.
+VISIT_TYPE_CHOICES = [
+    ("APPOINTMENT", "Appointment"),
+    ("WALK_IN", "Walk-in"),
+    ("DIRECT", "Direct"),
+]
+
+
 def _chosen_filters(request):
     """What the filter form was set to, whichever tab is showing."""
     return {
@@ -548,6 +557,7 @@ def _chosen_filters(request):
         "doctor": request.GET.get("doctor", "").strip(),
         "patient_id": request.GET.get("patient_id", "").strip(),
         "condition": request.GET.get("condition", "").strip(),
+        "visit_type": request.GET.get("visit_type", "").strip(),
     }
 
 
@@ -649,6 +659,13 @@ def _past_filters(request):
             | Q(reason__icontains=chosen["condition"])
         ).distinct()
 
+    if chosen["visit_type"] == "DIRECT":
+        visits = visits.filter(is_direct=True)
+    elif chosen["visit_type"] == "WALK_IN":
+        visits = visits.filter(is_walk_in=True, is_direct=False)
+    elif chosen["visit_type"] == "APPOINTMENT":
+        visits = visits.filter(is_walk_in=False, is_direct=False)
+
     return visits, chosen
 
 
@@ -700,6 +717,7 @@ def bookings(request):
         "total_collected": total_collected,
         "filters": chosen if tab == "upcoming" else past_chosen,
         "doctors": User.objects.filter(role=Role.DOCTOR, is_active=True),
+        "visit_type_choices": VISIT_TYPE_CHOICES,
     })
 
 
@@ -721,7 +739,7 @@ def export_bookings(request):
     writer = csv.writer(response)
     writer.writerow([
         "Date", "Time", "Doctor", settings.CLINIC.PATIENT_ID_LABEL, "Patient",
-        "Age", "Sex", "Reason", "Diagnoses", "Consultation fee", "Procedure fee",
+        "Age", "Sex", "Type", "Reason", "Diagnoses", "Consultation fee", "Procedure fee",
         "Discount", "Total", "Paid", "Balance", "Status",
     ])
 
@@ -739,6 +757,7 @@ def export_bookings(request):
             visit.patient.full_name,
             visit.patient.age_years,
             visit.patient.get_sex_display(),
+            visit.visit_type_label,
             visit.reason,
             diagnoses,
             charge.consultation_fee if charge else "",

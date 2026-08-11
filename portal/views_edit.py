@@ -29,13 +29,14 @@ from accounts.permissions import role_required
 from appointments.models import VisitStatus
 from audit.services import record
 from audit.models import AuditAction
+from billing.models import Payment, PaymentMethod, Receipt
 from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
 from patients.models import Patient, PatientHistory
 from pharmacy.models import Prescription
 
 from . import forms as clinic_forms
 from . import services
-from .views_doctor import TABS, _is_editable, _visible_tabs
+from .views_doctor import TABS, _current_visit, _editable_for_tab, _is_editable, _visible_tabs
 
 
 @dataclass(frozen=True)
@@ -211,20 +212,31 @@ def _refreshed_panels(request, patient, tab):
     tab_context = builder(patient) or {}
     tab_context["active_tab"] = tab
     # A save just went through, which edit_record already gated on
-    # _is_editable — so the chart these panels belong to is editable.
-    tab_context["is_editable"] = True
+    # _editable_for_tab — reference letters are the one kind that can be
+    # saved on an otherwise read-only chart, so the flag for this tab has to
+    # be recomputed the same way rather than assumed True.
+    tab_context["is_editable"] = _editable_for_tab(patient, tab)
     tab_context.update(services.capped_add_flags(patient))
     tab_html = render_to_string(template, tab_context, request=request)
 
     sidebar_context = services.summary_context(patient)
-    sidebar_context["is_editable"] = True
+    sidebar_context["is_editable"] = _is_editable(patient)
     sidebar_html = render_to_string(
         "portal/doctor/_storyboard.html", sidebar_context, request=request
     )
 
+    # The header's status badge and its Complete/End/Start consultation
+    # button go stale after a save that moved the visit on — most notably
+    # Complete/End consultation itself, which is what this repaints for.
+    header_html = render_to_string(
+        "portal/doctor/_chart_header_actions.html",
+        {"patient": patient, "active_visit": _current_visit(patient)},
+        request=request,
+    )
+
     return render_to_string(
         "portal/doctor/_saved.html",
-        {"tab_html": tab_html, "sidebar_html": sidebar_html},
+        {"tab_html": tab_html, "sidebar_html": sidebar_html, "header_html": header_html},
         request=request,
     )
 
@@ -251,12 +263,17 @@ def edit_record(request, patient_id, kind, pk=None):
     # The chart is read-only until the patient is sent in — enforced here too,
     # not just by hiding the button, since this is a POST endpoint a doctor's
     # browser can be pointed at directly.
-    if not _is_editable(patient):
+    #
+    # Reference letters are the one deliberate exception: a school, insurance
+    # or travel letter is often asked for with nothing to do with why the
+    # patient was last seen, so it stays writable whether or not a
+    # consultation is open — see TestReferenceLetterWorkflow.
+    if kind != "reference_letter" and not _is_editable(patient):
         return _blocked(
             request,
             "This file is read-only",
             f"{patient.full_name} has not been sent in yet. Use \"Send in\" "
-            "from today's queue to start the consultation before editing the file.",
+            "from today's queue, or \"Start consultation\", before editing the file.",
         )
 
     model = spec.model()
@@ -417,6 +434,97 @@ def complete_consultation(request, patient_id):
     return render(
         request,
         "portal/doctor/_complete_modal.html",
+        {
+            "patient": patient,
+            "visit": visit,
+            "form": form,
+            "action": request.path,
+        },
+    )
+
+
+@role_required(Role.DOCTOR)
+def end_consultation(request, patient_id):
+    """
+    End a consultation the doctor started themselves (KAN task, "direct"
+    consultations).
+
+    Reception never saw this visit, so there is no billing worklist for it to
+    land on. The fee entered here is taken to be collected on the spot —
+    finishing this dialog records the payment and issues the receipt in the
+    same step, and closes the visit out entirely, rather than leaving a
+    second button for somebody else to press.
+    """
+    patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
+    visit = (
+        patient.visits.filter(status=VisitStatus.IN_CABIN, is_direct=True)
+        .select_related("doctor")
+        .order_by("-scheduled_start")
+        .first()
+    )
+
+    if visit is None:
+        raise Http404("This patient has no direct consultation in the cabin.")
+
+    # Same rule as complete_consultation: the fee and the signature both
+    # belong to whoever actually saw the patient.
+    if visit.doctor_id != request.user.id:
+        return _blocked(
+            request,
+            "This is not your consultation",
+            f"{patient.full_name} is with {visit.doctor.display_name}. "
+            "Only the doctor seeing the patient can end the consultation.",
+        )
+
+    charge = getattr(visit, "charge", None)
+
+    if request.method == "POST":
+        form = clinic_forms.ChargeForm(request.POST, instance=charge)
+        if form.is_valid():
+            with transaction.atomic():
+                charge = form.save(commit=False)
+                charge.visit = visit
+                charge.patient = patient
+                charge.set_by = request.user
+                charge.save()
+
+                visit.transition_to(VisitStatus.CONSULTED, by_user=request.user)
+
+                prescription = getattr(visit, "prescription", None)
+                if prescription is not None:
+                    prescription.generate()
+
+                # A payment cannot be zero, so a free consultation has
+                # nothing to record here — the charge itself already reads as
+                # settled with nothing owed, the same as reception's own
+                # "closed with no fee" case.
+                if charge.total > 0:
+                    payment = Payment.objects.create(
+                        charge=charge,
+                        amount=charge.total,
+                        method=PaymentMethod.CASH,
+                        received_by=request.user,
+                        notes="Collected directly by the doctor",
+                    )
+                    Receipt.objects.create(payment=payment)
+
+                visit.transition_to(VisitStatus.BILLED, by_user=request.user)
+                visit.transition_to(VisitStatus.COMPLETED, by_user=request.user)
+
+            record(
+                request, AuditAction.UPDATE, obj=visit, patient=patient,
+                description="Direct consultation ended; fee taken and billed by the doctor",
+            )
+            return HttpResponse(_refreshed_panels(request, patient, "summary"))
+    else:
+        initial = {}
+        if charge is None:
+            initial["consultation_fee"] = settings.CLINIC.DEFAULT_CONSULTATION_FEE
+        form = clinic_forms.ChargeForm(instance=charge, initial=initial)
+
+    return render(
+        request,
+        "portal/doctor/_end_consultation_modal.html",
         {
             "patient": patient,
             "visit": visit,

@@ -1,7 +1,11 @@
 """
-The doctor's Analytics tab: a filtered CSV download and a dashboard built
-from the same filters, for a doctor researching her own patient population by
-condition, age, gender, doctor or specialisation.
+The doctor's Analytics tab: a filtered records table, a CSV download and a
+dashboard built from the same filters, for a doctor researching her own
+patient population by condition, age or gender.
+
+Scoped to the doctor's own patients always — there is no Doctor or
+Specialisation picker any more, since a doctor's analytics has nothing else
+to be about.
 """
 
 from datetime import timedelta
@@ -58,17 +62,22 @@ class TestAccessToAnalytics(AnalyticsTestCase):
 class TestTheUnfilteredView(AnalyticsTestCase):
     def setUp(self):
         super().setUp()
-        make_patient(first_name="Aarav", phone="9820000101")
-        make_patient(first_name="Bina", phone="9820000102", sex=Sex.FEMALE)
+        aarav = make_patient(first_name="Aarav", phone="9820000101")
+        bina = make_patient(first_name="Bina", phone="9820000102", sex=Sex.FEMALE)
+        make_visit(aarav, self.doctor, start=today_at(9))
+        make_visit(bina, self.doctor, start=today_at(10))
 
     def test_dashboard_counts_every_patient_with_no_filters(self):
         response = self._dashboard()
         self.assertEqual(response.context["patient_count"], 2)
+        # total_patients counts the whole clinic, not just this doctor's own —
+        # a separate figure, shown for scale.
         self.assertEqual(response.context["total_patients"], 2)
 
     def test_download_counts_every_patient_with_no_filters(self):
         response = self._download()
         self.assertEqual(response.context["download_count"], 2)
+        self.assertEqual(len(response.context["rows"]), 2)
 
 
 class TestGenderAndAgeFilters(AnalyticsTestCase):
@@ -82,6 +91,8 @@ class TestGenderAndAgeFilters(AnalyticsTestCase):
             first_name="AdultOne", phone="9820000202", sex=Sex.FEMALE,
             date_of_birth=timezone.localdate() - timedelta(days=int(45 * 365.25)),
         )
+        make_visit(self.child, self.doctor, start=today_at(9))
+        make_visit(self.adult, self.doctor, start=today_at(10))
 
     def test_filtering_by_gender(self):
         response = self._dashboard(sex=Sex.FEMALE)
@@ -122,6 +133,10 @@ class TestConditionAndStatusFilters(AnalyticsTestCase):
             patient=self.unrelated_patient, description="Migraine",
             status=Diagnosis.Status.ACTIVE,
         )
+        for i, patient in enumerate(
+            (self.thyroid_patient, self.mixed_patient, self.unrelated_patient)
+        ):
+            make_visit(patient, self.doctor, start=today_at(9 + i))
 
     def test_matching_by_condition_text_is_case_insensitive(self):
         response = self._dashboard(condition="THYROID")
@@ -145,7 +160,14 @@ class TestConditionAndStatusFilters(AnalyticsTestCase):
         self.assertEqual(labels["Migraine"], 1)
 
 
-class TestDoctorAndSpecialisationFilters(AnalyticsTestCase):
+class TestAnalyticsIsScopedToOwnPatients(AnalyticsTestCase):
+    """
+    A doctor's analytics is implicitly "my own patients" — there is no
+    Doctor or Specialisation picker to narrow it with any more, and a patient
+    who has only ever been seen by somebody else does not appear, whatever a
+    crafted querystring claims.
+    """
+
     def setUp(self):
         super().setUp()
         self.endo = Specialisation.objects.create(name="Test Endocrine Research")
@@ -161,14 +183,26 @@ class TestDoctorAndSpecialisationFilters(AnalyticsTestCase):
         self.their_patient = make_patient(first_name="Theirs", phone="9820000402")
         make_visit(self.their_patient, self.other_doctor, start=today_at(11))
 
-    def test_filtering_by_doctor(self):
-        response = self._dashboard(doctor=self.doctor.pk)
+    def test_only_my_own_patient_is_counted(self):
+        response = self._dashboard()
         self.assertEqual(response.context["patient_count"], 1)
 
-    def test_filtering_by_specialisation(self):
-        response = self._dashboard(specialisation=self.cardio.pk)
+    def test_the_doctor_and_specialisation_filters_are_not_offered(self):
+        response = self._dashboard()
+        self.assertNotContains(response, 'name="doctor"')
+        self.assertNotContains(response, 'name="specialisation"')
+
+    def test_a_crafted_doctor_parameter_is_ignored(self):
+        # Even asked directly for the other doctor's patients, this doctor's
+        # own analytics never shows anyone but their own.
+        response = self._dashboard(doctor=self.other_doctor.pk)
         self.assertEqual(response.context["patient_count"], 1)
-        self.assertEqual(list(response.context["visit_outcomes"])[0]["count"], 1)
+        self.assertEqual(response.context["filters"]["doctor"], self.doctor.pk)
+
+    def test_the_view_tab_also_stays_scoped(self):
+        response = self._download(doctor=self.other_doctor.pk)
+        self.assertEqual(response.context["download_count"], 1)
+        self.assertEqual(response.context["rows"][0]["patient"], self.my_patient)
 
 
 class TestDateRangeFilter(AnalyticsTestCase):
@@ -212,7 +246,9 @@ class TestTheCsvExport(AnalyticsTestCase):
             patient=self.patient, description="Hypothyroidism",
             status=Diagnosis.Status.ACTIVE,
         )
-        make_patient(first_name="ExcludedByFilter", phone="9820000702")
+        excluded = make_patient(first_name="ExcludedByFilter", phone="9820000702")
+        make_visit(self.patient, self.doctor, start=today_at(9))
+        make_visit(excluded, self.doctor, start=today_at(10))
 
     def test_it_downloads_a_csv(self):
         response = self._export()

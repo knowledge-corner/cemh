@@ -8,8 +8,8 @@
   <div>
     <h1 class="page-header__title">Analytics</h1>
     <p class="page-header__sub">
-      Research across the clinic's own patients — filter by condition, age, gender,
-      doctor or specialisation, then download the list or read it as a dashboard.
+      Research across your own patients — filter by condition, age or gender,
+      then view the list or read it as a dashboard.
     </p>
   </div>
 </div>
@@ -75,27 +75,6 @@ the CSV export can be built from exactly the querystring on screen.
     <input class="input" type="date" id="a-to" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}">
   </div>
 
-  <div class="field" style="margin:0">
-    <label class="field__label" for="a-doctor">Doctor</label>
-    <select class="input" id="a-doctor" name="doctor">
-      <option value="">All doctors</option>
-      {% for d in doctors %}
-        <option value="{{ d.pk }}" {% if filters.doctor == d.pk %}selected{% endif %}>
-          {{ d.display_name }}
-        </option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="field" style="margin:0">
-    <label class="field__label" for="a-specialisation">Specialisation</label>
-    <select class="input" id="a-specialisation" name="specialisation">
-      <option value="">All specialisations</option>
-      {% for s in specialisations %}
-        <option value="{{ s.pk }}" {% if filters.specialisation == s.pk %}selected{% endif %}>{{ s.name }}</option>
-      {% endfor %}
-    </select>
-  </div>
-
   <button class="btn btn--primary" type="submit">Filter</button>
   <a class="btn btn--secondary" href="?tab={{ tab }}">Clear</a>
 </form>
@@ -104,7 +83,7 @@ the CSV export can be built from exactly the querystring on screen.
   <a class="tab" role="tab" href="?tab=dashboard{% if filter_qs %}&{{ filter_qs }}{% endif %}"
      aria-selected="{% if tab == 'dashboard' %}true{% else %}false{% endif %}">Dashboard</a>
   <a class="tab" role="tab" href="?tab=download{% if filter_qs %}&{{ filter_qs }}{% endif %}"
-     aria-selected="{% if tab == 'download' %}true{% else %}false{% endif %}">Download</a>
+     aria-selected="{% if tab == 'download' %}true{% else %}false{% endif %}">View</a>
 </div>
 
 <div class="tab-panel">
@@ -223,20 +202,63 @@ the CSV export can be built from exactly the querystring on screen.
   {% else %}
 
     {% comment %}
-    Download. One row per patient rather than per visit — this is "who are my
+    View. One row per patient rather than per visit — this is "who are my
     hypothyroid patients", not a billing ledger, and reception's bookings
     export already covers the visit-by-visit view of the diary.
     {% endcomment %}
-    <div class="card">
-      <div class="card__body">
-        <p style="margin:0 0 .75rem">
-          <strong>{{ download_count }}</strong> patient{{ download_count|pluralize }}
-          match{{ download_count|pluralize:"es," }} these filters.
-        </p>
-        <a class="btn btn--primary"
-           href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download CSV</a>
+    <p class="faint small" style="margin:0 0 .75rem">
+      <strong>{{ download_count }}</strong> patient{{ download_count|pluralize }}
+      match{{ download_count|pluralize:"es," }} these filters
+      {% if download_count > 200 %}· showing the first 200, the CSV has all of them{% endif %}
+      <a class="btn btn--primary" style="margin-left:.75rem"
+         href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download CSV</a>
+    </p>
+
+    {% if rows %}
+      <div class="table-scroll">
+        <table class="table table--middle">
+          <thead>
+            <tr>
+              <th>Patient</th><th>{{ patient_id_label }}</th><th>Age</th><th>Gender</th>
+              <th>Phone</th><th>Active diagnoses</th>
+              <th class="table__num">Visits</th><th>Last visit</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td class="strong">{{ row.patient.full_name }}</td>
+                <td class="mono faint">{{ row.patient.patient_id }}</td>
+                <td>{{ row.patient.age_display }}</td>
+                <td>{{ row.patient.get_sex_display }}</td>
+                <td class="mono">{{ row.patient.phone|default:"—" }}</td>
+                <td>{{ row.diagnoses|default:"—" }}</td>
+                <td class="table__num">{{ row.visit_count }}</td>
+                <td class="nowrap">{% if row.last_visit %}{{ row.last_visit.scheduled_start|date:"j M Y" }}{% else %}—{% endif %}</td>
+                <td class="row-actions">
+                  {% comment %}
+                  New tab, read-only: this is a look-up from a research list,
+                  not the doctor's own queue, so it must not take over the
+                  screen the doctor is filtering from — and it opens read-only
+                  the same way every "Open" elsewhere does, since it is not a
+                  visit being sent in.
+                  {% endcomment %}
+                  <a class="btn btn--secondary"
+                     href="{% url 'doctor_patient_dashboard' row.patient.patient_id %}"
+                     target="_blank" rel="noopener">Open</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-    </div>
+    {% else %}
+      <div class="empty">
+        <div class="empty__icon">🔍</div>
+        <div class="empty__title">Nothing matches those filters</div>
+        <div class="empty__hint">Widen them, or clear the filters to see every patient.</div>
+      </div>
+    {% endif %}
 
   {% endif %}
 </div>

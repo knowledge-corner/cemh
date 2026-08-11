@@ -157,6 +157,33 @@ def visits_for(patients, chosen):
     return visits
 
 
+#: The records table caps out here — the same reason bookings.html caps its
+#: completed list at 300: a doctor with years of patients should not turn the
+#: page into an unbounded query. The CSV export has no such limit.
+RECORD_ROWS_LIMIT = 200
+
+
+def patient_rows(patients, limit=RECORD_ROWS_LIMIT):
+    """
+    One row per patient for the View tab's table — the same fields the CSV
+    export writes, computed once here so the two cannot drift apart.
+    """
+    rows = []
+    for patient in patients.order_by("last_name", "first_name")[:limit]:
+        diagnoses = ", ".join(
+            d.description for d in patient.diagnoses.filter(status="ACTIVE")[:5]
+        )
+        patient_visits = patient.visits.order_by("-scheduled_start")
+        last_visit = patient_visits.first()
+        rows.append({
+            "patient": patient,
+            "diagnoses": diagnoses,
+            "visit_count": patient_visits.count(),
+            "last_visit": last_visit,
+        })
+    return rows
+
+
 def filter_options():
     """Choices for the filter form's dropdowns."""
     return {

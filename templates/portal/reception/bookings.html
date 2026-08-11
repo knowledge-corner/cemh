@@ -136,6 +136,17 @@ was.
         <input class="input" type="text" id="f-condition" name="condition"
                value="{{ filters.condition }}" placeholder="e.g. thyroid">
       </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="f-visit-type">Appointment type</label>
+        <select class="input" id="f-visit-type" name="visit_type">
+          <option value="">Any</option>
+          {% for value, label in visit_type_choices %}
+            <option value="{{ value }}" {% if filters.visit_type == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <button class="btn btn--primary" type="submit">Filter</button>
       <a class="btn btn--secondary" href="?tab=completed">Clear</a>
       <a class="btn btn--dark"
@@ -153,7 +164,7 @@ was.
         <table class="table table--middle">
           <thead>
             <tr><th>Date</th><th>Patient</th><th>{{ patient_id_label }}</th><th>Doctor</th>
-                <th>Reason</th><th class="table__num">Total</th>
+                <th>Type</th><th>Reason</th><th class="table__num">Total</th>
                 <th class="table__num">Paid</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
@@ -163,6 +174,15 @@ was.
                 <td class="strong">{{ visit.patient.full_name }}</td>
                 <td class="mono faint">{{ visit.patient.patient_id }}</td>
                 <td>{{ visit.doctor.display_name }}</td>
+                <td>
+                  {% if visit.is_direct %}
+                    <span class="badge badge--teal">Direct</span>
+                  {% elif visit.is_walk_in %}
+                    <span class="badge badge--info">Walk-in</span>
+                  {% else %}
+                    <span class="badge badge--grey">Appointment</span>
+                  {% endif %}
+                </td>
                 <td>{{ visit.reason|default:"—" }}</td>
                 <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.total }}{% else %}—{% endif %}</td>
                 <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.amount_paid }}{% else %}—{% endif %}</td>

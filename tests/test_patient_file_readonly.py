@@ -1,10 +1,13 @@
 """
-"Open" is a glance; "Send in" is what unlocks the file.
+"Open" is a glance, from the queue or from search; "Send in" and "Start
+consultation" are what unlock the file.
 
-A patient waiting on the queue (ARRIVED, not yet sent in) has a chart that is
-read-only when the doctor opens it — the edit buttons are hidden, and the
-save endpoints refuse the write even if hit directly. The moment "Send in"
-moves the visit to IN_CABIN, the very same URL becomes fully editable again.
+A patient with no visit currently IN_CABIN — waiting on the queue (ARRIVED,
+not yet sent in), or found purely by search with nothing open at all — has a
+chart that is read-only when the doctor opens it: the edit buttons are
+hidden, and the save endpoints refuse the write even if hit directly. The
+moment the visit moves to IN_CABIN, the very same URL becomes fully editable
+again.
 """
 
 from django.test import TestCase
@@ -104,23 +107,27 @@ class TestSendingInUnlocksTheFile(ReadOnlyTestCase):
         self.assertNotContains(dashboard, "Read-only")
 
 
-class TestAPatientWithNoActiveVisitIsUnaffected(ReadOnlyTestCase):
+class TestAPatientWithNoActiveVisitIsAlsoReadOnly(ReadOnlyTestCase):
     """
-    A doctor reaching a chart through search, not the queue, must not lose
-    the ability to write in it — this feature only locks the file for a
-    patient who is specifically waiting, not sent in yet.
+    A doctor reaching a chart through search, with no visit open at all, sees
+    the same read-only view as "Open" from the queue — only "Send in" and
+    "Start consultation" ever unlock a file, never simply opening it.
     """
 
-    def test_the_dashboard_has_no_read_only_notice(self):
+    def test_the_dashboard_shows_a_read_only_notice(self):
         response = self.client.get(self.dashboard_url())
-        self.assertNotContains(response, "Read-only")
+        self.assertContains(response, "Read-only")
 
-    def test_a_record_can_still_be_saved(self):
+    def test_a_record_cannot_be_saved(self):
         response = self.client.post(self.add_diagnosis_url(), {
             "description": "Thyroid disorders in children",
             "status": Diagnosis.Status.ACTIVE,
             "diagnosed_on": timezone.localdate().isoformat(),
             "icd10_code": "", "notes": "", "resolved_on": "",
         })
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(Diagnosis.objects.count(), 1)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Diagnosis.objects.exists())
+
+    def test_the_start_consultation_button_is_offered_instead(self):
+        response = self.client.get(self.dashboard_url())
+        self.assertContains(response, "Start consultation")

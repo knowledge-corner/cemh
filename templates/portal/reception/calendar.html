@@ -146,6 +146,26 @@ it.
   </div>
 {% endif %}
 
+{% if unclosed_direct_visits %}
+  {% comment %}
+  A direct consultation the doctor started themselves and has not yet ended.
+  Deliberately not routed through reception's unclosed-billing tab — nobody at
+  the desk knows this visit exists — so this banner is the only place it is
+  visible until the doctor closes it out.
+  {% endcomment %}
+  <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+    <div>
+      <span class="alert-strip__title">Consultation still open</span><br>
+      {% for visit in unclosed_direct_visits %}
+        {{ visit.doctor.display_name }} has not yet finished the consultation
+        with {{ visit.patient.full_name }} — no new patient can be taken into
+        {% if is_doctor_view %}your{% else %}their{% endif %} cabin until it is closed.
+        {% if not forloop.last %}<br>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
 {% if view == 'day' %}
   {% include "portal/reception/_calendar_day.html" %}
 {% else %}

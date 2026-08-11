@@ -1,0 +1,33 @@
+{% comment %}
+Status badge + the one action that changes the visit's stage — Start, Complete
+or End consultation, whichever applies. Kept separate from dashboard.html so
+it can be re-rendered and swapped back in after a save changes the visit's
+status; without this a doctor who just clicked "Complete" or "End
+consultation" would keep seeing "In cabin" and a live button pointing at a
+consultation that has already finished.
+{% endcomment %}
+{% if active_visit %}
+  {% include "portal/doctor/_status_badge.html" with status=active_visit.status label=active_visit.get_status_display %}
+{% endif %}
+{% if active_visit and active_visit.status == "IN_CABIN" %}
+  {% if active_visit.is_direct %}
+    {# Taken directly, so ending it also takes the fee and issues the receipt — see end_consultation. #}
+    <button type="button" class="btn btn--primary"
+            hx-get="{% url 'doctor_end_consultation' patient.patient_id %}"
+            hx-target="#modal-host" hx-swap="innerHTML">End consultation</button>
+  {% else %}
+    {# The one action that ends the consultation: fee plus prescription, together. #}
+    <button type="button" class="btn btn--primary"
+            hx-get="{% url 'doctor_complete_consultation' patient.patient_id %}"
+            hx-target="#modal-host" hx-swap="innerHTML">Complete consultation</button>
+  {% endif %}
+{% else %}
+  {% comment %}
+  is_editable is exactly "active_visit is IN_CABIN", so if we're here
+  there is none — unlocks the file exactly as "Send in" does.
+  {% endcomment %}
+  <form method="post" action="{% url 'doctor_start_consultation' patient.patient_id %}" style="display:inline">
+    {% csrf_token %}
+    <button type="submit" class="btn btn--primary">Start consultation</button>
+  </form>
+{% endif %}

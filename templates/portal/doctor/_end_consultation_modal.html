@@ -1,0 +1,55 @@
+{% comment %}
+End-of-consultation dialog for a direct consultation: fee and work done, the
+same as Complete consultation — except reception never billed this one, so
+submitting here also takes the payment and issues the receipt, and closes the
+visit out completely.
+{% endcomment %}
+
+<div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
+  <div class="modal modal--narrow" role="dialog" aria-modal="true" aria-labelledby="end-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="end-title">End consultation</h2>
+      <button type="button" class="modal__close" aria-label="Close"
+              onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
+    </div>
+
+    <form method="post" action="{{ action }}"
+          hx-post="{{ action }}" hx-target="#modal-host" hx-swap="innerHTML">
+      {% csrf_token %}
+
+      <div class="modal__body">
+        <p class="muted" style="margin-bottom:1rem">
+          This consultation was taken directly, with no reception step behind it.
+          Submitting this records the fee, takes the payment and issues the
+          receipt in one go — {{ patient.full_name }}'s visit is then closed,
+          not left on reception's billing list. Print a prescription or a
+          reference letter from their own tabs first, if either is needed.
+        </p>
+
+        {% if form.non_field_errors %}
+          <div class="alert-strip alert-strip--danger" style="margin-bottom:1rem">
+            <div>{% for error in form.non_field_errors %}{{ error }}{% endfor %}</div>
+          </div>
+        {% endif %}
+
+        <div class="form-grid">
+          {% for field in form %}
+            <div class="field">
+              <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="modal__footer">
+        <button type="button" class="btn btn--secondary"
+                onclick="document.getElementById('modal-host').innerHTML = '';">Cancel</button>
+        <button type="submit" class="btn btn--primary">End consultation</button>
+      </div>
+    </form>
+
+  </div>
+</div>
