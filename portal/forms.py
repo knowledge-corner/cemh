@@ -438,12 +438,12 @@ class BookingForm(forms.Form):
     is_follow_up = forms.BooleanField(required=False, label="Follow-up visit")
     #: KAN task #22. A patient standing at the desk with no appointment —
     #: "day" and "slot" are required for everyone else, but this one is not
-    #: told to come back after picking a time; today's earliest free slot is
+    #: told to come back after picking a time; the soonest free moment is
     #: found for them, so those two fields are optional here instead and
     #: filled in by clean().
     walk_in = forms.BooleanField(
         required=False,
-        label="Walk-in — see them today, as soon as a slot is free",
+        label="Walk-in — see them today, as soon as the doctor is free",
     )
 
     def __init__(self, *args, **kwargs):
@@ -471,16 +471,25 @@ class BookingForm(forms.Form):
             if not doctor:
                 return cleaned
             today = timezone.localdate()
-            free = scheduling.available_slots(doctor, today)
-            if not free:
+            # A holiday is the one thing that still refuses a walk-in: it is
+            # the clinic recorded as shut for everyone, not a question about
+            # one doctor's own hours. No per-doctor schedule check beyond
+            # that — reception is looking at the doctor right now and knows
+            # they are free to see this patient, whatever the calendar does
+            # or does not say about it. Only the doctor's other active
+            # visits are consulted, so two walk-ins can never land on the
+            # same moment and trip the database's no-double-booking
+            # constraint.
+            if scheduling.is_holiday(today):
                 self.add_error(
                     "doctor",
-                    f"{doctor.display_name} has no free slot left today. Try "
-                    f"another doctor, or book ahead instead of a walk-in.",
+                    "The clinic is closed today, so there is no free slot "
+                    "left today. Try another day, or book ahead instead of "
+                    "a walk-in.",
                 )
                 return cleaned
             cleaned["day"] = today
-            cleaned["slot"] = free[0][0]
+            cleaned["slot"] = scheduling.next_free_moment(doctor)
             return cleaned
 
         if not day:

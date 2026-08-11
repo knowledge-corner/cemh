@@ -120,7 +120,14 @@ class TestWalkInStillNeedsADoctor(WalkInTestCase):
         self.assertContains(response, "field__error")
 
 
-class TestADoctorWithNoRoomToday(WalkInTestCase):
+class TestAClinicHolidayStillRefusesAWalkIn(WalkInTestCase):
+    """
+    The one closure a walk-in still respects — see
+    TestWalkInIgnoresTheDoctorsSchedule for the schedule-related checks this
+    class used to hold, superseded now that a walk-in no longer consults a
+    doctor's own hours at all.
+    """
+
     def test_a_clinic_holiday_refuses_the_walk_in(self):
         ClinicHoliday.objects.create(date=timezone.localdate(), name="Test holiday")
         response = self._walk_in()
@@ -144,6 +151,52 @@ class TestADoctorWithNoRoomToday(WalkInTestCase):
         })
         self.assertRedirects(response, reverse("reception_bookings"))
         self.assertEqual(Visit.objects.count(), 1)
+
+
+class TestWalkInIgnoresTheDoctorsSchedule(TestCase):
+    """
+    A walk-in works for any doctor, whether or not they have a single
+    DoctorSchedule row — reception is looking at the doctor right now and
+    manages their real timing by hand, so the calendar never gets a veto.
+    Deliberately no give_wide_open_hours here: that is the whole point.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.receptionist = make_receptionist()
+        self.patient = make_patient()
+        self.client.force_login(self.receptionist)
+
+    def _walk_in(self, **overrides):
+        payload = {
+            "patient": self.patient.pk,
+            "doctor": self.doctor.pk,
+            "walk_in": "1",
+            "reason": "Walk-in review",
+        }
+        payload.update(overrides)
+        return self.client.post(reverse("reception_new_booking"), payload)
+
+    def test_a_walk_in_is_accepted_for_a_doctor_with_no_schedule_at_all(self):
+        response = self._walk_in()
+        self.assertEqual(Visit.objects.count(), 1)
+        self.assertRedirects(response, reverse("reception_bookings"))
+
+    def test_the_visit_lands_in_the_waiting_room_regardless(self):
+        self._walk_in()
+        self.assertEqual(Visit.objects.get().status, VisitStatus.ARRIVED)
+
+    def test_two_walk_ins_for_the_same_unscheduled_doctor_do_not_collide(self):
+        # next_free_moment() checks the doctor's other active visits, not
+        # any schedule row, so the second walk-in is pushed past the first
+        # rather than tripping the database's no-double-booking constraint.
+        second_patient = make_patient(first_name="Second", phone="9820099999")
+        self._walk_in()
+        response = self._walk_in(patient=second_patient.pk)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Visit.objects.count(), 2)
+        first, second = Visit.objects.order_by("scheduled_start")
+        self.assertGreaterEqual(second.scheduled_start, first.scheduled_end)
 
 
 class TestOrdinaryBookingsStillRequireADateAndSlot(WalkInTestCase):

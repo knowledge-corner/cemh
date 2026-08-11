@@ -68,10 +68,13 @@
 
         {% comment %}
         KAN task #22. Checking this hides the date and the slot grid below —
-        neither means anything for somebody already standing at the desk. The
-        server finds today's earliest free slot itself rather than trusting
-        whatever the client last showed, so nothing here needs to disable the
-        other fields to be safe, only to avoid confusing the receptionist.
+        neither means anything for somebody already standing at the desk, and
+        neither the doctor's schedule nor whether they have a row for today is
+        consulted: reception can see the doctor is free to take this patient
+        right now, and the calendar does not get a veto over that. The server
+        works out the actual moment itself rather than trusting whatever the
+        client last showed, so nothing here needs to disable the other fields
+        to be safe, only to avoid confusing the receptionist.
         {% endcomment %}
         <div class="field field--check">
           {{ form.walk_in }}
@@ -106,8 +109,8 @@
           <p class="faint small" style="margin:0">Choose a doctor and date to see free times.</p>
         </div>
         <p class="faint small" id="walk-in-note" hidden style="margin:0">
-          The earliest free slot with the chosen doctor today will be used, and
-          the patient goes straight into today's waiting room.
+          The chosen doctor is used regardless of their working hours on the
+          calendar, and the patient goes straight into today's waiting room.
         </p>
       </div>
     </div>

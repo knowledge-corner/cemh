@@ -165,3 +165,24 @@ def next_available(doctor, *, days=14):
             return slots[0]
         day += timedelta(days=1)
     return None
+
+
+def next_free_moment(doctor, *, after=None):
+    """
+    The soonest a walk-in for ``doctor`` can be marked seen.
+
+    Checked only against the doctor's other active visits, never against a
+    schedule entry — KAN task #22's walk-in is reception seeing the doctor
+    actually standing there right now, not a question the calendar gets a
+    veto over. Reception manages the doctor's real timing by hand; this
+    exists only to stop two walk-ins landing on the exact same moment and
+    tripping the database's no-double-booking constraint.
+    """
+    cursor = after or timezone.now()
+    length = slot_length()
+    busy = list(Visit.objects.filter(doctor=doctor).active().values_list(
+        "scheduled_start", "scheduled_end"
+    ))
+    while any(cursor < end and start < cursor + length for start, end in busy):
+        cursor += length
+    return cursor
