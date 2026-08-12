@@ -36,7 +36,9 @@ from pharmacy.models import Prescription
 
 from . import forms as clinic_forms
 from . import services
-from .views_doctor import TABS, _current_visit, _editable_for_tab, _is_editable, _visible_tabs
+from .views_doctor import (
+    TABS, _current_visit, _editable_for_tab, _has_visit_today, _is_editable, _visible_tabs,
+)
 
 
 @dataclass(frozen=True)
@@ -230,7 +232,11 @@ def _refreshed_panels(request, patient, tab):
     # Complete/End consultation itself, which is what this repaints for.
     header_html = render_to_string(
         "portal/doctor/_chart_header_actions.html",
-        {"patient": patient, "active_visit": _current_visit(patient)},
+        {
+            "patient": patient,
+            "active_visit": _current_visit(patient),
+            "has_visit_today": _has_visit_today(patient, request.user),
+        },
         request=request,
     )
 

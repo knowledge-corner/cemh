@@ -66,6 +66,23 @@ def _current_visit(patient):
     )
 
 
+def _has_visit_today(patient, doctor):
+    """
+    Whether this patient is already on *this* doctor's board today — booked,
+    confirmed, arrived, in the cabin, or already seen by them.
+
+    Scoped to the doctor, not the patient: two doctors can each have their own
+    booking with the same patient on the same day, and one starting a direct
+    consultation should not be blocked by the other's. "Start consultation"
+    exists for a patient with nothing on *this* doctor's diary today at all;
+    reusing it when there already is something would skip past whatever visit
+    is already there and create a second, redundant one instead. When this is
+    true, the way in is "Send in" from the queue (once the patient has
+    arrived), not this button.
+    """
+    return patient.visits.filter(doctor=doctor).for_date().active().exists()
+
+
 def _is_editable(patient):
     """
     Whether this chart takes new edits right now.
@@ -294,6 +311,7 @@ def patient_dashboard(request, patient_id):
         "active_tab": "summary",
         "active_visit": active_visit,
         "is_editable": _is_editable(patient),
+        "has_visit_today": _has_visit_today(patient, request.user),
     }
     context.update(services.summary_context(patient))
     return render(request, "portal/doctor/dashboard.html", context)
@@ -399,6 +417,16 @@ def start_consultation(request, patient_id):
         if visit is not None:
             visit.transition_to(VisitStatus.IN_CABIN, by_user=request.user)
         else:
+            # The button that posts here is hidden whenever the patient
+            # already has a visit today (see _has_visit_today), but that is
+            # only the button — this refusal is what actually stops a second,
+            # redundant visit from ever getting created underneath a booking
+            # reception (or an earlier "Start consultation") already made.
+            if _has_visit_today(patient, request.user):
+                raise InvalidTransition(
+                    f"{patient.full_name} already has a visit with you today. "
+                    "Send them in from today's queue instead."
+                )
             # Visit.objects.create() bypasses transition_to, so the
             # one-patient-per-cabin rule it enforces has to be checked here
             # instead — otherwise a doctor already with someone in the cabin

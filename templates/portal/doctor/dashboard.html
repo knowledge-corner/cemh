@@ -21,8 +21,13 @@
   <div class="alert-strip alert-strip--warning">
     <div>
       <span class="alert-strip__title">Read-only</span><br>
-      {{ patient.full_name }} has not been sent in yet. Use "Send in" from
-      today's queue, or "Start consultation" above, to open the file for editing.
+      {% if has_visit_today %}
+        {{ patient.full_name }} has not been sent in yet. Use "Send in" from
+        today's queue to open the file for editing.
+      {% else %}
+        {{ patient.full_name }} has no visit today. Use "Start consultation"
+        above to open the file for editing.
+      {% endif %}
     </div>
   </div>
 {% endif %}

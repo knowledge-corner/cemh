@@ -21,10 +21,14 @@ consultation that has already finished.
             hx-get="{% url 'doctor_complete_consultation' patient.patient_id %}"
             hx-target="#modal-host" hx-swap="innerHTML">Complete consultation</button>
   {% endif %}
-{% else %}
+{% elif not has_visit_today %}
   {% comment %}
-  is_editable is exactly "active_visit is IN_CABIN", so if we're here
-  there is none — unlocks the file exactly as "Send in" does.
+  Nothing on today's board for this patient at all — this is the one action
+  that unlocks the file, exactly as "Send in" does when there is a visit to
+  send in. When there IS already a visit today (booked, confirmed, arrived,
+  or already seen), this button is deliberately absent: clicking it would
+  create a second, redundant visit instead of picking up the one reception
+  already queued — the way in there is "Send in" from the queue.
   {% endcomment %}
   <form method="post" action="{% url 'doctor_start_consultation' patient.patient_id %}" style="display:inline">
     {% csrf_token %}

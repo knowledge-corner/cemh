@@ -109,6 +109,54 @@ class TestStartingWithAWaitingVisit(DirectConsultationTestCase):
         self.assertTrue(mine.is_direct)
 
 
+class TestStartingWithAConfirmedNotYetArrivedVisit(DirectConsultationTestCase):
+    """
+    Regression: the chart used to offer "Start consultation" for a patient
+    already CONFIRMED for today — a booking that has not been sent in yet,
+    the way an ARRIVED one has. Clicking it fell straight to the "no visit at
+    all" branch and created a second, redundant direct visit underneath the
+    real booking, instead of leaving it for "Send in" to pick up once the
+    patient actually arrives.
+    """
+
+    def _confirmed_today(self, doctor=None):
+        return make_visit(
+            self.patient, doctor or self.doctor, start=today_at(9),
+            status=VisitStatus.CONFIRMED,
+        )
+
+    def test_the_button_is_not_offered_on_the_chart(self):
+        self._confirmed_today()
+        response = self.client.get(self.dashboard_url())
+        self.assertNotContains(response, "Start consultation")
+
+    def test_posting_it_anyway_is_refused_and_creates_nothing(self):
+        visit = self._confirmed_today()
+        self.client.post(self.start_url())
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.CONFIRMED)
+        self.assertEqual(Visit.objects.filter(patient=self.patient).count(), 1)
+
+    def test_the_read_only_notice_points_at_send_in_only(self):
+        self._confirmed_today()
+        response = self.client.get(self.dashboard_url())
+        self.assertContains(response, "Send in")
+        self.assertNotContains(response, "Start consultation")
+
+    def test_a_confirmed_visit_with_another_doctor_does_not_block_this_one(self):
+        other_doctor = make_doctor(username="drother2", email="other2@example.in")
+        theirs = self._confirmed_today(doctor=other_doctor)
+        response = self.client.get(self.dashboard_url())
+        self.assertContains(response, "Start consultation")
+
+        self.client.post(self.start_url())
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.status, VisitStatus.CONFIRMED)
+        mine = Visit.objects.get(doctor=self.doctor, patient=self.patient)
+        self.assertEqual(mine.status, VisitStatus.IN_CABIN)
+        self.assertTrue(mine.is_direct)
+
+
 class TestEndingADirectConsultation(DirectConsultationTestCase):
     def _start(self):
         self.client.post(self.start_url())
