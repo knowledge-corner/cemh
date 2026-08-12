@@ -1,0 +1,126 @@
+{% comment %}
+The worklist behind the morning alert, which links straight to this tab.
+
+One row per appointment that has reached a consultation on a day not yet
+signed off, whatever its billing state — a row stays exactly where it is once
+billed, so the receptionist can check it off against the calendar rather than
+watching it disappear mid-review. Only the rows that still owe money get a
+Generate bill button; the rest show what was collected and a reprint link,
+same as Completed Bookings.
+
+Its own partial, wrapped in #unclosed-panel, so Generate bill can refresh this
+whole block in place — see generate_receipt's ``origin=unclosed`` branch —
+instead of the board underneath a screen that has no board on it.
+{% endcomment %}
+{% if unclosed %}
+<div class="alert-strip alert-strip--warning" style="margin-bottom:1rem">
+  <div>
+    <span class="alert-strip__title">
+      {{ unclosed_count }} appointment{{ unclosed_count|pluralize }}
+      from unsigned days {{ unclosed_count|pluralize:"needs,need" }} reviewing
+    </span><br>
+    Take the fee on any that still owe one — the receipt is what locks it.
+    A row stays here, billed or not, until its day is signed off.
+  </div>
+</div>
+
+<div class="table-scroll">
+  <table class="table table--middle">
+    <thead>
+      <tr>
+        <th>Date</th><th>Time</th><th>Patient</th><th>Doctor</th>
+        <th class="table__num">Owed</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for visit in unclosed %}
+        <tr>
+          <td class="nowrap">{{ visit.scheduled_start|date:"j M Y" }}</td>
+          <td class="mono nowrap">{{ visit.scheduled_start|time:"H:i" }}</td>
+          <td>
+            {{ visit.patient.full_name }}<br>
+            <span class="mono faint small">{{ visit.patient.patient_id }}</span>
+          </td>
+          <td>{{ visit.doctor.display_name }}</td>
+          <td class="table__num">
+            {% if visit.charge %}
+              {{ clinic_currency }}{{ visit.charge.balance }}
+            {% else %}
+              <span class="faint">No fee set</span>
+            {% endif %}
+          </td>
+          <td>
+            {% include "portal/doctor/_status_badge.html" with status=visit.status label=visit.get_status_display %}
+          </td>
+          <td class="text-right nowrap">
+            {% if visit.status == "CONSULTED" %}
+              {% if visit.charge %}
+                {% comment %}
+                Check before closing. Nothing has been collected yet, so the
+                fee can still be corrected — a procedure the doctor forgot,
+                a discount agreed at the desk. Once a receipt exists the view
+                refuses it, because changing what a receipt already says was
+                owed leaves the printed copy and the record disagreeing.
+                {% endcomment %}
+                <a class="btn btn--secondary"
+                   href="{% url 'reception_edit_charge' visit.pk %}?next={% url 'reception_bookings' %}%3Ftab%3Dunclosed">Edit</a>
+                <button type="button" class="btn btn--primary"
+                        hx-get="{% url 'reception_generate_receipt' visit.pk %}?origin=unclosed"
+                        hx-target="#modal-host" hx-swap="innerHTML">Generate receipt</button>
+              {% else %}
+                {% comment %}
+                The doctor set no fee, so there is nothing to collect and the
+                receipt dialog has nothing to offer. Without this the visit
+                could never be closed and would block the sign-off for ever.
+                Worded so nobody presses it by habit.
+                {% endcomment %}
+                <form method="post"
+                      action="{% url 'reception_close_without_fee' visit.pk %}"
+                      style="display:inline"
+                      onsubmit="return confirm('Close {{ visit.patient.full_name|escapejs }} with no fee? Nothing will be collected, and this is recorded.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="next"
+                         value="{% url 'reception_bookings' %}?tab=unclosed">
+                  <button class="btn btn--secondary" type="submit">Close with no fee</button>
+                </form>
+              {% endif %}
+            {% else %}
+              {# Already billed — nothing left to do here but look it up. #}
+              <a class="btn btn--secondary"
+                 href="{% url 'reception_settled_visit' visit.pk %}">View &amp; reprint</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% comment %}
+Signing the day off, offered the moment the receptionist has finished the
+work that makes it possible rather than on some other screen.
+{% endcomment %}
+{% if can_sign_off %}
+  <div class="alert-strip alert-strip--success" style="margin-top:1rem">
+    <div>
+      <span class="alert-strip__title">Nothing is left open</span><br>
+      Every appointment has been checked and billed, and the clinic's
+      scheduled hours for the day are over
+      {% if pending_day %}
+        — {{ pending_day|date:"l j F" }} can now be signed off.
+      {% else %}
+        .
+      {% endif %}
+      <div style="margin-top:.625rem">
+        <form method="post" action="{% url 'reception_close_day' %}">
+          {% csrf_token %}
+          {% if pending_day %}
+            <input type="hidden" name="date" value="{{ pending_day|date:'Y-m-d' }}">
+          {% endif %}
+          <button class="btn btn--primary" type="submit">Sign off</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}

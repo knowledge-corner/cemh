@@ -80,6 +80,13 @@
           {{ form.walk_in }}
           <label class="field__label" for="{{ form.walk_in.id_for_label }}">{{ form.walk_in.label }}</label>
         </div>
+        {% if unsigned_day %}
+          <p class="faint small" style="margin:0 0 .75rem">
+            {{ unsigned_day|date:"j M" }} has not been signed off yet, so a
+            walk-in cannot be taken in until it is —
+            <a href="{% url 'reception_bookings' %}?tab=unclosed">sign off from All bookings</a>.
+          </p>
+        {% endif %}
 
         <div class="field" id="day-field">
           <label class="field__label" for="{{ form.day.id_for_label }}">Date</label>

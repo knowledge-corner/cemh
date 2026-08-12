@@ -777,10 +777,11 @@ class TestTheUnclosedWorklist(SignOffTestCase):
         response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
         self.assertContains(response, old.patient.patient_id)
 
-    def test_taking_the_fee_is_the_whole_job(self):
-        # The receipt is what locks the appointment. Asking for a second button
-        # afterwards would make two steps out of the one the clinic described,
-        # and the sweep marks paid visits finished on its own.
+    def test_taking_the_fee_updates_the_row_rather_than_removing_it(self):
+        # Broadened: the row stays on this list, billed or not, until the
+        # whole day is signed off — see signoff.unclosed(). Taking the fee is
+        # still the whole job as far as money goes; it just no longer makes
+        # the row vanish out from under the receptionist mid-review.
         visit = self._consulted()
         self.client.post(
             reverse("reception_generate_receipt", args=[visit.pk]),
@@ -790,16 +791,18 @@ class TestTheUnclosedWorklist(SignOffTestCase):
         self.assertEqual(visit.status, VisitStatus.BILLED)
 
         response = self.client.get(reverse("reception_bookings"))
-        self.assertEqual(response.context["unclosed_count"], 0)
+        self.assertEqual(response.context["unclosed_count"], 1)
 
-    def test_billing_it_takes_it_off_the_list(self):
+    def test_billing_it_keeps_it_on_the_list_with_a_reprint_link(self):
         visit = self._consulted()
         self.client.post(
             reverse("reception_generate_receipt", args=[visit.pk]),
             {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
         )
-        response = self.client.get(reverse("reception_bookings"))
-        self.assertEqual(response.context["unclosed_count"], 0)
+        response = self.client.get(reverse("reception_bookings"), {"tab": "unclosed"})
+        self.assertContains(response, visit.patient.patient_id)
+        self.assertContains(response, "View &amp; reprint")
+        self.assertNotContains(response, "Generate receipt")
 
     def test_the_sign_off_button_appears_once_the_list_is_empty(self):
         self._consulted()
@@ -964,14 +967,14 @@ class TestAConsultationWithNoFeeCanStillBeClosed(SignOffTestCase):
             response, reverse("reception_close_without_fee", args=[self.visit.pk]),
         )
 
-    def test_closing_it_takes_it_off_the_list(self):
+    def test_closing_it_keeps_it_listed_until_the_day_is_signed_off(self):
         self.client.post(
             reverse("reception_close_without_fee", args=[self.visit.pk]),
             {"next": reverse("reception_bookings")},
         )
         self.visit.refresh_from_db()
         self.assertEqual(self.visit.status, VisitStatus.COMPLETED)
-        self.assertEqual(signoff.unclosed(), [])
+        self.assertIn(self.visit, signoff.unclosed())
 
     def test_the_trail_says_nothing_was_collected(self):
         self.client.post(reverse("reception_close_without_fee", args=[self.visit.pk]))
@@ -1229,14 +1232,16 @@ class TestTheTabAppearsAsSoonAsSomebodyIsConsulted(SignOffTestCase):
         response = self.client.get(reverse("reception_bookings"))
         self.assertEqual(response.context["unclosed_count"], 1)
 
-    def test_billing_it_takes_it_off_again(self):
+    def test_billing_it_keeps_it_listed_as_billed(self):
         visit = self._today_consulted()
         self.client.post(
             reverse("reception_generate_receipt", args=[visit.pk]),
             {"amount": "800", "method": "CASH", "reference": "", "notes": ""},
         )
         response = self.client.get(reverse("reception_bookings"))
-        self.assertEqual(response.context["unclosed_count"], 0)
+        self.assertEqual(response.context["unclosed_count"], 1)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.BILLED)
 
     def test_a_patient_still_with_the_doctor_is_not_on_it_yet(self):
         # In the cabin is not consulted. There is no fee to collect until the
@@ -1284,10 +1289,12 @@ class TestTodayCanBeSignedOffOnceEverybodyIsCheckedOut(SignOffTestCase):
         return visit
 
     def test_the_tab_still_appears_once_the_last_patient_is_billed(self):
-        self._today_billed()
+        visit = self._today_billed()
         response = self.client.get(reverse("reception_bookings"))
-        self.assertEqual(response.context["unclosed_count"], 0)
+        self.assertEqual(response.context["unclosed_count"], 1)
         self.assertIn("unclosed", [key for key, _ in response.context["tabs"]])
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, VisitStatus.BILLED)
 
     def test_the_sign_off_button_is_offered_for_today(self):
         self._today_billed()

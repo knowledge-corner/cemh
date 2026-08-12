@@ -1,12 +1,19 @@
 {% comment %}
 The payment went through.
 
-This response is swapped into #modal-host, which empties the dialog, and the
-board is carried alongside it as an out-of-band swap so the card moves into
-Settled at the same moment rather than on the next thirty-second poll. Same
-pattern as the doctor's save.
+This response is swapped into #modal-host, which empties the dialog, and
+whichever screen it was opened from is carried alongside it as an
+out-of-band swap so that screen updates at the same moment rather than on
+the next reload — the board (Settled) from the queue page, or the same row
+in place on the Unclosed appointments panel, which has no board on it at
+all. Same pattern as the doctor's save.
 {% endcomment %}
-<div hx-swap-oob="innerHTML:#queue-board">{{ board_html|safe }}</div>
+{% if board_html %}
+  <div hx-swap-oob="innerHTML:#queue-board">{{ board_html|safe }}</div>
+{% endif %}
+{% if panel_html %}
+  <div hx-swap-oob="innerHTML:#unclosed-panel">{{ panel_html|safe }}</div>
+{% endif %}
 
 {% comment %}
 The receipt number is announced by the same toast host as everything else, so

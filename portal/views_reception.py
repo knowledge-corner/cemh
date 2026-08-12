@@ -669,19 +669,34 @@ def _past_filters(request):
     return visits, chosen
 
 
+def _unclosed_panel_context():
+    """
+    The Unclosed appointments panel's own context, built the same way whether
+    it is the initial render on Bookings or a same-row refresh from
+    generate_receipt — one place, so the two cannot disagree about what
+    ``can_sign_off`` means.
+    """
+    unclosed = signoff.unclosed() if signoff.is_enabled() else []
+    pending_day = signoff.day_to_close() if signoff.is_enabled() else None
+    return {
+        "unclosed": unclosed,
+        "unclosed_count": len(unclosed),
+        "can_sign_off": signoff.is_enabled() and bool(pending_day),
+        "pending_day": pending_day,
+    }
+
+
 @role_required(Role.RECEPTIONIST)
 def bookings(request):
     """The diary ahead, and what has been seen and paid for."""
-    # The unclosed tab exists only while it has rows. The alert on the board
-    # links straight here, so somebody arriving from it must land on the tab
-    # rather than on whichever one happened to be default.
-    unclosed = signoff.unclosed() if signoff.is_enabled() else []
-    # The tab is also where the day is signed off, so it has to survive the list
-    # emptying — that is the moment the button appears. Without this the last
-    # receipt made the tab vanish and took the only way to sign off with it.
-    # day_to_close (not is_due) so a fully-billed today can still be signed off,
-    # not only an unsigned previous day.
-    pending_day = signoff.day_to_close() if signoff.is_enabled() else None
+    # The unclosed tab exists only once there is something to review — the
+    # first completed consultation of an unsigned day, whatever its billing
+    # state — not merely because the day happens to be eligible for sign-off.
+    # ``pending_day`` is kept as a fallback trigger only: a day with visits but
+    # not one consultation (everyone cancelled or no-showed) can still become
+    # eligible to close, and would otherwise have no way to reach the button.
+    panel = _unclosed_panel_context()
+    unclosed, pending_day = panel["unclosed"], panel["pending_day"]
     tabs = list(BOOKING_TABS)
     if unclosed or pending_day:
         tabs.append(UNCLOSED_TAB)
@@ -700,15 +715,13 @@ def bookings(request):
     return render(request, "portal/reception/bookings.html", {
         "tabs": tabs,
         "active_tab": tab,
-        "unclosed": unclosed,
-        "unclosed_count": len(unclosed),
-        # Every previous day is accounted for, so the day itself can be signed
-        # off. Offered here as well as on the board because this is where the
-        # receptionist has just finished the work that makes it possible.
-        # bool(pending_day) so the button never shows before there is an actual
-        # day to attach it to (e.g. an empty list before any visit exists).
-        "can_sign_off": signoff.is_enabled() and not unclosed and bool(pending_day),
-        "pending_day": pending_day,
+        # day_to_close (folded into ``panel``) already is the full eligibility
+        # check — nobody in a cabin, nothing still owed, and (since the
+        # calendar-hours gate) every doctor's scheduled sitting for the day
+        # actually over. It no longer depends on ``unclosed`` being empty:
+        # that list now stays populated with billed rows on purpose, and
+        # emptying it is not what unlocks sign-off any more.
+        **panel,
         "today_rows": today_rows,
         "ahead_rows": ahead_rows,
         "upcoming_count": len(today_rows) + len(ahead_rows),
@@ -817,11 +830,19 @@ def new_booking(request):
     else:
         form = clinic_forms.BookingForm(initial={"patient": patient} if patient else None)
 
+    # Walk-in is refused server-side either way (BookingForm.clean) — greying
+    # the checkbox out is purely so a receptionist sees why before filling in
+    # the rest of the form, not after.
+    unsigned_day = signoff.is_due() if signoff.is_enabled() else None
+    if unsigned_day:
+        form.fields["walk_in"].widget.attrs["disabled"] = "disabled"
+
     return render(request, "portal/reception/new_booking.html", {
         "form": form,
         "chosen_patient": patient,
         "cancel_url": _safe_next(request, "reception_bookings"),
         "next": request.GET.get("next", ""),
+        "unsigned_day": unsigned_day,
     })
 
 
@@ -1062,6 +1083,11 @@ def generate_receipt(request, pk):
         Visit.objects.select_related("patient", "doctor", "charge"), pk=pk
     )
     charge = getattr(visit, "charge", None)
+    # Carried through the GET that opens the dialog and the POST that submits
+    # it, so the success response knows which screen to refresh — the board on
+    # the queue page, or the Unclosed appointments panel on Bookings, which has
+    # no board on it at all.
+    origin = request.GET.get("origin") or request.POST.get("origin")
 
     record_patient_view(request, visit.patient, "Opened billing for a visit")
 
@@ -1070,7 +1096,7 @@ def generate_receipt(request, pk):
         # the user opened rather than as a 404, which would read as a bug.
         return HttpResponse(render_to_string(
             "portal/reception/_payment_modal.html",
-            {"visit": visit, "charge": None, "form": None, "payments": []},
+            {"visit": visit, "charge": None, "form": None, "payments": [], "origin": origin},
             request=request,
         ))
 
@@ -1081,6 +1107,18 @@ def generate_receipt(request, pk):
                 messages.info(
                     request, "This bill was already settled; nothing further was taken."
                 )
+            if origin == "unclosed":
+                # Same row, updated in place: it stays on this list, billed,
+                # until the day itself is signed off — see signoff.unclosed().
+                return HttpResponse(render_to_string(
+                    "portal/reception/_payment_done.html",
+                    {"panel_html": render_to_string(
+                        "portal/reception/_unclosed_panel.html",
+                        _unclosed_panel_context(),
+                        request=request,
+                    )},
+                    request=request,
+                ))
             # Close the dialog and put the refreshed board back underneath it,
             # so the card moves to Settled while the receptionist is still
             # looking at it.
@@ -1106,6 +1144,7 @@ def generate_receipt(request, pk):
             "payments": list(
                 charge.payments.select_related("receipt").order_by("received_at")
             ),
+            "origin": origin,
         },
         request=request,
     ))

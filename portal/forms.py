@@ -18,7 +18,7 @@ from django.utils import timezone
 from accounts.models import (
     DoctorProfile, Role, Specialisation, User, phone_validator,
 )
-from appointments import scheduling
+from appointments import scheduling, signoff
 from appointments import weekdays as weekday_codes
 from appointments.models import Visit, VisitStatus
 from billing.models import Charge, Payment
@@ -471,6 +471,19 @@ class BookingForm(forms.Form):
             if not doctor:
                 return cleaned
             today = timezone.localdate()
+            # An unsigned earlier day holds new arrivals of any kind, the same
+            # rule move_visit enforces for "Mark arrived" — a walk-in is
+            # exactly that, just taken a step earlier, and letting one through
+            # would be a back door round the same hold.
+            unsigned = signoff.is_due()
+            if unsigned:
+                self.add_error(
+                    "doctor",
+                    f"{unsigned:%d %B} has not been signed off yet, so a "
+                    "walk-in cannot be taken in until it is. Sign off from "
+                    "All bookings first.",
+                )
+                return cleaned
             # A holiday is the one thing that still refuses a walk-in: it is
             # the clinic recorded as shut for everyone, not a question about
             # one doctor's own hours. No per-doctor schedule check beyond

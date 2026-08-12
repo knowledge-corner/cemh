@@ -31,7 +31,9 @@ from django.core.mail import EmailMessage
 from django.db import transaction
 from django.utils import timezone
 
-from .models import DaySignOff, InvalidTransition, Visit, VisitStatus
+from django.db.models import Max
+
+from .models import DaySignOff, DoctorSchedule, InvalidTransition, Visit, VisitStatus
 
 logger = logging.getLogger(__name__)
 
@@ -217,37 +219,39 @@ def auto_cancel_stale(now=None):
 
 def unclosed(day=None):
     """
-    Every appointment that has been consulted and not yet billed.
+    Every appointment that has reached a consultation, on a day not yet signed
+    off — billed or not.
 
-    "Closed" means the receipt has been generated, which is what locks the
-    appointment. So this list is consultations the doctor finished and nobody
-    billed, and nothing else.
+    **Broadened from "still owed money"** (KAN-48's original definition, which
+    dropped a row the moment it was billed) to the whole day's clinical
+    worklist. A billed row staying on the list, unchanged, until the day itself
+    is signed off is the point: the list is what the receptionist is checking
+    against the calendar, not only what she still has to collect, and it must
+    not quietly shrink under her while she works down it. Generate bill is
+    still offered only on the rows that still need it.
 
     **Today included**, up to and including ``day``. It counted only previous
     days at first, which made it a next-morning tidy-up rather than what it is:
-    the receptionist's billing worklist for the clinic she is running. A patient
-    the doctor finished with an hour ago was not on it and the tab did not
-    appear at all, so she was shown work already hers only the following day.
+    the receptionist's worklist for the clinic she is running. A patient the
+    doctor finished with an hour ago was not on it and the tab did not appear
+    at all, so she was shown work already hers only the following day.
 
-    Every earlier day too, not just yesterday. A day missed on Friday is still
-    owed on Monday, and a list that showed one day would let it scroll quietly
-    out of sight.
+    Every earlier unsigned day too, not just yesterday. A day missed on Friday
+    is still owed on Monday, and a list that showed one day would let it
+    scroll quietly out of sight. A day drops off this list the moment — and
+    only the moment — it is signed off, whatever is billed on it by then.
 
-    A visit that has been paid for is **not** on it. Taking the fee is the last
-    thing the receptionist does; asking her to press a second button afterwards
-    would make a two-step job out of the one the clinic described, and the sweep
-    marks those finished on its own.
-
-    A patient still in a cabin is not on it either. There is no fee to collect
-    until the doctor has finished, so listing them would be listing work nobody
-    can do yet.
+    A patient still in a cabin is not on it. There is no consultation to
+    review until the doctor has finished with them.
     """
     day = day or timezone.localdate()
+    signed_off_dates = DaySignOff.objects.values_list("date", flat=True)
     return list(
         Visit.objects.filter(
             scheduled_start__date__lte=day,
-            status=VisitStatus.CONSULTED,
+            status__in=(VisitStatus.CONSULTED, VisitStatus.BILLED, VisitStatus.COMPLETED),
         )
+        .exclude(scheduled_start__date__in=signed_off_dates)
         .with_related()
         .select_related("charge")
         .order_by("scheduled_start")
@@ -264,16 +268,46 @@ def unbilled(day):
     )
 
 
-def can_close(day=None):
+def _clinic_finished_for(day, now=None):
+    """
+    Has every doctor's own scheduled sitting for ``day`` actually ended?
+
+    Read from the calendar, not from the board happening to look empty — a
+    quiet Stage 4 an hour before the evening sitting starts is a lull, not the
+    end of the day, and signing off in that gap would tell tomorrow morning
+    the day was finished before the clinic had even opened its second sitting.
+
+    ``True`` when nobody was scheduled on ``day`` at all: there is nothing on
+    the calendar to wait for, so this does not block anything by itself.
+    """
+    last_end = DoctorSchedule.objects.filter(date=day).aggregate(
+        Max("end_time")
+    )["end_time__max"]
+    if last_end is None:
+        return True
+
+    now = now or timezone.localtime()
+    if now.date() > day:
+        return True
+    if now.date() < day:
+        return False
+    return now.time() >= last_end
+
+
+def can_close(day=None, now=None):
     """
     Is today's clinic finished enough to sign off?
 
-    Two conditions, both from the board the receptionist is looking at:
+    Three conditions:
 
     * nobody is in a cabin — Stage 3 is empty, so no doctor is still with a
       patient whose fee is not set yet;
     * nothing in Stage 4 is still owed — every consultation has had its receipt
-      generated, which is what locks it.
+      generated, which is what locks it;
+    * every doctor's own scheduled sitting for the day has actually ended
+      (``_clinic_finished_for``) — the first two can both be true in the gap
+      between a morning and an evening sitting, and that gap is not the end of
+      the day.
 
     Stages 1 and 2 are deliberately not checked. A patient who never turned up
     and one still in the waiting room at closing time are both ordinary ends to
@@ -288,7 +322,9 @@ def can_close(day=None):
     today = Visit.objects.filter(scheduled_start__date=day)
     if today.filter(status=VisitStatus.IN_CABIN).exists():
         return False
-    return not today.filter(status=VisitStatus.CONSULTED).exists()
+    if today.filter(status=VisitStatus.CONSULTED).exists():
+        return False
+    return _clinic_finished_for(day, now=now)
 
 
 def day_to_close(now=None):
@@ -296,7 +332,10 @@ def day_to_close(now=None):
     The day the receptionist can sign off right now, or ``None``.
 
     ``is_due`` only ever answers about a *previous* day, because it exists to
-    raise an alert about a day left open overnight. That left a gap: a
+    raise an alert about a day left open overnight — and it answers as soon as
+    the day is unsigned, before anything on it has been billed, because the
+    alert has to fire the moment there is money at risk of being forgotten,
+    not once the receptionist has already cleared it. That left a gap: a
     receptionist who bills every patient before leaving has no previous day
     outstanding and no unclosed visits either, so the tab — and the sign-off
     button living on it — never appeared, and today itself could never be
@@ -304,22 +343,26 @@ def day_to_close(now=None):
 
     This tries the previous-day answer first, and only when that is silent
     does it check whether *today* is itself finished enough (``can_close``)
-    to be signed off early. A day already signed off, or a day with no
-    visits at all, is never offered.
+    to be signed off early. Either way, the day is only ever handed back once
+    ``can_close`` agrees it is actually finished — being due is not the same
+    as being closeable, and conflating them here would offer the sign-off
+    button on a previous day that still has an unbilled consultation on it.
+    A day already signed off, or a day with no visits at all, is never
+    offered.
     """
     if not is_enabled():
         return None
 
     pending = is_due(now=now)
     if pending is not None:
-        return pending
+        return pending if can_close(pending, now=now) else None
 
     today = (now or timezone.localtime()).date()
     if DaySignOff.objects.filter(date=today).exists():
         return None
     if not Visit.objects.filter(scheduled_start__date=today).exists():
         return None
-    return today if can_close(today) else None
+    return today if can_close(today, now=now) else None
 
 
 def _rows(day):

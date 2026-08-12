@@ -77,8 +77,14 @@ same slot so validation errors land where the user is looking.
       </div>
 
     {% else %}
-      <form method="post" action="{% url 'reception_generate_receipt' visit.pk %}"
-            hx-post="{% url 'reception_generate_receipt' visit.pk %}"
+      {% comment %}
+      ``origin`` rides along on the form action itself, not just the button
+      that opened this dialog — the GET that rendered this modal already knew
+      it, and the POST that submits it has to say the same thing back, or the
+      Unclosed panel would refresh the board instead of itself.
+      {% endcomment %}
+      <form method="post" action="{% url 'reception_generate_receipt' visit.pk %}{% if origin %}?origin={{ origin }}{% endif %}"
+            hx-post="{% url 'reception_generate_receipt' visit.pk %}{% if origin %}?origin={{ origin }}{% endif %}"
             hx-target="#modal-host" hx-swap="innerHTML">
         {% csrf_token %}
 
