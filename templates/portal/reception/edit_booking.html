@@ -40,6 +40,7 @@
         {% endcomment %}
         <div class="field">
           <span class="field__label">Available times</span>
+          {{ form.slot }}
           <div id="slot-options"
                hx-get="{% url 'reception_slots' %}?doctor={{ visit.doctor.pk }}"
                hx-trigger="load, change from:#{{ form.day.id_for_label }}"

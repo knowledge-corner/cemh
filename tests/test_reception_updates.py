@@ -319,6 +319,17 @@ class TestAmendingABooking(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.visit.patient.full_name)
 
+    def test_the_hidden_slot_field_is_actually_on_the_page(self):
+        # Regression: the template used to never render {{ form.slot }}, so
+        # the hidden input pickSlot() in _slots.html looks for via
+        # querySelector('input[name="slot"]') didn't exist in the DOM.
+        # Clicking a time silently did nothing, and the form always submitted
+        # with no slot — "Choose a new time." on every attempt, no matter
+        # what the receptionist clicked.
+        response = self.client.get(reverse("reception_edit_booking", args=[self.visit.pk]))
+        self.assertContains(response, 'name="slot"')
+        self.assertContains(response, 'type="hidden"')
+
     def test_a_booking_can_be_moved_to_another_slot(self):
         new_slot = _tomorrow_at(12)
         response = self.client.post(
