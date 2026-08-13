@@ -11,6 +11,88 @@
 
 /* global Chart */
 
+/*
+ * "Nice" round numbers for axis steps (1, 2, 2.5, 5, 10 x 10^n) — the same
+ * rule printed growth charts use so gridlines land on numbers a clinician
+ * would actually read off, not on whatever the data's raw range happens to be.
+ */
+function niceStep(rawStep) {
+  if (!rawStep || rawStep <= 0) return 1;
+  const exponent = Math.floor(Math.log10(rawStep));
+  const fraction = rawStep / Math.pow(10, exponent);
+  let niceFraction;
+  if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 5) niceFraction = 5;
+  else niceFraction = 10;
+  return niceFraction * Math.pow(10, exponent);
+}
+
+/*
+ * Explicit min/max/step for the value axis, shared by the left and right
+ * y-scales so their tick rows line up — the printed WHO/IAP charts label
+ * both edges of the same dense grid rather than leaving the right side bare.
+ */
+function computeYDomain(data) {
+  const values = [];
+  data.curves.forEach(function (c) { c.points.forEach(function (p) { values.push(p.value); }); });
+  (data.cutoffs || []).forEach(function (c) { c.points.forEach(function (p) { values.push(p.value); }); });
+  data.points.forEach(function (p) { values.push(p.value); });
+  (data.bone_age_points || []).forEach(function (p) { values.push(p.value); });
+  if (!values.length) return null;
+
+  const rawMin = Math.min.apply(null, values);
+  const rawMax = Math.max.apply(null, values);
+  const step = niceStep((rawMax - rawMin || 1) / 10);
+  return {
+    min: Math.max(0, Math.floor(rawMin / step) * step - step),
+    max: Math.ceil(rawMax / step) * step + step,
+    step: step
+  };
+}
+
+/*
+ * How many months apart the age gridlines fall — finer for the infant/WHO
+ * charts, yearly for the older IAP range, so the grid reads as dense graph
+ * paper at any age span rather than Chart.js's sparser auto-picked ticks.
+ */
+function computeXStep(data) {
+  const months = [];
+  data.curves.forEach(function (c) { c.points.forEach(function (p) { months.push(p.month); }); });
+  if (!months.length) return 12;
+  const maxMonth = Math.max.apply(null, months);
+  if (maxMonth > 60) return 12;
+  if (maxMonth > 24) return 6;
+  return 2;
+}
+
+/*
+ * Printed growth charts write the percentile number at the end of its own
+ * curve (97, 90, 75 … ) instead of a legend — this plugin draws that number
+ * beside the last point of every "P<n>" dataset, in the curve's own colour.
+ */
+const growthPercentileEndLabelsPlugin = {
+  id: 'growthPercentileEndLabels',
+  afterDatasetsDraw: function (chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach(function (dataset, i) {
+      const match = /^P(\d+)$/.exec(dataset.label || '');
+      if (!match) return;
+      const meta = chart.getDatasetMeta(i);
+      if (!meta || meta.hidden || !meta.data.length) return;
+      const last = meta.data[meta.data.length - 1];
+      if (!last) return;
+      ctx.save();
+      ctx.font = '600 10px sans-serif';
+      ctx.fillStyle = dataset.borderColor;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(match[1], last.x + 4, last.y);
+      ctx.restore();
+    });
+  }
+};
+
 function growthThemeColour(name, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name);
   return value ? value.trim() : fallback;
@@ -123,13 +205,20 @@ function buildGrowthChartConfig(data, colours) {
     });
   }
 
+  const yDomain = computeYDomain(data);
+  const xStep = computeXStep(data);
+
   return {
     type: 'line',
     data: { datasets: datasets },
+    plugins: [growthPercentileEndLabelsPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'nearest', intersect: false },
+      // Room on the right for the percentile numbers the plugin above draws
+      // past the last point of each curve.
+      layout: { padding: { right: 22 } },
       scales: {
         x: {
           type: 'linear',
@@ -137,15 +226,30 @@ function buildGrowthChartConfig(data, colours) {
           ticks: {
             color: muted,
             font: { size: 10 },
+            stepSize: xStep,
             // Tables are keyed in months; clinicians read charts in years.
-            callback: function (value) { return (value / 12).toFixed(0); }
+            callback: function (value) { return (value / 12).toFixed(value % 12 ? 1 : 0); }
           },
           grid: { color: border }
         },
         y: {
+          position: 'left',
           title: { display: true, text: data.unit, color: muted, font: { size: 11 } },
-          ticks: { color: muted, font: { size: 10 } },
-          grid: { color: border }
+          ticks: Object.assign({ color: muted, font: { size: 10 } }, yDomain ? { stepSize: yDomain.step } : {}),
+          grid: { color: border },
+          min: yDomain ? yDomain.min : undefined,
+          max: yDomain ? yDomain.max : undefined
+        },
+        // Mirrors the left axis exactly — same explicit min/max/step — so a
+        // value can be read off whichever edge is closer, the way the
+        // printed chart labels both sides of one shared grid.
+        y2: {
+          position: 'right',
+          title: { display: true, text: data.unit, color: muted, font: { size: 11 } },
+          ticks: Object.assign({ color: muted, font: { size: 10 } }, yDomain ? { stepSize: yDomain.step } : {}),
+          grid: { drawOnChartArea: false },
+          min: yDomain ? yDomain.min : undefined,
+          max: yDomain ? yDomain.max : undefined
         }
       },
       plugins: {
