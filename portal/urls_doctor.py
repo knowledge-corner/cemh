@@ -19,6 +19,7 @@ urlpatterns = [
         name="doctor_start_consultation",
     ),
     path("search/", views_doctor.doctor_patient_search, name="doctor_patient_search"),
+    path("icd10-search/", views_doctor.icd10_search, name="doctor_icd10_search"),
     path(
         "patient/<str:patient_id>/",
         views_doctor.patient_dashboard,

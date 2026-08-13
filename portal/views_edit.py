@@ -368,6 +368,7 @@ def edit_record(request, patient_id, kind, pk=None):
             "title": spec.add_title if is_new else spec.title,
             "action": request.path,
             "is_new": is_new,
+            "kind": kind,
         },
     )
 

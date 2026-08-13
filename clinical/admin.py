@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    ClinicalNote, Diagnosis, FormDefinition, Investigation, ReferenceLetter,
+    ClinicalNote, Diagnosis, FormDefinition, ICD10Code, Investigation, ReferenceLetter,
 )
 
 
@@ -62,3 +62,20 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     list_display = ("target", "version", "is_active", "created_at")
     list_filter = ("target", "is_active")
     readonly_fields = ("created_at",)
+
+
+@admin.register(ICD10Code)
+class ICD10CodeAdmin(admin.ModelAdmin):
+    """Loaded once from the WHO classification — browsable, not editable."""
+
+    list_display = ("code", "description")
+    search_fields = ("code", "description")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

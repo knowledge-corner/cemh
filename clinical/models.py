@@ -170,6 +170,29 @@ class Investigation(models.Model):
         return f"{self.value} {self.unit}".strip()
 
 
+class ICD10Code(models.Model):
+    """
+    WHO ICD-10 diagnostic codes, loaded once from the published classification
+    (see ``clinical/data/icd10_codes.tsv`` and the migration that reads it).
+
+    Reference data, not clinic-authored — nothing here is ever created or
+    edited through the app itself. Looked up by the diagnosis autocomplete
+    (``portal.views_doctor.icd10_search``); ``Diagnosis.icd10_code`` stays a
+    plain text field rather than a foreign key to this table, so a diagnosis
+    typed before a match is chosen, or one that never matches any code, still
+    saves cleanly as free text.
+    """
+
+    code = models.CharField(max_length=10, unique=True, db_index=True)
+    description = models.CharField(max_length=300, db_index=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.code} — {self.description}"
+
+
 class Diagnosis(models.Model):
     """
     A condition the patient carries.

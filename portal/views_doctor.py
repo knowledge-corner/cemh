@@ -21,6 +21,7 @@ from appointments import scheduling
 from appointments.models import InvalidTransition, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
+from clinical.models import ICD10Code
 from patients import matching
 from patients.models import Patient
 
@@ -286,6 +287,37 @@ def doctor_patient_search(request):
         ).order_by("first_name")[:8]
 
     return render(request, "portal/doctor/_search_results.html", {
+        "results": results, "query": query,
+    })
+
+
+@role_required(Role.DOCTOR)
+def icd10_search(request):
+    """
+    Type-ahead over the WHO ICD-10 list, for the diagnosis form's description
+    field.
+
+    Matches on the code itself (typing "E11" finds it directly) or anywhere in
+    the description (typing "thyroid" finds every thyroid-related code) — a
+    doctor rarely remembers the code, but usually remembers roughly what it's
+    called. Not finding a match is not an error: the diagnosis form saves a
+    typed description with no code just as well, so this stays a suggestion,
+    never a requirement.
+
+    Triggered directly off the diagnosis form's own ``description`` input, not
+    a dedicated search box, so htmx sends the query under that field's own
+    name rather than a generic ``q`` — read both so this keeps working if it's
+    ever wired up from an actual search box instead.
+    """
+    query = (request.GET.get("q") or request.GET.get("description") or "").strip()
+
+    results = []
+    if len(query) >= 2:
+        results = ICD10Code.objects.filter(
+            Q(code__istartswith=query) | Q(description__icontains=query)
+        ).order_by("code")[:10]
+
+    return render(request, "portal/doctor/_icd10_results.html", {
         "results": results, "query": query,
     })
 

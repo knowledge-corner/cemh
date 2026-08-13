@@ -31,6 +31,9 @@ returns _saved.html, which closes this and refreshes the chart in place.
             <div class="field {% if field.field.widget.input_type == 'checkbox' %}field--check{% endif %}">
               <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
               {{ field }}
+              {% if kind == "diagnosis" and field.name == "description" %}
+                <div id="icd10-suggestions"></div>
+              {% endif %}
               {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
               {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
             </div>

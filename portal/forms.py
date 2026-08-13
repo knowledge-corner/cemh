@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from django import forms
 from django.db import transaction
+from django.urls import reverse_lazy
 from django.utils.text import slugify
 from django.forms import inlineformset_factory
 from django.utils import timezone
@@ -187,6 +188,23 @@ class DiagnosisForm(StyledModelForm):
         model = Diagnosis
         fields = ["description", "icd10_code", "status", "diagnosed_on", "resolved_on", "notes"]
         widgets = {
+            # Typing here looks up matching ICD-10 codes (see
+            # portal.views_doctor.icd10_search and _icd10_results.html, which
+            # is what hx-target="#icd10-suggestions" swaps into — that
+            # container lives in _form_modal.html, next to this field, only
+            # when the modal is showing a diagnosis). Picking a suggestion
+            # fills icd10_code too; typing something with no match just saves
+            # as free text, same as before this existed.
+            "description": forms.TextInput(attrs={
+                **INPUT,
+                "autocomplete": "off",
+                "hx-get": reverse_lazy("doctor_icd10_search"),
+                "hx-trigger": "keyup changed delay:200ms, search",
+                "hx-target": "#icd10-suggestions",
+            }),
+            "icd10_code": forms.TextInput(attrs={
+                **INPUT, "placeholder": "Filled in from the list above, or type your own",
+            }),
             "diagnosed_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
             "resolved_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
             "notes": forms.Textarea(attrs=TEXTAREA),

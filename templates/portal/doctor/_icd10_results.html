@@ -1,0 +1,37 @@
+{% comment %}
+Type-ahead results for the diagnosis form's description field.
+
+Each result is a button, not a link — picking one fills the description and
+icd10_code inputs on the same form rather than navigating anywhere. No match
+is not an error: the field stays free text, so whatever the doctor typed is
+still saved, just without a code attached.
+{% endcomment %}
+
+{% if results %}
+  <ul class="picklist">
+    {% for c in results %}
+      <li>
+        <button type="button" class="picklist__item"
+                onclick="pickICD10('{{ c.code|escapejs }}', '{{ c.description|escapejs }}')">
+          <span class="picklist__name">{{ c.description }}</span>
+          <span class="picklist__meta mono">{{ c.code }}</span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query|length >= 2 %}
+  <p class="faint small" style="margin:.5rem 0 0">
+    No ICD-10 match for &ldquo;{{ query }}&rdquo; &mdash; this will be saved as a plain-text problem, with no code.
+  </p>
+{% endif %}
+
+<script>
+  function pickICD10(code, description) {
+    const description_field = document.getElementById('id_description');
+    const code_field = document.getElementById('id_icd10_code');
+    if (description_field) description_field.value = description;
+    if (code_field) code_field.value = code;
+    const suggestions = document.getElementById('icd10-suggestions');
+    if (suggestions) suggestions.innerHTML = '';
+  }
+</script>
