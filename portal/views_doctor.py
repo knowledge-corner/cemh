@@ -572,34 +572,24 @@ def _own_patients_only(request, chosen):
 @role_required(Role.DOCTOR)
 def analytics_view(request):
     """
-    Research on the doctor's own patients: a full records table, and a
-    dashboard built from the same filters.
+    Research on the doctor's own patients: a filtered, paginated records
+    table.
 
     Every filter is optional. Leaving all of them blank is not an error state
-    — it is "every patient of mine the clinic has", which is what the
-    dashboard and the records table both show until the doctor narrows them.
+    — it is "every patient of mine the clinic has", 10 to a page.
     """
-    tab = request.GET.get("tab", "dashboard")
-    if tab not in ("dashboard", "download"):
-        tab = "dashboard"
-
     chosen = _own_patients_only(request, analytics.parse_filters(request.GET))
     patients = analytics.filtered_patients(chosen)
-    visits = analytics.visits_for(patients, chosen)
+    page_obj, rows = analytics.patient_rows_page(patients, request.GET.get("page"))
 
     context = {
-        "tab": tab,
         "filters": chosen,
         "filter_qs": analytics.filter_querystring(request.GET),
+        "page_obj": page_obj,
+        "rows": rows,
+        "download_count": page_obj.paginator.count,
         **analytics.filter_options(),
     }
-
-    if tab == "dashboard":
-        context.update(analytics.dashboard_stats(patients, visits, chosen))
-    else:
-        context["download_count"] = patients.count()
-        context["rows"] = analytics.patient_rows(patients)
-
     return render(request, "portal/doctor/analytics.html", context)
 
 

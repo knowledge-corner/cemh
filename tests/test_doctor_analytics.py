@@ -1,11 +1,14 @@
 """
-The doctor's Analytics tab: a filtered records table, a CSV download and a
-dashboard built from the same filters, for a doctor researching her own
-patient population by condition, age or gender.
+The doctor's Analytics tab: a filtered, paginated records table and a CSV
+download, for a doctor researching her own patient population by condition,
+age or gender.
 
 Scoped to the doctor's own patients always — there is no Doctor or
 Specialisation picker any more, since a doctor's analytics has nothing else
 to be about.
+
+The dashboard (stat tiles/charts) is disabled for now — the page always
+shows the records list, unpaged sub-tab UI included, 10 patients per page.
 """
 
 from datetime import timedelta
@@ -17,7 +20,7 @@ from django.utils import timezone
 from accounts.models import DoctorProfile, Specialisation
 from audit.models import AccessLog, AuditAction
 from clinical.models import Diagnosis
-from patients.models import Patient, Sex
+from patients.models import Sex
 
 from .factories import make_doctor, make_patient, make_receptionist, make_visit, today_at
 
@@ -28,11 +31,8 @@ class AnalyticsTestCase(TestCase):
         self.receptionist = make_receptionist()
         self.client.force_login(self.doctor)
 
-    def _dashboard(self, **params):
-        return self.client.get(reverse("doctor_analytics"), {"tab": "dashboard", **params})
-
-    def _download(self, **params):
-        return self.client.get(reverse("doctor_analytics"), {"tab": "download", **params})
+    def _list(self, **params):
+        return self.client.get(reverse("doctor_analytics"), params)
 
     def _export(self, **params):
         return self.client.get(reverse("doctor_analytics_export"), params)
@@ -40,11 +40,11 @@ class AnalyticsTestCase(TestCase):
 
 class TestAccessToAnalytics(AnalyticsTestCase):
     def test_a_doctor_can_open_it(self):
-        self.assertEqual(self._dashboard().status_code, 200)
+        self.assertEqual(self._list().status_code, 200)
 
     def test_a_receptionist_cannot(self):
         self.client.force_login(self.receptionist)
-        self.assertEqual(self._dashboard().status_code, 403)
+        self.assertEqual(self._list().status_code, 403)
 
     def test_a_receptionist_cannot_export_either(self):
         self.client.force_login(self.receptionist)
@@ -54,9 +54,10 @@ class TestAccessToAnalytics(AnalyticsTestCase):
         response = self.client.get(reverse("doctor_home"))
         self.assertContains(response, reverse("doctor_analytics"))
 
-    def test_an_unrecognised_tab_falls_back_to_the_dashboard(self):
-        response = self.client.get(reverse("doctor_analytics"), {"tab": "nonsense"})
-        self.assertContains(response, "Patients matching filters")
+    def test_the_dashboard_tab_switcher_is_gone(self):
+        response = self._list()
+        self.assertNotContains(response, ">Dashboard<")
+        self.assertNotContains(response, ">View<")
 
 
 class TestTheUnfilteredView(AnalyticsTestCase):
@@ -67,17 +68,37 @@ class TestTheUnfilteredView(AnalyticsTestCase):
         make_visit(aarav, self.doctor, start=today_at(9))
         make_visit(bina, self.doctor, start=today_at(10))
 
-    def test_dashboard_counts_every_patient_with_no_filters(self):
-        response = self._dashboard()
-        self.assertEqual(response.context["patient_count"], 2)
-        # total_patients counts the whole clinic, not just this doctor's own —
-        # a separate figure, shown for scale.
-        self.assertEqual(response.context["total_patients"], 2)
-
-    def test_download_counts_every_patient_with_no_filters(self):
-        response = self._download()
+    def test_lists_every_patient_with_no_filters(self):
+        response = self._list()
         self.assertEqual(response.context["download_count"], 2)
         self.assertEqual(len(response.context["rows"]), 2)
+
+
+class TestPagination(AnalyticsTestCase):
+    def setUp(self):
+        super().setUp()
+        for i in range(23):
+            patient = make_patient(first_name=f"Pager{i:02d}", phone=f"98200003{i:02d}")
+            make_visit(patient, self.doctor, start=today_at(9) + timedelta(minutes=30 * i))
+
+    def test_the_first_page_shows_ten(self):
+        response = self._list()
+        self.assertEqual(len(response.context["rows"]), 10)
+        self.assertEqual(response.context["page_obj"].paginator.num_pages, 3)
+        self.assertEqual(response.context["download_count"], 23)
+
+    def test_the_last_page_shows_the_remainder(self):
+        response = self._list(page=3)
+        self.assertEqual(len(response.context["rows"]), 3)
+
+    def test_pagination_links_appear_when_there_is_more_than_one_page(self):
+        response = self._list()
+        self.assertContains(response, "Page 1 of 3")
+        self.assertContains(response, "Next")
+
+    def test_an_out_of_range_page_falls_back_to_the_last_one(self):
+        response = self._list(page=999)
+        self.assertEqual(response.context["page_obj"].number, 3)
 
 
 class TestGenderAndAgeFilters(AnalyticsTestCase):
@@ -95,20 +116,20 @@ class TestGenderAndAgeFilters(AnalyticsTestCase):
         make_visit(self.adult, self.doctor, start=today_at(10))
 
     def test_filtering_by_gender(self):
-        response = self._dashboard(sex=Sex.FEMALE)
-        self.assertEqual(response.context["patient_count"], 1)
+        response = self._list(sex=Sex.FEMALE)
+        self.assertEqual(response.context["download_count"], 1)
 
     def test_filtering_by_minimum_age_excludes_the_child(self):
-        response = self._dashboard(age_min=18)
-        self.assertEqual(response.context["patient_count"], 1)
+        response = self._list(age_min=18)
+        self.assertEqual(response.context["download_count"], 1)
 
     def test_filtering_by_maximum_age_excludes_the_adult(self):
-        response = self._dashboard(age_max=17)
-        self.assertEqual(response.context["patient_count"], 1)
+        response = self._list(age_max=17)
+        self.assertEqual(response.context["download_count"], 1)
 
     def test_an_age_band_can_exclude_everybody(self):
-        response = self._dashboard(age_min=20, age_max=30)
-        self.assertEqual(response.context["patient_count"], 0)
+        response = self._list(age_min=20, age_max=30)
+        self.assertEqual(response.context["download_count"], 0)
 
 
 class TestConditionAndStatusFilters(AnalyticsTestCase):
@@ -139,25 +160,19 @@ class TestConditionAndStatusFilters(AnalyticsTestCase):
             make_visit(patient, self.doctor, start=today_at(9 + i))
 
     def test_matching_by_condition_text_is_case_insensitive(self):
-        response = self._dashboard(condition="THYROID")
-        self.assertEqual(response.context["patient_count"], 2)
+        response = self._list(condition="THYROID")
+        self.assertEqual(response.context["download_count"], 2)
 
     def test_combining_condition_and_status_matches_the_same_diagnosis(self):
         # mixed_patient's Hypothyroidism is ACTIVE and their Diabetes is
         # RESOLVED — no single diagnosis is both "thyroid" and RESOLVED, so
         # this must not match, even though each half matches something.
-        response = self._dashboard(condition="thyroid", diagnosis_status=Diagnosis.Status.RESOLVED)
-        self.assertEqual(response.context["patient_count"], 0)
+        response = self._list(condition="thyroid", diagnosis_status=Diagnosis.Status.RESOLVED)
+        self.assertEqual(response.context["download_count"], 0)
 
     def test_combining_condition_and_status_when_they_do_agree(self):
-        response = self._dashboard(condition="thyroid", diagnosis_status=Diagnosis.Status.ACTIVE)
-        self.assertEqual(response.context["patient_count"], 2)
-
-    def test_top_conditions_are_counted_across_the_filtered_set(self):
-        response = self._dashboard()
-        labels = {row["label"]: row["count"] for row in response.context["top_conditions"]}
-        self.assertEqual(labels["Hypothyroidism"], 2)
-        self.assertEqual(labels["Migraine"], 1)
+        response = self._list(condition="thyroid", diagnosis_status=Diagnosis.Status.ACTIVE)
+        self.assertEqual(response.context["download_count"], 2)
 
 
 class TestAnalyticsIsScopedToOwnPatients(AnalyticsTestCase):
@@ -184,23 +199,23 @@ class TestAnalyticsIsScopedToOwnPatients(AnalyticsTestCase):
         make_visit(self.their_patient, self.other_doctor, start=today_at(11))
 
     def test_only_my_own_patient_is_counted(self):
-        response = self._dashboard()
-        self.assertEqual(response.context["patient_count"], 1)
+        response = self._list()
+        self.assertEqual(response.context["download_count"], 1)
 
     def test_the_doctor_and_specialisation_filters_are_not_offered(self):
-        response = self._dashboard()
+        response = self._list()
         self.assertNotContains(response, 'name="doctor"')
         self.assertNotContains(response, 'name="specialisation"')
 
     def test_a_crafted_doctor_parameter_is_ignored(self):
         # Even asked directly for the other doctor's patients, this doctor's
         # own analytics never shows anyone but their own.
-        response = self._dashboard(doctor=self.other_doctor.pk)
-        self.assertEqual(response.context["patient_count"], 1)
+        response = self._list(doctor=self.other_doctor.pk)
+        self.assertEqual(response.context["download_count"], 1)
         self.assertEqual(response.context["filters"]["doctor"], self.doctor.pk)
 
-    def test_the_view_tab_also_stays_scoped(self):
-        response = self._download(doctor=self.other_doctor.pk)
+    def test_it_stays_scoped(self):
+        response = self._list(doctor=self.other_doctor.pk)
         self.assertEqual(response.context["download_count"], 1)
         self.assertEqual(response.context["rows"][0]["patient"], self.my_patient)
 
@@ -219,23 +234,11 @@ class TestDateRangeFilter(AnalyticsTestCase):
 
     def test_a_date_range_excludes_visits_outside_it(self):
         today = timezone.localdate()
-        response = self._dashboard(
+        response = self._list(
             date_from=(today - timedelta(days=1)).isoformat(),
             date_to=(today + timedelta(days=1)).isoformat(),
         )
-        self.assertEqual(response.context["patient_count"], 1)
-
-
-class TestVisitOutcomeBreakdown(AnalyticsTestCase):
-    def test_visit_statuses_are_counted(self):
-        patient = make_patient(first_name="Stat", phone="9820000601")
-        visit = make_visit(patient, self.doctor, start=today_at(9))
-        visit.transition_to("CONFIRMED")
-        visit.transition_to("ARRIVED")
-
-        response = self._dashboard()
-        outcomes = {row["label"]: row["count"] for row in response.context["visit_outcomes"]}
-        self.assertEqual(outcomes.get("Arrived"), 1)
+        self.assertEqual(response.context["download_count"], 1)
 
 
 class TestTheCsvExport(AnalyticsTestCase):

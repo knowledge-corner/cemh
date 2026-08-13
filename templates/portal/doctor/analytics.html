@@ -8,8 +8,7 @@
   <div>
     <h1 class="page-header__title">Analytics</h1>
     <p class="page-header__sub">
-      Research across your own patients — filter by condition, age or gender,
-      then view the list or read it as a dashboard.
+      Research across your own patients — filter by condition, age or gender.
     </p>
   </div>
 </div>
@@ -17,15 +16,11 @@
 {% include "portal/doctor/_nav.html" with nav_active="analytics" %}
 
 {% comment %}
-One filter form for both sub-tabs, so a doctor narrowing to "hypothyroid,
-female, 18–45" sees that same set whether they then choose to download it or
-read the dashboard — the two must never silently disagree about what is
-being counted. Plain GET parameters, so a filtered view can be bookmarked and
-the CSV export can be built from exactly the querystring on screen.
+Plain GET parameters, so a filtered view can be bookmarked and the CSV
+export can be built from exactly the querystring on screen.
 {% endcomment %}
 <form method="get" class="filters"
       style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
-  <input type="hidden" name="tab" value="{{ tab }}">
 
   <div class="field" style="margin:0">
     <label class="field__label" for="a-condition">Condition</label>
@@ -76,191 +71,79 @@ the CSV export can be built from exactly the querystring on screen.
   </div>
 
   <button class="btn btn--primary" type="submit">Filter</button>
-  <a class="btn btn--secondary" href="?tab={{ tab }}">Clear</a>
+  <a class="btn btn--secondary" href="?">Clear</a>
 </form>
 
-<div class="tabs" role="tablist">
-  <a class="tab" role="tab" href="?tab=dashboard{% if filter_qs %}&{{ filter_qs }}{% endif %}"
-     aria-selected="{% if tab == 'dashboard' %}true{% else %}false{% endif %}">Dashboard</a>
-  <a class="tab" role="tab" href="?tab=download{% if filter_qs %}&{{ filter_qs }}{% endif %}"
-     aria-selected="{% if tab == 'download' %}true{% else %}false{% endif %}">View</a>
-</div>
+{% comment %}
+One row per patient rather than per visit — this is "who are my hypothyroid
+patients", not a billing ledger, and reception's bookings export already
+covers the visit-by-visit view of the diary.
+{% endcomment %}
+<p class="faint small" style="margin:0 0 .75rem">
+  <strong>{{ download_count }}</strong> patient{{ download_count|pluralize }}
+  match{{ download_count|pluralize:"es," }} these filters
+  <a class="btn btn--primary" style="margin-left:.75rem"
+     href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download CSV</a>
+</p>
 
-<div class="tab-panel">
-  {% if tab == 'dashboard' %}
+{% if rows %}
+  <div class="table-scroll">
+    <table class="table table--middle">
+      <thead>
+        <tr>
+          <th>Patient</th><th>{{ patient_id_label }}</th><th>Age</th><th>Gender</th>
+          <th>Phone</th><th>Active diagnoses</th>
+          <th class="table__num">Visits</th><th>Last visit</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="strong">{{ row.patient.full_name }}</td>
+            <td class="mono faint">{{ row.patient.patient_id }}</td>
+            <td>{{ row.patient.age_display }}</td>
+            <td>{{ row.patient.get_sex_display }}</td>
+            <td class="mono">{{ row.patient.phone|default:"—" }}</td>
+            <td>{{ row.diagnoses|default:"—" }}</td>
+            <td class="table__num">{{ row.visit_count }}</td>
+            <td class="nowrap">{% if row.last_visit %}{{ row.last_visit.scheduled_start|date:"j M Y" }}{% else %}—{% endif %}</td>
+            <td class="row-actions">
+              {% comment %}
+              New tab, read-only: this is a look-up from a research list,
+              not the doctor's own queue, so it must not take over the
+              screen the doctor is filtering from — and it opens read-only
+              the same way every "Open" elsewhere does, since it is not a
+              visit being sent in.
+              {% endcomment %}
+              <a class="btn btn--secondary"
+                 href="{% url 'doctor_patient_dashboard' row.patient.patient_id %}"
+                 target="_blank" rel="noopener">Open</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-    <div class="stat-grid">
-      <div class="stat-tile">
-        <div class="stat-tile__value">{{ patient_count }}</div>
-        <div class="stat-tile__label">Patients matching filters</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-tile__value">{{ visit_count }}</div>
-        <div class="stat-tile__label">Visits matching filters</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-tile__value">{{ total_patients }}</div>
-        <div class="stat-tile__label">Total patients in the clinic</div>
-      </div>
+  {% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination" style="display:flex;gap:.75rem;align-items:center;margin-top:1rem">
+      {% if page_obj.has_previous %}
+        <a class="btn btn--secondary"
+           href="?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+      {% endif %}
+      <span class="faint small">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a class="btn btn--secondary"
+           href="?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+      {% endif %}
     </div>
-
-    {% if patient_count == 0 %}
-      <div class="empty">
-        <div class="empty__icon">🔍</div>
-        <div class="empty__title">Nothing matches those filters</div>
-        <div class="empty__hint">Widen them, or clear the filters to see every patient.</div>
-      </div>
-    {% else %}
-      <div class="card">
-        <div class="card__header"><h2 class="card__title">Age distribution</h2></div>
-        <div class="card__body">
-          <div class="bar-list">
-            {% for row in age_distribution %}
-              <div class="bar-list__row">
-                <span class="bar-list__label">{{ row.label }}</span>
-                <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
-                <span class="bar-list__count">{{ row.count }}</span>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card__header"><h2 class="card__title">Gender distribution</h2></div>
-        <div class="card__body">
-          <div class="bar-list">
-            {% for row in sex_distribution %}
-              <div class="bar-list__row">
-                <span class="bar-list__label">{{ row.label }}</span>
-                <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
-                <span class="bar-list__count">{{ row.count }}</span>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card__header"><h2 class="card__title">Top conditions</h2></div>
-        <div class="card__body">
-          {% if top_conditions %}
-            <div class="bar-list">
-              {% for row in top_conditions %}
-                <div class="bar-list__row">
-                  <span class="bar-list__label" title="{{ row.label }}">{{ row.label }}</span>
-                  <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
-                  <span class="bar-list__count">{{ row.count }}</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="faint small" style="margin:0">No diagnoses recorded for this set.</p>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card__header"><h2 class="card__title">Visits over time</h2></div>
-        <div class="card__body">
-          {% if visits_over_time %}
-            <div class="bar-list">
-              {% for row in visits_over_time %}
-                <div class="bar-list__row">
-                  <span class="bar-list__label">{{ row.label }}</span>
-                  <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
-                  <span class="bar-list__count">{{ row.count }}</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="faint small" style="margin:0">No visits recorded for this set.</p>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card__header"><h2 class="card__title">Visit outcomes</h2></div>
-        <div class="card__body">
-          {% if visit_outcomes %}
-            <div class="bar-list">
-              {% for row in visit_outcomes %}
-                <div class="bar-list__row">
-                  <span class="bar-list__label">{{ row.label }}</span>
-                  <span class="bar-list__track"><span class="bar-list__fill" style="width:{{ row.pct }}%"></span></span>
-                  <span class="bar-list__count">{{ row.count }}</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="faint small" style="margin:0">No visits recorded for this set.</p>
-          {% endif %}
-        </div>
-      </div>
-    {% endif %}
-
-  {% else %}
-
-    {% comment %}
-    View. One row per patient rather than per visit — this is "who are my
-    hypothyroid patients", not a billing ledger, and reception's bookings
-    export already covers the visit-by-visit view of the diary.
-    {% endcomment %}
-    <p class="faint small" style="margin:0 0 .75rem">
-      <strong>{{ download_count }}</strong> patient{{ download_count|pluralize }}
-      match{{ download_count|pluralize:"es," }} these filters
-      {% if download_count > 200 %}· showing the first 200, the CSV has all of them{% endif %}
-      <a class="btn btn--primary" style="margin-left:.75rem"
-         href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download CSV</a>
-    </p>
-
-    {% if rows %}
-      <div class="table-scroll">
-        <table class="table table--middle">
-          <thead>
-            <tr>
-              <th>Patient</th><th>{{ patient_id_label }}</th><th>Age</th><th>Gender</th>
-              <th>Phone</th><th>Active diagnoses</th>
-              <th class="table__num">Visits</th><th>Last visit</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in rows %}
-              <tr>
-                <td class="strong">{{ row.patient.full_name }}</td>
-                <td class="mono faint">{{ row.patient.patient_id }}</td>
-                <td>{{ row.patient.age_display }}</td>
-                <td>{{ row.patient.get_sex_display }}</td>
-                <td class="mono">{{ row.patient.phone|default:"—" }}</td>
-                <td>{{ row.diagnoses|default:"—" }}</td>
-                <td class="table__num">{{ row.visit_count }}</td>
-                <td class="nowrap">{% if row.last_visit %}{{ row.last_visit.scheduled_start|date:"j M Y" }}{% else %}—{% endif %}</td>
-                <td class="row-actions">
-                  {% comment %}
-                  New tab, read-only: this is a look-up from a research list,
-                  not the doctor's own queue, so it must not take over the
-                  screen the doctor is filtering from — and it opens read-only
-                  the same way every "Open" elsewhere does, since it is not a
-                  visit being sent in.
-                  {% endcomment %}
-                  <a class="btn btn--secondary"
-                     href="{% url 'doctor_patient_dashboard' row.patient.patient_id %}"
-                     target="_blank" rel="noopener">Open</a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="empty">
-        <div class="empty__icon">🔍</div>
-        <div class="empty__title">Nothing matches those filters</div>
-        <div class="empty__hint">Widen them, or clear the filters to see every patient.</div>
-      </div>
-    {% endif %}
-
   {% endif %}
-</div>
+{% else %}
+  <div class="empty">
+    <div class="empty__icon">🔍</div>
+    <div class="empty__title">Nothing matches those filters</div>
+    <div class="empty__hint">Widen them, or clear the filters to see every patient.</div>
+  </div>
+{% endif %}
 
 {% endblock %}

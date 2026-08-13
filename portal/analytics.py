@@ -2,16 +2,21 @@
 Doctor-facing research filters and aggregates, backing the Analytics tab.
 
 One filtered patient set, two destinations: the doctor either writes it out
-as a CSV for her own analysis, or reads it as the dashboard's stat tiles and
-charts. Kept in one module so the two screens cannot end up disagreeing about
-what a given combination of filters actually means. Every filter is optional —
+as a CSV for her own analysis, or reads it as a paginated records table.
+Kept in one module so the two screens cannot end up disagreeing about what a
+given combination of filters actually means. Every filter is optional —
 leaving all of them blank is "every patient the clinic has", which is the
-unfiltered view the dashboard and the CSV both start from.
+unfiltered view the records table and the CSV both start from.
+
+The dashboard (stat tiles and charts, ``dashboard_stats`` below) is not
+currently wired into the page — it is left in place, unused, in case it is
+switched back on later.
 """
 
 from datetime import date
 from urllib.parse import urlencode
 
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.db.models.functions import TruncMonth
 
@@ -157,19 +162,23 @@ def visits_for(patients, chosen):
     return visits
 
 
-#: The records table caps out here — the same reason bookings.html caps its
-#: completed list at 300: a doctor with years of patients should not turn the
-#: page into an unbounded query. The CSV export has no such limit.
-RECORD_ROWS_LIMIT = 200
+#: The records table shows this many patients per page — the same reason
+#: bookings.html caps its completed list: a doctor with years of patients
+#: should not turn the page into an unbounded query. The CSV export has no
+#: such limit, paginated or otherwise.
+PAGE_SIZE = 10
 
 
-def patient_rows(patients, limit=RECORD_ROWS_LIMIT):
+def patient_rows_page(patients, page_number):
     """
-    One row per patient for the View tab's table — the same fields the CSV
-    export writes, computed once here so the two cannot drift apart.
+    One page of patient rows for the records table — the same per-patient
+    fields the CSV export writes, computed once here so the two cannot drift
+    apart. Returns (page_obj, rows).
     """
+    ordered = patients.order_by("last_name", "first_name")
+    page_obj = Paginator(ordered, PAGE_SIZE).get_page(page_number)
     rows = []
-    for patient in patients.order_by("last_name", "first_name")[:limit]:
+    for patient in page_obj.object_list:
         diagnoses = ", ".join(
             d.description for d in patient.diagnoses.filter(status="ACTIVE")[:5]
         )
@@ -181,7 +190,7 @@ def patient_rows(patients, limit=RECORD_ROWS_LIMIT):
             "visit_count": patient_visits.count(),
             "last_visit": last_visit,
         })
-    return rows
+    return page_obj, rows
 
 
 def filter_options():
