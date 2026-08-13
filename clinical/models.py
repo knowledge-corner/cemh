@@ -108,6 +108,152 @@ class InvestigationCategory(models.TextChoices):
     OTHER = "OTHER", "Other"
 
 
+class LabTest(models.Model):
+    """
+    The lab's master list of orderable tests — what can be tested, not what
+    counts as normal.
+
+    Loaded once from a seed catalogue (``clinical/data/lab_tests.tsv``, 500
+    common tests). Deliberately carries no reference values itself: the
+    catalogue it was seeded from ships every test with reference_low,
+    reference_high and every other clinical column blank, on purpose — see
+    LabReferenceRange, which is a separate table for exactly that reason.
+    """
+
+    code = models.CharField(max_length=20, unique=True, db_index=True)
+    name = models.CharField(max_length=200, db_index=True)
+    category = models.CharField(max_length=100, blank=True, db_index=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["category", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class ReferenceSex(models.TextChoices):
+    ANY = "ANY", "Any"
+    MALE = "MALE", "Male"
+    FEMALE = "FEMALE", "Female"
+
+
+class ReferenceStatus(models.TextChoices):
+    #: Where every row starts — nothing here has been checked against a real
+    #: source yet, matching the seed catalogue's own vocabulary for "we know
+    #: the test exists, we do not yet know the range."
+    REFERENCE_REQUIRED = "MASTER_ONLY_REFERENCE_REQUIRED", "Reference required"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED", "Review required"
+    #: The only status that ever drives an automatic normal/abnormal flag —
+    #: see clinical.lab_reference.evaluate_value. Everything else is visible
+    #: in the admin and on the downloadable template, never silently acted on.
+    VALIDATED = "VALIDATED", "Validated"
+    DEPRECATED = "DEPRECATED", "Deprecated"
+
+
+class LabReferenceRange(models.Model):
+    """
+    One clinically valid interval, for one band of patients, for one test.
+
+    Its own table rather than columns on LabTest because a single test
+    routinely needs several of these — a different band by sex, by age, by
+    pregnancy state — and each band needs its own source and status kept
+    separately, not merged into one number that quietly stops being correct
+    for half the clinic's patients.
+
+    Nothing here is seeded or invented. Every row exists because a clinician
+    entered it — by hand in the admin, or through the downloadable
+    spreadsheet template in ``clinical/lab_reference_csv.py`` — and reference
+    material recommends preserving exactly this shape (source, version,
+    population, provenance) rather than a bare number.
+    """
+
+    lab_test = models.ForeignKey(LabTest, on_delete=models.CASCADE, related_name="reference_ranges")
+
+    sex = models.CharField(max_length=6, choices=ReferenceSex.choices)
+    age_min = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    age_max = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    age_unit = models.CharField(max_length=10, default="years")
+    pregnancy_status = models.CharField(max_length=50, blank=True)
+    fasting_status = models.CharField(max_length=50, blank=True)
+
+    #: At least one of these is required — some analytes only report a
+    #: ceiling ("less than 5"), some only a floor.
+    low = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    high = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    unit = models.CharField(max_length=50)
+
+    source = models.CharField(max_length=300)
+    source_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    status = models.CharField(
+        max_length=32, choices=ReferenceStatus.choices,
+        default=ReferenceStatus.REFERENCE_REQUIRED,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lab_test__name", "sex", "age_min"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(low__isnull=False) | models.Q(high__isnull=False),
+                name="reference_range_needs_a_bound",
+            ),
+        ]
+
+    def __str__(self):
+        band = "Any" if self.sex == ReferenceSex.ANY else self.get_sex_display()
+        bounds = f"{self.low if self.low is not None else '?'}–{self.high if self.high is not None else '?'}"
+        return f"{self.lab_test.name} ({band}) — {bounds} {self.unit}"
+
+    def covers_age(self, age_years):
+        """Whether this band applies at all, or applies to this age."""
+        if age_years is None:
+            return self.age_min is None and self.age_max is None
+        if self.age_min is not None and age_years < float(self.age_min):
+            return False
+        if self.age_max is not None and age_years > float(self.age_max):
+            return False
+        return True
+
+
+class LabUnitConversion(models.Model):
+    """
+    ``value_in_to_unit = value_in_from_unit * multiplier + offset``
+
+    Scoped to one test by default, because the seed catalogue's own
+    documentation is explicit that most lab unit conversions are
+    analyte-specific (a mass-to-molar conversion needs that analyte's molar
+    mass) and cannot be represented by one universal multiplier. ``lab_test``
+    is left blank only for a conversion that genuinely is universal — a
+    straightforward metric-prefix change, say — never as a default.
+    """
+
+    lab_test = models.ForeignKey(
+        LabTest, on_delete=models.CASCADE, related_name="unit_conversions",
+        null=True, blank=True,
+        help_text="Leave blank only for a conversion that holds for every test.",
+    )
+    from_unit = models.CharField(max_length=50)
+    to_unit = models.CharField(max_length=50)
+    multiplier = models.DecimalField(max_digits=18, decimal_places=8)
+    offset = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["from_unit", "to_unit"])]
+
+    def __str__(self):
+        scope = self.lab_test.name if self.lab_test_id else "any test"
+        return f"{self.from_unit} → {self.to_unit} ({scope})"
+
+    def convert(self, value):
+        return value * self.multiplier + self.offset
+
+
 class Investigation(models.Model):
     """
     One test result.
@@ -129,6 +275,11 @@ class Investigation(models.Model):
         help_text="The visit this result was reviewed at, if any.",
     )
 
+    lab_test = models.ForeignKey(
+        LabTest, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="investigations",
+        help_text="Set when the test name was picked from the master list.",
+    )
     test_name = models.CharField(max_length=200, db_index=True)
     category = models.CharField(
         max_length=20, choices=InvestigationCategory.choices, default=InvestigationCategory.OTHER
@@ -188,6 +339,8 @@ class ICD10Code(models.Model):
 
     class Meta:
         ordering = ["code"]
+        verbose_name = "ICD-10 code"
+        verbose_name_plural = "ICD-10 codes"
 
     def __str__(self):
         return f"{self.code} — {self.description}"

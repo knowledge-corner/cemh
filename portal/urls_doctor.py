@@ -20,6 +20,12 @@ urlpatterns = [
     ),
     path("search/", views_doctor.doctor_patient_search, name="doctor_patient_search"),
     path("icd10-search/", views_doctor.icd10_search, name="doctor_icd10_search"),
+    path("lab-test-search/", views_doctor.lab_test_search, name="doctor_lab_test_search"),
+    path(
+        "patient/<str:patient_id>/investigation/evaluate/",
+        views_doctor.lab_evaluate,
+        name="doctor_lab_evaluate",
+    ),
     path(
         "patient/<str:patient_id>/",
         views_doctor.patient_dashboard,

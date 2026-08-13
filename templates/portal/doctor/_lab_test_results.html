@@ -1,0 +1,40 @@
+{% comment %}
+Type-ahead results for the investigation form's test name field. Picking one
+fills test_name and the hidden lab_test field, then immediately asks for an
+evaluation (see doctor_lab_evaluate) so the unit and reference range show up
+before the doctor has even typed a value.
+{% endcomment %}
+
+{% if results %}
+  <ul class="picklist">
+    {% for t in results %}
+      <li>
+        <button type="button" class="picklist__item"
+                onclick="pickLabTest('{{ t.pk }}', '{{ t.name|escapejs }}')">
+          <span class="picklist__name">{{ t.name }}</span>
+          <span class="picklist__meta">{{ t.category }} &middot; <span class="mono">{{ t.code }}</span></span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query|length >= 2 %}
+  <p class="faint small" style="margin:.5rem 0 0">
+    No test on the master list matches &ldquo;{{ query }}&rdquo; &mdash; this will be saved as a plain-text result.
+  </p>
+{% endif %}
+
+<script>
+  function pickLabTest(pk, name) {
+    const name_field = document.getElementById('id_test_name');
+    const lab_test_field = document.getElementById('id_lab_test');
+    if (name_field) name_field.value = name;
+    if (lab_test_field) lab_test_field.value = pk;
+    const suggestions = document.getElementById('lab-test-suggestions');
+    if (suggestions) suggestions.innerHTML = '';
+    // Ask for the reference range straight away, before any value is typed —
+    // this is the same request the value/unit fields trigger themselves, see
+    // InvestigationForm's widgets.
+    const value_field = document.getElementById('id_value_numeric');
+    if (value_field && window.htmx) htmx.trigger(value_field, 'change');
+  }
+</script>

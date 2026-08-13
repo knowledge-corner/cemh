@@ -1,0 +1,500 @@
+LAB0001	Hemoglobin	Hematology
+LAB0002	Hematocrit	Hematology
+LAB0003	Red blood cell count	Hematology
+LAB0004	White blood cell count	Hematology
+LAB0005	Platelet count	Hematology
+LAB0006	Mean corpuscular volume	Hematology
+LAB0007	Mean corpuscular hemoglobin	Hematology
+LAB0008	Mean corpuscular hemoglobin concentration	Hematology
+LAB0009	Red cell distribution width	Hematology
+LAB0010	Mean platelet volume	Hematology
+LAB0011	Reticulocyte count	Hematology
+LAB0012	Reticulocyte percentage	Hematology
+LAB0013	Absolute neutrophil count	Hematology
+LAB0014	Absolute lymphocyte count	Hematology
+LAB0015	Absolute monocyte count	Hematology
+LAB0016	Absolute eosinophil count	Hematology
+LAB0017	Absolute basophil count	Hematology
+LAB0018	Neutrophil percentage	Hematology
+LAB0019	Lymphocyte percentage	Hematology
+LAB0020	Monocyte percentage	Hematology
+LAB0021	Eosinophil percentage	Hematology
+LAB0022	Basophil percentage	Hematology
+LAB0023	Immature granulocyte percentage	Hematology
+LAB0024	Immature granulocyte count	Hematology
+LAB0025	Nucleated red blood cell count	Hematology
+LAB0026	Nucleated red blood cell percentage	Hematology
+LAB0027	Erythrocyte sedimentation rate	Hematology
+LAB0028	Peripheral blood smear	Hematology
+LAB0029	Sickle cell screen	Hematology
+LAB0030	Sickle cell solubility test	Hematology
+LAB0031	Hemoglobin electrophoresis	Hematology
+LAB0032	Hemoglobin A	Hematology
+LAB0033	Hemoglobin A2	Hematology
+LAB0034	Hemoglobin F	Hematology
+LAB0035	Hemoglobin S	Hematology
+LAB0036	Hemoglobin C	Hematology
+LAB0037	Direct antiglobulin test	Hematology
+LAB0038	Indirect antiglobulin test	Hematology
+LAB0039	Blood group ABO	Hematology
+LAB0040	Rh(D) typing	Hematology
+LAB0041	Reticulocyte hemoglobin	Hematology
+LAB0042	Haptoglobin	Hematology
+LAB0043	Erythropoietin	Hematology
+LAB0044	Fetal hemoglobin	Hematology
+LAB0045	Plasma viscosity	Hematology
+LAB0046	Leukocyte alkaline phosphatase	Hematology
+LAB0047	G6PD screen	Hematology
+LAB0048	G6PD quantitative	Hematology
+LAB0049	Methemoglobin	Hematology
+LAB0050	Carboxyhemoglobin	Hematology
+LAB0051	Osmotic fragility test	Hematology
+LAB0052	Red cell membrane studies	Hematology
+LAB0053	Thalassemia screen	Hematology
+LAB0054	Hemoglobin H inclusion bodies	Hematology
+LAB0055	Paroxysmal nocturnal hemoglobinuria screen	Hematology
+LAB0056	Flow cytometry CD4 count	Hematology
+LAB0057	Flow cytometry CD8 count	Hematology
+LAB0058	CD4/CD8 ratio	Hematology
+LAB0059	CD19 B-cell count	Hematology
+LAB0060	CD3 T-cell count	Hematology
+LAB0061	CD16/CD56 NK-cell count	Hematology
+LAB0062	Absolute CD3 count	Hematology
+LAB0063	Absolute CD8 count	Hematology
+LAB0064	Glucose fasting	Clinical Chemistry
+LAB0065	Glucose random	Clinical Chemistry
+LAB0066	Glucose postprandial	Clinical Chemistry
+LAB0067	Glucose 2-hour oral glucose tolerance test	Clinical Chemistry
+LAB0068	Hemoglobin A1c	Clinical Chemistry
+LAB0069	Estimated average glucose	Clinical Chemistry
+LAB0070	Insulin fasting	Clinical Chemistry
+LAB0071	Insulin postprandial	Clinical Chemistry
+LAB0072	C-peptide fasting	Clinical Chemistry
+LAB0073	C-peptide stimulated	Clinical Chemistry
+LAB0074	Fructosamine	Clinical Chemistry
+LAB0075	Lactate	Clinical Chemistry
+LAB0076	Pyruvate	Clinical Chemistry
+LAB0077	Beta-hydroxybutyrate	Clinical Chemistry
+LAB0078	Acetoacetate	Clinical Chemistry
+LAB0079	Total protein	Clinical Chemistry
+LAB0080	Albumin	Clinical Chemistry
+LAB0081	Globulin	Clinical Chemistry
+LAB0082	Albumin/globulin ratio	Clinical Chemistry
+LAB0083	Prealbumin	Clinical Chemistry
+LAB0084	Total bilirubin	Clinical Chemistry
+LAB0085	Direct bilirubin	Clinical Chemistry
+LAB0086	Indirect bilirubin	Clinical Chemistry
+LAB0087	Alanine aminotransferase	Clinical Chemistry
+LAB0088	Aspartate aminotransferase	Clinical Chemistry
+LAB0089	Alkaline phosphatase	Clinical Chemistry
+LAB0090	Gamma-glutamyl transferase	Clinical Chemistry
+LAB0091	5'-nucleotidase	Clinical Chemistry
+LAB0092	Lactate dehydrogenase	Clinical Chemistry
+LAB0093	Cholinesterase	Clinical Chemistry
+LAB0094	Amylase	Clinical Chemistry
+LAB0095	Lipase	Clinical Chemistry
+LAB0096	Creatine kinase	Clinical Chemistry
+LAB0097	CK-MB activity	Clinical Chemistry
+LAB0098	CK-MB mass	Clinical Chemistry
+LAB0099	Total cholesterol	Clinical Chemistry
+LAB0100	HDL cholesterol	Clinical Chemistry
+LAB0101	LDL cholesterol	Clinical Chemistry
+LAB0102	VLDL cholesterol	Clinical Chemistry
+LAB0103	Triglycerides	Clinical Chemistry
+LAB0104	Non-HDL cholesterol	Clinical Chemistry
+LAB0105	Apolipoprotein A1	Clinical Chemistry
+LAB0106	Apolipoprotein B	Clinical Chemistry
+LAB0107	Lipoprotein(a)	Clinical Chemistry
+LAB0108	Small dense LDL	Clinical Chemistry
+LAB0109	Urea	Clinical Chemistry
+LAB0110	Blood urea nitrogen	Clinical Chemistry
+LAB0111	Creatinine serum	Clinical Chemistry
+LAB0112	Creatinine urine	Clinical Chemistry
+LAB0113	Estimated GFR	Clinical Chemistry
+LAB0114	Uric acid	Clinical Chemistry
+LAB0115	Cystatin C	Clinical Chemistry
+LAB0116	Sodium	Clinical Chemistry
+LAB0117	Potassium	Clinical Chemistry
+LAB0118	Chloride	Clinical Chemistry
+LAB0119	Bicarbonate	Clinical Chemistry
+LAB0120	Total carbon dioxide	Clinical Chemistry
+LAB0121	Calcium total	Clinical Chemistry
+LAB0122	Calcium ionized	Clinical Chemistry
+LAB0123	Phosphorus	Clinical Chemistry
+LAB0124	Magnesium	Clinical Chemistry
+LAB0125	Osmolality serum	Clinical Chemistry
+LAB0126	Osmolality urine	Clinical Chemistry
+LAB0127	Anion gap	Clinical Chemistry
+LAB0128	Iron	Clinical Chemistry
+LAB0129	Total iron binding capacity	Clinical Chemistry
+LAB0130	Unsaturated iron binding capacity	Clinical Chemistry
+LAB0131	Transferrin	Clinical Chemistry
+LAB0132	Transferrin saturation	Clinical Chemistry
+LAB0133	Ferritin	Clinical Chemistry
+LAB0134	Copper	Clinical Chemistry
+LAB0135	Ceruloplasmin	Clinical Chemistry
+LAB0136	Zinc	Clinical Chemistry
+LAB0137	Selenium	Clinical Chemistry
+LAB0138	Vitamin B12	Clinical Chemistry
+LAB0139	Folate serum	Clinical Chemistry
+LAB0140	Folate red blood cell	Clinical Chemistry
+LAB0141	Vitamin D total 25-OH	Clinical Chemistry
+LAB0142	Vitamin D 25-OH D2	Clinical Chemistry
+LAB0143	Vitamin D 25-OH D3	Clinical Chemistry
+LAB0144	Vitamin A	Clinical Chemistry
+LAB0145	Vitamin E	Clinical Chemistry
+LAB0146	Vitamin K	Clinical Chemistry
+LAB0147	Homocysteine	Clinical Chemistry
+LAB0148	Methylmalonic acid	Clinical Chemistry
+LAB0149	Coenzyme Q10	Clinical Chemistry
+LAB0150	Ammonia	Clinical Chemistry
+LAB0151	Bile acids	Clinical Chemistry
+LAB0152	Serum osmolality	Clinical Chemistry
+LAB0153	Urine osmolality	Clinical Chemistry
+LAB0154	Lactic acid	Clinical Chemistry
+LAB0155	Pyruvic acid	Clinical Chemistry
+LAB0156	Acetone	Clinical Chemistry
+LAB0157	Phenylalanine	Clinical Chemistry
+LAB0158	Tyrosine	Clinical Chemistry
+LAB0159	Leucine	Clinical Chemistry
+LAB0160	Isoleucine	Clinical Chemistry
+LAB0161	Valine	Clinical Chemistry
+LAB0162	Glycine	Clinical Chemistry
+LAB0163	Glutamine	Clinical Chemistry
+LAB0164	Plasma amino acids	Clinical Chemistry
+LAB0165	Urine amino acids	Clinical Chemistry
+LAB0166	Free fatty acids	Clinical Chemistry
+LAB0167	Beta carotene	Clinical Chemistry
+LAB0168	Carotenoids	Clinical Chemistry
+LAB0169	Total bile acids	Clinical Chemistry
+LAB0170	Cholinesterase serum	Clinical Chemistry
+LAB0171	Adenosine deaminase serum	Clinical Chemistry
+LAB0172	Adenosine deaminase fluid	Clinical Chemistry
+LAB0173	Urine protein 24 hour	Renal and Electrolytes
+LAB0174	Urine albumin 24 hour	Renal and Electrolytes
+LAB0175	Urine albumin/creatinine ratio	Renal and Electrolytes
+LAB0176	Urine protein/creatinine ratio	Renal and Electrolytes
+LAB0177	Microalbumin urine	Renal and Electrolytes
+LAB0178	Fractional excretion of sodium	Renal and Electrolytes
+LAB0179	Fractional excretion of urea	Renal and Electrolytes
+LAB0180	Urine sodium	Renal and Electrolytes
+LAB0181	Urine potassium	Renal and Electrolytes
+LAB0182	Urine chloride	Renal and Electrolytes
+LAB0183	Urine calcium	Renal and Electrolytes
+LAB0184	Urine phosphate	Renal and Electrolytes
+LAB0185	Urine uric acid	Renal and Electrolytes
+LAB0186	Urine creatinine clearance	Renal and Electrolytes
+LAB0187	Urea clearance	Renal and Electrolytes
+LAB0188	Renin activity	Renal and Electrolytes
+LAB0189	Plasma renin concentration	Renal and Electrolytes
+LAB0190	Aldosterone	Renal and Electrolytes
+LAB0191	Aldosterone/renin ratio	Renal and Electrolytes
+LAB0192	Venous blood gas pH	Renal and Electrolytes
+LAB0193	Venous pCO2	Renal and Electrolytes
+LAB0194	Venous pO2	Renal and Electrolytes
+LAB0195	Venous bicarbonate	Renal and Electrolytes
+LAB0196	Arterial blood gas pH	Renal and Electrolytes
+LAB0197	Arterial pCO2	Renal and Electrolytes
+LAB0198	Arterial pO2	Renal and Electrolytes
+LAB0199	Arterial bicarbonate	Renal and Electrolytes
+LAB0200	Arterial oxygen saturation	Renal and Electrolytes
+LAB0201	Base excess	Renal and Electrolytes
+LAB0202	Total hemoglobin blood gas	Renal and Electrolytes
+LAB0203	Ionized magnesium	Renal and Electrolytes
+LAB0204	Ionized calcium	Renal and Electrolytes
+LAB0205	Urine specific gravity	Renal and Electrolytes
+LAB0206	Urine pH	Renal and Electrolytes
+LAB0207	Urine sodium fractional excretion	Renal and Electrolytes
+LAB0208	Urine urea nitrogen	Renal and Electrolytes
+LAB0209	Urine potassium 24 hour	Renal and Electrolytes
+LAB0210	Urine sodium 24 hour	Renal and Electrolytes
+LAB0211	Urine chloride 24 hour	Renal and Electrolytes
+LAB0212	Urine calcium 24 hour	Renal and Electrolytes
+LAB0213	TSH	Endocrinology
+LAB0214	Free T4	Endocrinology
+LAB0215	Free T3	Endocrinology
+LAB0216	Total T4	Endocrinology
+LAB0217	Total T3	Endocrinology
+LAB0218	Thyroglobulin	Endocrinology
+LAB0219	Anti-thyroid peroxidase antibody	Endocrinology
+LAB0220	Anti-thyroglobulin antibody	Endocrinology
+LAB0221	TSH receptor antibody	Endocrinology
+LAB0222	Thyroid stimulating immunoglobulin	Endocrinology
+LAB0223	Parathyroid hormone	Endocrinology
+LAB0224	Calcitonin	Endocrinology
+LAB0225	Cortisol morning	Endocrinology
+LAB0226	Cortisol evening	Endocrinology
+LAB0227	Cortisol random	Endocrinology
+LAB0228	ACTH	Endocrinology
+LAB0229	DHEA-S	Endocrinology
+LAB0230	DHEA	Endocrinology
+LAB0231	Androstenedione	Endocrinology
+LAB0232	17-hydroxyprogesterone	Endocrinology
+LAB0233	Renin	Endocrinology
+LAB0234	Aldosterone plasma	Endocrinology
+LAB0235	Growth hormone	Endocrinology
+LAB0236	IGF-1	Endocrinology
+LAB0237	IGFBP-3	Endocrinology
+LAB0238	Prolactin	Endocrinology
+LAB0239	FSH	Endocrinology
+LAB0240	LH	Endocrinology
+LAB0241	Estradiol	Endocrinology
+LAB0242	Progesterone	Endocrinology
+LAB0243	Total testosterone	Endocrinology
+LAB0244	Free testosterone	Endocrinology
+LAB0245	SHBG	Endocrinology
+LAB0246	AMH	Endocrinology
+LAB0247	Inhibin B	Endocrinology
+LAB0248	Inhibin A	Endocrinology
+LAB0249	hCG quantitative	Endocrinology
+LAB0250	Beta-hCG serum	Endocrinology
+LAB0251	hCG urine	Endocrinology
+LAB0252	Pregnancy-associated plasma protein A	Endocrinology
+LAB0253	Free beta-hCG	Endocrinology
+LAB0254	Anti-Mullerian hormone	Endocrinology
+LAB0255	Human placental lactogen	Endocrinology
+LAB0256	Estriol	Endocrinology
+LAB0257	Unconjugated estriol	Endocrinology
+LAB0258	Total estrogen	Endocrinology
+LAB0259	Free estriol	Endocrinology
+LAB0260	17-hydroxypregnenolone	Endocrinology
+LAB0261	Pregnenolone	Endocrinology
+LAB0262	Progesterone 17-OH	Endocrinology
+LAB0263	Deoxycorticosterone	Endocrinology
+LAB0264	Corticosterone	Endocrinology
+LAB0265	11-deoxycortisol	Endocrinology
+LAB0266	Metanephrine plasma	Endocrinology
+LAB0267	Normetanephrine plasma	Endocrinology
+LAB0268	Metanephrines urine	Endocrinology
+LAB0269	VMA urine	Endocrinology
+LAB0270	HVA urine	Endocrinology
+LAB0271	5-HIAA urine	Endocrinology
+LAB0272	IGF binding protein 1	Endocrinology
+LAB0273	Leptin	Endocrinology
+LAB0274	Adiponectin	Endocrinology
+LAB0275	Ghrelin	Endocrinology
+LAB0276	Insulin-like growth factor 2	Endocrinology
+LAB0277	Proinsulin	Endocrinology
+LAB0278	Beta-cell function marker	Endocrinology
+LAB0279	Thyroid uptake test	Endocrinology
+LAB0280	Thyroid stimulating hormone neonatal	Endocrinology
+LAB0281	Newborn congenital hypothyroidism screen	Endocrinology
+LAB0282	Newborn congenital adrenal hyperplasia screen	Endocrinology
+LAB0283	Troponin I	Cardiac and Muscle
+LAB0284	Troponin T	Cardiac and Muscle
+LAB0285	High-sensitivity troponin I	Cardiac and Muscle
+LAB0286	High-sensitivity troponin T	Cardiac and Muscle
+LAB0287	BNP	Cardiac and Muscle
+LAB0288	NT-proBNP	Cardiac and Muscle
+LAB0289	Myoglobin	Cardiac and Muscle
+LAB0290	Creatine kinase total	Cardiac and Muscle
+LAB0291	CK-MB index	Cardiac and Muscle
+LAB0292	LDH total	Cardiac and Muscle
+LAB0293	LDH-1	Cardiac and Muscle
+LAB0294	LDH-2	Cardiac and Muscle
+LAB0295	LDH-3	Cardiac and Muscle
+LAB0296	LDH-4	Cardiac and Muscle
+LAB0297	LDH-5	Cardiac and Muscle
+LAB0298	AST cardiac marker	Cardiac and Muscle
+LAB0299	Homocysteine cardiac risk	Cardiac and Muscle
+LAB0300	High-sensitivity CRP	Cardiac and Muscle
+LAB0301	Lipoprotein-associated phospholipase A2	Cardiac and Muscle
+LAB0302	Myeloperoxidase	Cardiac and Muscle
+LAB0303	Galectin-3	Cardiac and Muscle
+LAB0304	ST2 soluble	Cardiac and Muscle
+LAB0305	Copeptin	Cardiac and Muscle
+LAB0306	Heart-type fatty acid binding protein	Cardiac and Muscle
+LAB0307	Ischemia-modified albumin	Cardiac and Muscle
+LAB0308	D-dimer quantitative	Cardiac and Muscle
+LAB0309	Fibrin degradation products	Cardiac and Muscle
+LAB0310	Prothrombin time	Coagulation
+LAB0311	INR	Coagulation
+LAB0312	Activated partial thromboplastin time	Coagulation
+LAB0313	Thrombin time	Coagulation
+LAB0314	Fibrinogen	Coagulation
+LAB0315	D-dimer	Coagulation
+LAB0316	Fibrin degradation products	Coagulation
+LAB0317	Factor II activity	Coagulation
+LAB0318	Factor V activity	Coagulation
+LAB0319	Factor VII activity	Coagulation
+LAB0320	Factor VIII activity	Coagulation
+LAB0321	Factor IX activity	Coagulation
+LAB0322	Factor X activity	Coagulation
+LAB0323	Factor XI activity	Coagulation
+LAB0324	Factor XII activity	Coagulation
+LAB0325	Factor XIII activity	Coagulation
+LAB0326	von Willebrand factor antigen	Coagulation
+LAB0327	von Willebrand factor activity	Coagulation
+LAB0328	Ristocetin cofactor	Coagulation
+LAB0329	Factor VIII inhibitor	Coagulation
+LAB0330	Lupus anticoagulant screen	Coagulation
+LAB0331	Lupus anticoagulant confirmatory	Coagulation
+LAB0332	DRVVT screen	Coagulation
+LAB0333	DRVVT confirm	Coagulation
+LAB0334	Protein C activity	Coagulation
+LAB0335	Protein C antigen	Coagulation
+LAB0336	Protein S activity	Coagulation
+LAB0337	Protein S free antigen	Coagulation
+LAB0338	Antithrombin activity	Coagulation
+LAB0339	Antithrombin antigen	Coagulation
+LAB0340	Plasminogen activity	Coagulation
+LAB0341	Plasminogen antigen	Coagulation
+LAB0342	Alpha-2 antiplasmin	Coagulation
+LAB0343	PAI-1 antigen	Coagulation
+LAB0344	Fibrin monomer	Coagulation
+LAB0345	Thrombin generation	Coagulation
+LAB0346	Mixing study PT	Coagulation
+LAB0347	Mixing study aPTT	Coagulation
+LAB0348	Platelet function assay	Coagulation
+LAB0349	PFA-100 collagen/epinephrine	Coagulation
+LAB0350	PFA-100 collagen/ADP	Coagulation
+LAB0351	Bleeding time	Coagulation
+LAB0352	Clotting time	Coagulation
+LAB0353	Euglobulin lysis time	Coagulation
+LAB0354	Heparin anti-Xa	Coagulation
+LAB0355	LMWH anti-Xa	Coagulation
+LAB0356	Unfractionated heparin anti-Xa	Coagulation
+LAB0357	Direct oral anticoagulant screen	Coagulation
+LAB0358	CRP	Inflammation and Immunology
+LAB0359	High-sensitivity CRP	Inflammation and Immunology
+LAB0360	ESR	Inflammation and Immunology
+LAB0361	Procalcitonin	Inflammation and Immunology
+LAB0362	Ferritin inflammatory marker	Inflammation and Immunology
+LAB0363	Serum amyloid A	Inflammation and Immunology
+LAB0364	Interleukin-6	Inflammation and Immunology
+LAB0365	Interleukin-1 beta	Inflammation and Immunology
+LAB0366	Tumor necrosis factor alpha	Inflammation and Immunology
+LAB0367	Immunoglobulin G	Inflammation and Immunology
+LAB0368	Immunoglobulin A	Inflammation and Immunology
+LAB0369	Immunoglobulin M	Inflammation and Immunology
+LAB0370	Immunoglobulin E	Inflammation and Immunology
+LAB0371	Immunoglobulin D	Inflammation and Immunology
+LAB0372	IgG subclass 1	Inflammation and Immunology
+LAB0373	IgG subclass 2	Inflammation and Immunology
+LAB0374	IgG subclass 3	Inflammation and Immunology
+LAB0375	IgG subclass 4	Inflammation and Immunology
+LAB0376	Complement C3	Inflammation and Immunology
+LAB0377	Complement C4	Inflammation and Immunology
+LAB0378	Total complement CH50	Inflammation and Immunology
+LAB0379	Alternative pathway complement AH50	Inflammation and Immunology
+LAB0380	Rheumatoid factor	Inflammation and Immunology
+LAB0381	Anti-CCP antibody	Inflammation and Immunology
+LAB0382	ANA screen	Inflammation and Immunology
+LAB0383	ANA by IFA	Inflammation and Immunology
+LAB0384	ANA titer	Inflammation and Immunology
+LAB0385	Anti-dsDNA antibody	Inflammation and Immunology
+LAB0386	Anti-Sm antibody	Inflammation and Immunology
+LAB0387	Anti-RNP antibody	Inflammation and Immunology
+LAB0388	Anti-SSA/Ro antibody	Inflammation and Immunology
+LAB0389	Anti-SSB/La antibody	Inflammation and Immunology
+LAB0390	Anti-Scl-70 antibody	Inflammation and Immunology
+LAB0391	Anti-centromere antibody	Inflammation and Immunology
+LAB0392	Anti-Jo-1 antibody	Inflammation and Immunology
+LAB0393	Anti-ribosomal P antibody	Inflammation and Immunology
+LAB0394	Anti-histone antibody	Inflammation and Immunology
+LAB0395	ANCA screen	Inflammation and Immunology
+LAB0396	PR3-ANCA	Inflammation and Immunology
+LAB0397	MPO-ANCA	Inflammation and Immunology
+LAB0398	Anti-cardiolipin IgG	Inflammation and Immunology
+LAB0399	Anti-cardiolipin IgM	Inflammation and Immunology
+LAB0400	Beta-2 glycoprotein I IgG	Inflammation and Immunology
+LAB0401	Beta-2 glycoprotein I IgM	Inflammation and Immunology
+LAB0402	Direct Coombs test	Inflammation and Immunology
+LAB0403	Indirect Coombs test	Inflammation and Immunology
+LAB0404	Cold agglutinin titer	Inflammation and Immunology
+LAB0405	Cryoglobulins	Inflammation and Immunology
+LAB0406	Serum free kappa light chains	Inflammation and Immunology
+LAB0407	Serum free lambda light chains	Inflammation and Immunology
+LAB0408	Kappa/lambda ratio	Inflammation and Immunology
+LAB0409	Serum protein electrophoresis	Inflammation and Immunology
+LAB0410	Urine protein electrophoresis	Inflammation and Immunology
+LAB0411	Immunofixation serum	Inflammation and Immunology
+LAB0412	Immunofixation urine	Inflammation and Immunology
+LAB0413	Beta-2 microglobulin	Inflammation and Immunology
+LAB0414	Serum viscosity	Inflammation and Immunology
+LAB0415	Cryofibrinogen	Inflammation and Immunology
+LAB0416	HIV 1/2 antigen antibody screen	Infectious Disease and Serology
+LAB0417	HIV-1 antibody	Infectious Disease and Serology
+LAB0418	HIV-2 antibody	Infectious Disease and Serology
+LAB0419	HIV p24 antigen	Infectious Disease and Serology
+LAB0420	HIV-1 RNA viral load	Infectious Disease and Serology
+LAB0421	HIV-1 genotype resistance	Infectious Disease and Serology
+LAB0422	CD4 percentage	Infectious Disease and Serology
+LAB0423	CD8 percentage	Infectious Disease and Serology
+LAB0424	Hepatitis B surface antigen	Infectious Disease and Serology
+LAB0425	Hepatitis B surface antibody	Infectious Disease and Serology
+LAB0426	Hepatitis B core total antibody	Infectious Disease and Serology
+LAB0427	Hepatitis B core IgM antibody	Infectious Disease and Serology
+LAB0428	Hepatitis B e antigen	Infectious Disease and Serology
+LAB0429	Hepatitis B e antibody	Infectious Disease and Serology
+LAB0430	Hepatitis B DNA viral load	Infectious Disease and Serology
+LAB0431	Hepatitis C antibody	Infectious Disease and Serology
+LAB0432	Hepatitis C RNA qualitative	Infectious Disease and Serology
+LAB0433	Hepatitis C RNA viral load	Infectious Disease and Serology
+LAB0434	Hepatitis C genotype	Infectious Disease and Serology
+LAB0435	Hepatitis A IgM antibody	Infectious Disease and Serology
+LAB0436	Hepatitis A total antibody	Infectious Disease and Serology
+LAB0437	Hepatitis D antibody	Infectious Disease and Serology
+LAB0438	Hepatitis E IgM antibody	Infectious Disease and Serology
+LAB0439	Hepatitis E IgG antibody	Infectious Disease and Serology
+LAB0440	Syphilis RPR	Infectious Disease and Serology
+LAB0441	Syphilis VDRL	Infectious Disease and Serology
+LAB0442	Treponema pallidum antibody	Infectious Disease and Serology
+LAB0443	TPHA	Infectious Disease and Serology
+LAB0444	FTA-ABS	Infectious Disease and Serology
+LAB0445	Dengue NS1 antigen	Infectious Disease and Serology
+LAB0446	Dengue IgM antibody	Infectious Disease and Serology
+LAB0447	Dengue IgG antibody	Infectious Disease and Serology
+LAB0448	Malaria antigen	Infectious Disease and Serology
+LAB0449	Malaria parasite smear	Infectious Disease and Serology
+LAB0450	Malaria PCR	Infectious Disease and Serology
+LAB0451	Chikungunya IgM antibody	Infectious Disease and Serology
+LAB0452	Chikungunya IgG antibody	Infectious Disease and Serology
+LAB0453	Japanese encephalitis IgM	Infectious Disease and Serology
+LAB0454	Leptospira IgM	Infectious Disease and Serology
+LAB0455	Leptospira IgG	Infectious Disease and Serology
+LAB0456	Typhoid IgM	Infectious Disease and Serology
+LAB0457	Typhoid IgG	Infectious Disease and Serology
+LAB0458	Brucella antibody	Infectious Disease and Serology
+LAB0459	Scrub typhus IgM	Infectious Disease and Serology
+LAB0460	Scrub typhus IgG	Infectious Disease and Serology
+LAB0461	Rickettsial antibody panel	Infectious Disease and Serology
+LAB0462	CMV IgM	Infectious Disease and Serology
+LAB0463	CMV IgG	Infectious Disease and Serology
+LAB0464	CMV DNA PCR	Infectious Disease and Serology
+LAB0465	EBV VCA IgM	Infectious Disease and Serology
+LAB0466	EBV VCA IgG	Infectious Disease and Serology
+LAB0467	EBV EBNA IgG	Infectious Disease and Serology
+LAB0468	EBV DNA PCR	Infectious Disease and Serology
+LAB0469	HSV-1 IgG	Infectious Disease and Serology
+LAB0470	HSV-2 IgG	Infectious Disease and Serology
+LAB0471	HSV-1 IgM	Infectious Disease and Serology
+LAB0472	HSV-2 IgM	Infectious Disease and Serology
+LAB0473	HSV PCR	Infectious Disease and Serology
+LAB0474	Varicella zoster IgG	Infectious Disease and Serology
+LAB0475	Varicella zoster IgM	Infectious Disease and Serology
+LAB0476	Varicella zoster PCR	Infectious Disease and Serology
+LAB0477	Measles IgM	Infectious Disease and Serology
+LAB0478	Measles IgG	Infectious Disease and Serology
+LAB0479	Mumps IgM	Infectious Disease and Serology
+LAB0480	Mumps IgG	Infectious Disease and Serology
+LAB0481	Rubella IgM	Infectious Disease and Serology
+LAB0482	Rubella IgG	Infectious Disease and Serology
+LAB0483	Toxoplasma IgM	Infectious Disease and Serology
+LAB0484	Toxoplasma IgG	Infectious Disease and Serology
+LAB0485	Parvovirus B19 IgM	Infectious Disease and Serology
+LAB0486	Parvovirus B19 IgG	Infectious Disease and Serology
+LAB0487	COVID-19 antigen	Infectious Disease and Serology
+LAB0488	SARS-CoV-2 PCR	Infectious Disease and Serology
+LAB0489	SARS-CoV-2 IgG	Infectious Disease and Serology
+LAB0490	SARS-CoV-2 total antibody	Infectious Disease and Serology
+LAB0491	Influenza A PCR	Infectious Disease and Serology
+LAB0492	Influenza B PCR	Infectious Disease and Serology
+LAB0493	RSV PCR	Infectious Disease and Serology
+LAB0494	Respiratory viral panel PCR	Infectious Disease and Serology
+LAB0495	Streptococcus pyogenes antigen	Infectious Disease and Serology
+LAB0496	Streptococcus pneumoniae urine antigen	Infectious Disease and Serology
+LAB0497	Legionella urine antigen	Infectious Disease and Serology
+LAB0498	H. pylori stool antigen	Infectious Disease and Serology
+LAB0499	H. pylori IgG	Infectious Disease and Serology
+LAB0500	H. pylori urea breath test	Infectious Disease and Serology

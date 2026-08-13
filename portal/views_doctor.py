@@ -21,7 +21,8 @@ from appointments import scheduling
 from appointments.models import InvalidTransition, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
-from clinical.models import ICD10Code
+from clinical import lab_reference
+from clinical.models import ICD10Code, LabTest
 from patients import matching
 from patients.models import Patient
 
@@ -319,6 +320,57 @@ def icd10_search(request):
 
     return render(request, "portal/doctor/_icd10_results.html", {
         "results": results, "query": query,
+    })
+
+
+@role_required(Role.DOCTOR)
+def lab_test_search(request):
+    """
+    Type-ahead over the lab test master list, for the investigation form's
+    test name field. Same shape as icd10_search — see that view.
+    """
+    query = (request.GET.get("q") or request.GET.get("test_name") or "").strip()
+
+    results = []
+    if len(query) >= 2:
+        results = LabTest.objects.filter(is_active=True).filter(
+            Q(name__icontains=query) | Q(code__istartswith=query)
+        ).order_by("name")[:10]
+
+    return render(request, "portal/doctor/_lab_test_results.html", {
+        "results": results, "query": query,
+    })
+
+
+@role_required(Role.DOCTOR)
+def lab_evaluate(request, patient_id):
+    """
+    What to show once a lab test (and maybe a value) is on the investigation
+    form: the matching reference range, if a validated one exists for this
+    patient, and whether the entered value falls inside it.
+
+    Deliberately says nothing rather than guessing — see
+    clinical.lab_reference.evaluate_value's own docstring for the one rule
+    this all follows. Scoped to the patient (unlike lab_test_search) because
+    the match depends on their age and sex.
+    """
+    patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
+
+    lab_test = None
+    lab_test_id = request.GET.get("lab_test")
+    if lab_test_id:
+        lab_test = LabTest.objects.filter(pk=lab_test_id).first()
+
+    value_numeric = (request.GET.get("value_numeric") or "").strip() or None
+    unit = (request.GET.get("unit") or "").strip()
+
+    evaluation = lab_reference.evaluate_value(
+        lab_test, value_numeric, unit,
+        sex=patient.sex, age_years=patient.age_years,
+    )
+
+    return render(request, "portal/doctor/_lab_evaluation.html", {
+        "evaluation": evaluation,
     })
 
 

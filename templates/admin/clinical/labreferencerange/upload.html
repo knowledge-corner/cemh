@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+
+  <p>
+    Download the template first — one row per test on the master list,
+    ready to fill in with sourced reference ranges. Re-uploading a
+    corrected file updates matching rows in place rather than duplicating
+    them.
+  </p>
+  <p>
+    <a href="{{ template_url }}" class="button">Download template</a>
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit" value="Upload" class="default">
+  </form>
+
+  {% if result %}
+    {% if result.fatal %}
+      <p class="errornote">{{ result.fatal }}</p>
+    {% else %}
+      <h2>{{ result.planned|length }} row{{ result.planned|length|pluralize }} imported</h2>
+      {% if result.problems %}
+        <h2>{{ result.problems|length }} row{{ result.problems|length|pluralize }} skipped</h2>
+        <ul>
+          {% for problem in result.problems %}
+            <li>Line {{ problem.line }}: {{ problem.message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from django import forms
 from django.db import transaction
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
 from django.forms import inlineformset_factory
 from django.utils import timezone
@@ -23,7 +23,7 @@ from appointments import scheduling, signoff
 from appointments import weekdays as weekday_codes
 from appointments.models import Visit, VisitStatus
 from billing.models import Charge, Payment
-from clinical.models import ClinicalNote, Diagnosis, Investigation, ReferenceLetter
+from clinical.models import ClinicalNote, Diagnosis, Investigation, LabTest, ReferenceLetter
 from patients.models import Patient, PatientHistory, age_in_years
 from pharmacy.models import Prescription, PrescriptionItem
 
@@ -36,6 +36,12 @@ class StyledModelForm(forms.ModelForm):
     """Applies the shared field styling without repeating widget attrs per form."""
 
     def __init__(self, *args, **kwargs):
+        # The patient this record belongs to, when the view constructing the
+        # form knows it (edit_record always does) — most forms have no use
+        # for it, but one needing it (InvestigationForm, to build a
+        # patient-scoped lookup URL it can't know at class-definition time)
+        # shouldn't need edit_record to know which forms care.
+        self.patient = kwargs.pop("patient", None)
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             widget = field.widget
@@ -222,19 +228,66 @@ class ReferenceLetterForm(StyledModelForm):
 
 
 class InvestigationForm(StyledModelForm):
+    #: Set by picking a suggestion from the test-name autocomplete (see
+    #: portal.views_doctor.lab_test_search and _lab_test_results.html).
+    #: Not required: a test typed free-hand, with no match in the master
+    #: list, still saves — this only records which master-list test was
+    #: actually meant, when one was.
+    lab_test = forms.ModelChoiceField(
+        queryset=LabTest.objects.all(), required=False, widget=forms.HiddenInput,
+    )
+
     class Meta:
         model = Investigation
         fields = [
-            "test_name", "category", "performed_on", "value", "value_numeric",
+            "lab_test", "test_name", "category", "performed_on", "value", "value_numeric",
             "unit", "reference_range", "is_abnormal", "lab_name", "notes",
         ]
         widgets = {
+            # Typing here looks up matching tests from the master list (see
+            # portal.views_doctor.lab_test_search) — picking one fills
+            # lab_test above, and triggers the same evaluate call value_numeric
+            # and unit already trigger, so the unit and reference range show
+            # up before a value is even typed.
+            "test_name": forms.TextInput(attrs={
+                **INPUT,
+                "autocomplete": "off",
+                "hx-get": reverse_lazy("doctor_lab_test_search"),
+                "hx-trigger": "keyup changed delay:200ms, search",
+                "hx-target": "#lab-test-suggestions",
+            }),
             "performed_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
+            # Both trigger the same "evaluate against the reference range"
+            # lookup — value_numeric because that's what gets compared, unit
+            # because changing it (say, correcting mg/dL to mmol/L) can change
+            # what the comparison should be. The hx-get URL itself is patient-
+            # scoped (the match depends on the patient's age and sex) and so
+            # can't be known here at class-definition time — see __init__,
+            # which fills it in from self.patient.
+            "value_numeric": forms.NumberInput(attrs={
+                **INPUT,
+                "hx-trigger": "keyup changed delay:400ms, change",
+                "hx-target": "#lab-evaluation",
+                "hx-include": "#id_lab_test, #id_unit",
+            }),
+            "unit": forms.TextInput(attrs={
+                **INPUT,
+                "hx-trigger": "change",
+                "hx-target": "#lab-evaluation",
+                "hx-include": "#id_lab_test, #id_value_numeric",
+            }),
             "notes": forms.Textarea(attrs={**TEXTAREA, "rows": 2}),
         }
         help_texts = {
             "value_numeric": "Fill in when the result is a number — this is what gets trended.",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.patient is not None:
+            evaluate_url = reverse("doctor_lab_evaluate", args=[self.patient.patient_id])
+            self.fields["value_numeric"].widget.attrs["hx-get"] = evaluate_url
+            self.fields["unit"].widget.attrs["hx-get"] = evaluate_url
 
 
 class ClinicalNoteForm(StyledModelForm):

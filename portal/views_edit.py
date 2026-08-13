@@ -322,7 +322,7 @@ def edit_record(request, patient_id, kind, pk=None):
     show_items = kind == "prescription"
 
     if request.method == "POST":
-        form = form_class(request.POST, instance=instance)
+        form = form_class(request.POST, instance=instance, patient=patient)
         if show_items:
             formset = clinic_forms.PrescriptionItemFormSet(request.POST, instance=instance)
 
@@ -354,7 +354,7 @@ def edit_record(request, patient_id, kind, pk=None):
             initial = {"performed_on": timezone.localdate(),
                        "measured_on": timezone.localdate(),
                        "diagnosed_on": timezone.localdate()}
-        form = form_class(instance=instance, initial=initial)
+        form = form_class(instance=instance, initial=initial, patient=patient)
         if show_items:
             formset = clinic_forms.PrescriptionItemFormSet(instance=instance)
 

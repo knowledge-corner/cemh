@@ -1,0 +1,41 @@
+{% comment %}
+The result of doctor_lab_evaluate — what's known about the entered value
+against the matching reference range, if there is one. Never claims more
+than clinical.lab_reference.evaluate_value actually established; see its
+docstring for the one rule this follows.
+{% endcomment %}
+
+{% if evaluation.reference_range %}
+  <p class="faint small" style="margin:.375rem 0 0">
+    Reference range on file: <strong>{{ evaluation.formatted_range }}</strong>
+    <span class="faint">({{ evaluation.reference_range.source }})</span>
+    {% if evaluation.is_abnormal is True %}
+      &mdash; <span class="badge badge--danger">Outside range</span>
+    {% elif evaluation.is_abnormal is False %}
+      &mdash; <span class="badge badge--teal">Within range</span>
+    {% endif %}
+  </p>
+{% elif evaluation.note %}
+  <p class="faint small" style="margin:.375rem 0 0">{{ evaluation.note }}</p>
+{% endif %}
+
+<script>
+  (function () {
+    const unit_field = document.getElementById('id_unit');
+    const range_field = document.getElementById('id_reference_range');
+    const abnormal_field = document.getElementById('id_is_abnormal');
+
+    {% if evaluation.reference_range %}
+      if (unit_field && !unit_field.value) {
+        unit_field.value = "{{ evaluation.reference_range.unit|escapejs }}";
+      }
+      if (range_field) range_field.value = "{{ evaluation.formatted_range|escapejs }}";
+    {% endif %}
+
+    {% if evaluation.is_abnormal is True %}
+      if (abnormal_field) abnormal_field.checked = true;
+    {% elif evaluation.is_abnormal is False %}
+      if (abnormal_field) abnormal_field.checked = false;
+    {% endif %}
+  })();
+</script>

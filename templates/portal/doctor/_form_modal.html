@@ -28,15 +28,25 @@ returns _saved.html, which closes this and refreshes the chart in place.
 
         <div class="form-grid">
           {% for field in form %}
-            <div class="field {% if field.field.widget.input_type == 'checkbox' %}field--check{% endif %}">
-              <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% if field.is_hidden %}
               {{ field }}
-              {% if kind == "diagnosis" and field.name == "description" %}
-                <div id="icd10-suggestions"></div>
-              {% endif %}
-              {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
-              {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
-            </div>
+            {% else %}
+              <div class="field {% if field.field.widget.input_type == 'checkbox' %}field--check{% endif %}">
+                <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if kind == "diagnosis" and field.name == "description" %}
+                  <div id="icd10-suggestions"></div>
+                {% endif %}
+                {% if kind == "investigation" and field.name == "test_name" %}
+                  <div id="lab-test-suggestions"></div>
+                {% endif %}
+                {% if kind == "investigation" and field.name == "value_numeric" %}
+                  <div id="lab-evaluation"></div>
+                {% endif %}
+                {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
+                {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}
+              </div>
+            {% endif %}
           {% endfor %}
         </div>
 
