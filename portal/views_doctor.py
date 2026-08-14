@@ -101,13 +101,21 @@ def _is_editable(patient):
     return bool(visit and visit.status == VisitStatus.IN_CABIN)
 
 
+#: Tabs a doctor can edit any time the file is open, not only while the
+#: patient is in the cabin — the clinical record proper (notes, prescriptions)
+#: is the part that must stay tied to an actual consultation; the patient's
+#: particulars, problem list, results and growth measurements are reference
+#: data a doctor may reasonably need to correct between visits.
+ALWAYS_EDITABLE_TABS = {"summary", "investigations", "growth", "reference_letters"}
+
+
 def _editable_for_tab(patient, tab):
     """
-    ``_is_editable``, with the one deliberate exception reference letters get
+    ``_is_editable``, with the deliberate exceptions in ``ALWAYS_EDITABLE_TABS``
     — see ``edit_record``'s own comment on the same carve-out. Kept next to
     ``_is_editable`` so the two cannot quietly drift apart.
     """
-    if tab == "reference_letters":
+    if tab in ALWAYS_EDITABLE_TABS:
         return True
     return _is_editable(patient)
 
@@ -394,7 +402,13 @@ def patient_dashboard(request, patient_id):
         "tabs": list(_visible_tabs(patient)),
         "active_tab": "summary",
         "active_visit": active_visit,
-        "is_editable": _is_editable(patient),
+        # Governs the summary tab embedded below — matches what patient_tab()
+        # would compute for "summary", so the buttons on this first render
+        # don't flicker into existence only after the tab is re-fetched.
+        "is_editable": _editable_for_tab(patient, "summary"),
+        # The narrower, consultation-only gate — clinical notes and
+        # prescriptions, not the whole file — for the banner below.
+        "consultation_active": _is_editable(patient),
         "has_visit_today": _has_visit_today(patient, request.user),
     }
     context.update(services.summary_context(patient))

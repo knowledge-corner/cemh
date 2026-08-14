@@ -17,16 +17,18 @@
   </div>
 </div>
 
-{% if not is_editable %}
+{% if not consultation_active %}
   <div class="alert-strip alert-strip--warning">
     <div>
-      <span class="alert-strip__title">Read-only</span><br>
+      <span class="alert-strip__title">Clinical notes and prescriptions are locked</span><br>
       {% if has_visit_today %}
-        {{ patient.full_name }} has not been sent in yet. Use "Send in" from
-        today's queue to open the file for editing.
+        {{ patient.full_name }} has not been sent in yet. Everything else on
+        this file can still be edited — use "Send in" from today's queue to
+        also unlock clinical notes and prescriptions.
       {% else %}
-        {{ patient.full_name }} has no visit today. Use "Start consultation"
-        above to open the file for editing.
+        {{ patient.full_name }} has no visit today. Everything else on this
+        file can still be edited — use "Start consultation" above to also
+        unlock clinical notes and prescriptions.
       {% endif %}
     </div>
   </div>

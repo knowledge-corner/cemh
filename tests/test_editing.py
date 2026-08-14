@@ -411,6 +411,69 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertContains(response, "Avoid dairy for two weeks.")
 
 
+class TestAlwaysEditableTabsNeedNoOpenVisit(EditingTestCase):
+    """
+    Summary, Investigations, Growth Chart and Reference Letters are reference
+    data a doctor may reasonably need to correct at any time, not only
+    mid-consultation — see views_doctor.ALWAYS_EDITABLE_TABS. Only clinical
+    notes and prescriptions stay locked to an open visit (covered by
+    tests/test_patient_file_readonly.py and TestPrescriptionWorkflow above).
+    """
+
+    def test_a_diagnosis_can_be_added(self):
+        response = self.client.post(self.add_url("diagnosis"), {
+            "description": "Type 2 diabetes mellitus",
+            "status": Diagnosis.Status.ACTIVE,
+            "diagnosed_on": timezone.localdate().isoformat(),
+            "icd10_code": "", "notes": "", "resolved_on": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Diagnosis.objects.get().patient, self.patient)
+
+    def test_background_history_can_be_added(self):
+        response = self.client.post(self.add_url("history"), {
+            "presenting_complaints": "", "past_medical_history": "",
+            "family_history": "", "birth_history": "", "allergies": "Penicillin",
+            "current_medications": "", "surgical_history": "", "lifestyle_notes": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.patient.history.allergies, "Penicillin")
+
+    def test_patient_details_can_be_edited(self):
+        response = self.client.post(self.edit_url("patient", self.patient.pk), {
+            "first_name": self.patient.first_name, "last_name": self.patient.last_name,
+            "sex": self.patient.sex, "date_of_birth": self.patient.date_of_birth.isoformat(),
+            "blood_group": "O+", "phone": "9820099999",
+            "alternate_phone": "", "email": "", "guardian_name": "",
+            "guardian_relation": "", "guardian_phone": "",
+            "address": "", "city": "", "pincode": "", "referred_by": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.phone, "9820099999")
+
+    def test_an_investigation_result_can_be_added(self):
+        response = self.client.post(self.add_url("investigation"), {
+            "test_name": "TSH", "category": "THYROID",
+            "performed_on": timezone.localdate().isoformat(),
+            "value": "6.2", "value_numeric": "6.2", "unit": "µIU/mL",
+            "reference_range": "0.5 – 4.5", "is_abnormal": "on",
+            "lab_name": "Metropolis", "notes": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Investigation.objects.get().patient, self.patient)
+
+    def test_a_growth_measurement_can_be_added(self):
+        response = self.client.post(self.add_url("measurement"), {
+            "measured_on": timezone.localdate().isoformat(),
+            "height_cm": "123.1", "weight_kg": "23.60",
+            "head_circumference_cm": "", "waist_cm": "", "puberty_stage": "",
+            "mother_height_cm": "", "father_height_cm": "", "notes": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Measurement.objects.get().patient, self.patient)
+
+
 class TestReferenceLetterWorkflow(EditingTestCase):
     """
     A letter for school, insurance, travel or fitness — written in the

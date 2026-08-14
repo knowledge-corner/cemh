@@ -266,15 +266,17 @@ def edit_record(request, patient_id, kind, pk=None):
 
     patient = get_object_or_404(Patient, patient_id__iexact=patient_id)
 
-    # The chart is read-only until the patient is sent in — enforced here too,
-    # not just by hiding the button, since this is a POST endpoint a doctor's
-    # browser can be pointed at directly.
-    #
-    # Reference letters are the one deliberate exception: a school, insurance
-    # or travel letter is often asked for with nothing to do with why the
-    # patient was last seen, so it stays writable whether or not a
-    # consultation is open — see TestReferenceLetterWorkflow.
-    if kind != "reference_letter" and not _is_editable(patient):
+    # The clinical record proper — notes and prescriptions — is read-only
+    # until the patient is sent in, enforced here too and not just by hiding
+    # the button, since this is a POST endpoint a doctor's browser can be
+    # pointed at directly. Everything else on the chart (the patient's own
+    # details, problem list, investigation results, growth measurements,
+    # reference letters) is reference data a doctor may reasonably need to
+    # correct between visits, not only mid-consultation — see
+    # views_doctor.ALWAYS_EDITABLE_TABS, which this mirrors exactly so the
+    # button a doctor sees and what the server will actually accept can't
+    # drift apart.
+    if not _editable_for_tab(patient, spec.tab):
         return _blocked(
             request,
             "This file is read-only",

@@ -158,7 +158,20 @@ it.
       <span class="alert-strip__title">Consultation still open</span><br>
       {% for visit in unclosed_direct_visits %}
         {{ visit.doctor.display_name }} has not yet finished the consultation
-        with {{ visit.patient.full_name }} — no new patient can be taken into
+        with
+        {% comment %}
+        Only a doctor can open the patient's file (doctor_patient_dashboard is
+        doctor-only), and this banner is shared with reception's own calendar
+        — so the link only appears on the doctor's own view. Reception still
+        gets the plain sentence, unchanged.
+        {% endcomment %}
+        {% if is_doctor_view %}
+          <a href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}"
+             target="_blank" rel="noopener">{{ visit.patient.full_name }}</a>
+        {% else %}
+          {{ visit.patient.full_name }}
+        {% endif %}
+        — no new patient can be taken into
         {% if is_doctor_view %}your{% else %}their{% endif %} cabin until it is closed.
         {% if not forloop.last %}<br>{% endif %}
       {% endfor %}

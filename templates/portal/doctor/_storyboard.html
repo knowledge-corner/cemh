@@ -13,7 +13,7 @@ top for the obvious reason.
   </p>
   <span class="storyboard__uhid">{{ patient.patient_id }}</span>
   <div style="margin-top:.625rem">
-    {% include "portal/doctor/_edit_button.html" with kind="patient" label="Edit details" %}
+    {% include "portal/doctor/_edit_button.html" with kind="patient" label="Edit details" is_editable=1 %}
   </div>
 </div>
 
@@ -21,7 +21,7 @@ top for the obvious reason.
 <div class="storyboard__section">
   <div class="storyboard__label-row" style="margin-bottom:.375rem">
     <p class="storyboard__label">Allergies</p>
-    {% include "portal/doctor/_edit_button.html" with kind="history" label="Edit" %}
+    {% include "portal/doctor/_edit_button.html" with kind="history" label="Edit" is_editable=1 %}
   </div>
   {% if history and history.has_allergies %}
     <div class="alert-strip alert-strip--danger">
@@ -35,7 +35,7 @@ top for the obvious reason.
 <div class="storyboard__section">
   <div class="storyboard__label-row" style="margin-bottom:.375rem">
     <p class="storyboard__label">Contact</p>
-    {% include "portal/doctor/_edit_button.html" with kind="patient" label="Edit" %}
+    {% include "portal/doctor/_edit_button.html" with kind="patient" label="Edit" is_editable=1 %}
   </div>
   <dl class="storyboard__row"><dt>Mobile</dt><dd class="mono">{{ patient.contact_phone|default:"—" }}</dd></dl>
   {% if patient.is_paediatric and patient.guardian_name %}
@@ -49,7 +49,7 @@ top for the obvious reason.
 <div class="storyboard__section">
   <div class="storyboard__label-row" style="margin-bottom:.375rem">
     <p class="storyboard__label">Active problems ({{ active_diagnoses|length }})</p>
-    {% include "portal/doctor/_edit_button.html" with kind="diagnosis" label="+ Add" %}
+    {% include "portal/doctor/_edit_button.html" with kind="diagnosis" label="+ Add" is_editable=1 %}
   </div>
   {% if active_diagnoses %}
     <ul class="storyboard__list">
@@ -57,7 +57,7 @@ top for the obvious reason.
         <li>
           {{ diagnosis.description }}
           <span class="faint small">— since {{ diagnosis.diagnosed_on|date:"M Y" }}</span>
-          {% include "portal/doctor/_edit_button.html" with kind="diagnosis" pk=diagnosis.pk label="Edit" %}
+          {% include "portal/doctor/_edit_button.html" with kind="diagnosis" pk=diagnosis.pk label="Edit" is_editable=1 %}
         </li>
       {% endfor %}
     </ul>
@@ -91,7 +91,7 @@ top for the obvious reason.
   <div class="storyboard__section">
     <div class="storyboard__label-row" style="margin-bottom:.375rem">
       <p class="storyboard__label">Latest measurements</p>
-      {% include "portal/doctor/_edit_button.html" with kind="measurement" pk=latest_measurement.pk label="Edit" %}
+      {% include "portal/doctor/_edit_button.html" with kind="measurement" pk=latest_measurement.pk label="Edit" is_editable=1 %}
     </div>
     {% if latest_measurement.height_cm %}
       <dl class="storyboard__row"><dt>Height</dt><dd>{{ latest_measurement.height_cm }} cm</dd></dl>

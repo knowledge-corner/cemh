@@ -155,35 +155,3 @@ the visit history grouped into the time bands clinicians actually think in.
     </div>
   {% endif %}
 </section>
-
-<section>
-  <div class="section-head">
-    <h3>Recent investigations</h3>
-    {% include "portal/doctor/_edit_button.html" with kind="investigation" label="+ Add result" solid=1 %}
-  </div>
-
-  {% if recent_investigations %}
-    <div class="table-scroll">
-      <table class="table">
-        <thead>
-          <tr><th>Date</th><th>Test</th><th>Result</th><th>Reference</th><th></th></tr>
-        </thead>
-        <tbody>
-          {% for result in recent_investigations %}
-            <tr>
-              <td class="nowrap">{{ result.performed_on|date:"j M Y" }}</td>
-              <td>{{ result.test_name }}</td>
-              <td class="{% if result.is_abnormal %}abnormal{% endif %}">{{ result.display_value }}</td>
-              <td class="faint">{{ result.reference_range|default:"—" }}</td>
-              <td class="row-actions">
-                {% include "portal/doctor/_edit_button.html" with kind="investigation" pk=result.pk label="Edit" %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="faint small">No investigations recorded.</p>
-  {% endif %}
-</section>

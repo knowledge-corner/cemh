@@ -90,7 +90,6 @@ def summary_context(patient):
         "last_note": last_note,
         "visit_count": visits.count(),
         "visit_groups": group_visits_by_period(visits[:40]),
-        "recent_investigations": patient.investigations.all()[:5],
     }
 
     if growth_installed():

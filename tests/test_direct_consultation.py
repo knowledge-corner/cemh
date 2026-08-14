@@ -334,3 +334,25 @@ class TestTheUnclosedDirectConsultationBanner(TestCase):
         self.client.force_login(self.receptionist)
         response = self.client.get(reverse("reception_calendar"))
         self.assertNotContains(response, "Consultation still open")
+
+    def test_the_doctors_own_view_links_straight_to_the_patients_file(self):
+        make_visit(
+            self.patient, self.doctor, start=today_at(9),
+            status=VisitStatus.IN_CABIN, is_direct=True,
+        )
+        self.client.force_login(self.doctor)
+        response = self.client.get(reverse("reception_calendar"))
+        self.assertContains(
+            response, reverse("doctor_patient_dashboard", args=[self.patient.patient_id]),
+        )
+
+    def test_receptions_view_has_no_link_since_the_dashboard_is_doctor_only(self):
+        make_visit(
+            self.patient, self.doctor, start=today_at(9),
+            status=VisitStatus.IN_CABIN, is_direct=True,
+        )
+        self.client.force_login(self.receptionist)
+        response = self.client.get(reverse("reception_calendar"))
+        self.assertNotContains(
+            response, reverse("doctor_patient_dashboard", args=[self.patient.patient_id]),
+        )
