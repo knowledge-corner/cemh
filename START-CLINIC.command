@@ -138,8 +138,12 @@ main() {
     sleep 2
   done
 
+  # /login/ rather than "/" - that is the public marketing page, not what
+  # staff opening this file actually want. If a session is already active,
+  # the login view itself redirects on to the right dashboard, so this is
+  # correct either way.
   # open on macOS, xdg-open on Linux — whichever exists.
-  (open http://localhost:8000/ 2>/dev/null || xdg-open http://localhost:8000/ 2>/dev/null) &
+  (open http://localhost:8000/login/ 2>/dev/null || xdg-open http://localhost:8000/login/ 2>/dev/null) &
 
   # The address a phone on the same Wi-Fi should use. Printed rather than
   # left to be looked up, because it is not fixed: the router hands out a
