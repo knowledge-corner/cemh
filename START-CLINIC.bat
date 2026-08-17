@@ -168,8 +168,12 @@ goto open
 :ready
 echo   Ready.
 
+REM  /login/ rather than "/" - that is the public marketing page, not what
+REM  staff opening this file actually want. If a session is already active,
+REM  the login view itself redirects on to the right dashboard, so this is
+REM  correct either way.
 :open
-start "" http://localhost:8000/
+start "" http://localhost:8000/login/
 
 REM --- The address a phone on the same Wi-Fi should use ---------------
 REM  Printed rather than left to be looked up, because it is not fixed:
