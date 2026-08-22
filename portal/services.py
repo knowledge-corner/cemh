@@ -230,6 +230,16 @@ def reference_letters_context(patient):
     return {"patient": patient, "reference_letters": letters}
 
 
+#: Height, weight and BMI charts always span this full range (0–18 years),
+#: matching the printed WHO/IAP charts they are meant to stand in for, rather
+#: than a window sized to whatever a single patient's data happens to cover.
+FULL_CHART_MAX_MONTH = 216
+
+#: How far either side of the mid-parental target height still counts as
+#: within range, in centimetres.
+MID_PARENTAL_RANGE_CM = 6
+
+
 def growth_context(patient):
     """
     Growth chart data.
@@ -305,8 +315,18 @@ def growth_context(patient):
         # chronological range entirely — an advanced or delayed bone age is
         # the whole reason to look — so they widen the window too.
         all_months = [p["month"] for p in points] + [p["month"] for p in bone_age_points]
-        min_month = max(0, min(all_months) - 24)
-        max_month = max(all_months) + 24
+
+        # Height, weight and BMI are always drawn 0–18 years, the same span
+        # the printed WHO/IAP chart covers, so the chart reads the way a
+        # clinician already expects rather than cropping to whatever this one
+        # patient's data happens to need. A patient with points past 18 (or a
+        # bone age reading beyond it) still gets the extra room.
+        if indicator in (ref.HEIGHT_FOR_AGE, ref.WEIGHT_FOR_AGE, ref.BMI_FOR_AGE):
+            min_month = 0
+            max_month = max(FULL_CHART_MAX_MONTH, max(all_months) + 24)
+        else:
+            min_month = max(0, min(all_months) - 24)
+            max_month = max(all_months) + 24
         step = 1.0 if (max_month - min_month) <= 60 else 3.0
 
         curves = ref.reference_curves(indicator, patient.sex, min_month, max_month, step=step)
@@ -323,12 +343,13 @@ def growth_context(patient):
         # apart from the curves so the chart can label them for what they are.
         cutoffs = ref.cutoff_curves(indicator, patient.sex, min_month, max_month, step=step)
 
-        # Mid-parental target height: a flat line across the height chart
-        # rather than a single point, since it is a target for the whole
-        # span being looked at, not a reading tied to one age. Uses the same
-        # non-centile-line mechanism as the BMI cut-offs above rather than a
-        # new one — a horizontal reference line is a horizontal reference
-        # line regardless of which chart it belongs to.
+        # Mid-parental target height: a dot at the right edge of the height
+        # chart, not a line across the whole thing — a flat line the full
+        # width of the chart read as a threshold to cross rather than the one
+        # target value it actually is. The target carries a plotted range
+        # either side of it, so the child's own line can be read against a
+        # band rather than a single number.
+        mid_parental = None
         if indicator == ref.HEIGHT_FOR_AGE:
             target_height = None
             for measurement in reversed(list(measurements)):
@@ -336,13 +357,11 @@ def growth_context(patient):
                     target_height = float(measurement.mid_parental_height_cm)
                     break
             if target_height is not None:
-                cutoffs = dict(cutoffs)
-                cutoffs["MPH"] = {
-                    "label": "Mid-parental target",
-                    "points": [
-                        {"month": min_month, "value": target_height},
-                        {"month": max_month, "value": target_height},
-                    ],
+                mid_parental = {
+                    "month": max_month,
+                    "target": round(target_height, 1),
+                    "low": round(target_height - MID_PARENTAL_RANGE_CM, 1),
+                    "high": round(target_height + MID_PARENTAL_RANGE_CM, 1),
                 }
 
         # For BMI the IAP tables print centiles only up to the 50th, then the
@@ -375,6 +394,7 @@ def growth_context(patient):
                     for key, line in sorted(cutoffs.items())
                 ],
                 "bone_age_points": bone_age_points,
+                "mid_parental": mid_parental,
                 "latest": points[-1],
                 "sources": sources,
             }

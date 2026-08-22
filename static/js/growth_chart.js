@@ -29,6 +29,16 @@ function niceStep(rawStep) {
 }
 
 /*
+ * Height, weight and BMI are the three charts a printed WHO/IAP sheet draws
+ * as dense graph paper — a gridline every whole unit, a number only every
+ * fifth one. Head circumference keeps the old auto-scaled step, since
+ * nothing asked for it to match the paper chart too.
+ */
+function isDenseGridIndicator(indicator) {
+  return indicator === 'lhfa' || indicator === 'wfa' || indicator === 'bmifa';
+}
+
+/*
  * Explicit min/max/step for the value axis, shared by the left and right
  * y-scales so their tick rows line up — the printed WHO/IAP charts label
  * both edges of the same dense grid rather than leaving the right side bare.
@@ -39,16 +49,55 @@ function computeYDomain(data) {
   (data.cutoffs || []).forEach(function (c) { c.points.forEach(function (p) { values.push(p.value); }); });
   data.points.forEach(function (p) { values.push(p.value); });
   (data.bone_age_points || []).forEach(function (p) { values.push(p.value); });
+  if (data.mid_parental) {
+    values.push(data.mid_parental.low, data.mid_parental.high, data.mid_parental.target);
+  }
   if (!values.length) return null;
 
   const rawMin = Math.min.apply(null, values);
   const rawMax = Math.max.apply(null, values);
+
+  if (isDenseGridIndicator(data.indicator)) {
+    const labelStep = 5;
+    return {
+      min: Math.max(0, Math.floor((rawMin - labelStep) / labelStep) * labelStep),
+      max: Math.ceil((rawMax + labelStep) / labelStep) * labelStep,
+      step: 1,
+      labelStep: labelStep
+    };
+  }
+
   const step = niceStep((rawMax - rawMin || 1) / 10);
   return {
     min: Math.max(0, Math.floor(rawMin / step) * step - step),
     max: Math.ceil(rawMax / step) * step + step,
     step: step
   };
+}
+
+/*
+ * Tick options shared by the left and right value axes. Plain "color/font"
+ * for the ordinary auto-scaled charts; for the dense-grid ones a gridline is
+ * still drawn every unit (stepSize handles that) but the label text is
+ * blanked except on every fifth one, the way the printed chart only writes
+ * a number at every fifth line.
+ */
+function buildValueAxisTicks(yDomain, dense, muted) {
+  const ticks = { color: muted, font: { size: 10 } };
+  if (yDomain) ticks.stepSize = yDomain.step;
+  if (dense && yDomain) {
+    // Chart.js's autoSkip thins out ticks - gridline and label together -
+    // whenever it judges the labels would crowd. That is exactly what would
+    // happen here: it would quietly widen the 1-unit grid back out, since it
+    // has no idea most of these labels are blank on purpose. Off, so every
+    // integer keeps its gridline regardless of how few of them carry text.
+    ticks.autoSkip = false;
+    ticks.callback = function (value) {
+      const rounded = Math.round(value);
+      return rounded % yDomain.labelStep === 0 ? rounded : '';
+    };
+  }
+  return ticks;
 }
 
 /*
@@ -142,13 +191,12 @@ function buildGrowthChartConfig(data, colours) {
   });
 
   // Non-centile reference lines: the IAP BMI chart's adult-equivalent
-  // cut-offs (drawn in warning colours, since they mark overweight and
-  // obesity), and the height chart's mid-parental target (drawn in a
-  // neutral informational colour — it is a target, not a risk).
+  // cut-offs, in warning colours since they mark overweight and obesity.
+  // The height chart's mid-parental target is handled separately below —
+  // it is a point with a range, not a line across the whole chart.
   (data.cutoffs || []).forEach(function (line) {
     let color = warning;
     if (line.key === 'Eq27') color = danger;
-    else if (line.key === 'MPH') color = info;
     datasets.push({
       label: line.label,
       data: line.points.map(function (p) { return { x: p.month, y: p.value }; }),
@@ -181,6 +229,57 @@ function buildGrowthChartConfig(data, colours) {
     tension: 0.2,
     order: 1
   });
+
+  // The mid-parental target: a short vertical bracket at the chart's right
+  // edge spanning the ± range either side of it, with the target itself
+  // marked as a single dot rather than a line — a dashed line the full
+  // width of the chart read as a threshold, when it is one target value.
+  if (data.mid_parental) {
+    const mp = data.mid_parental;
+    const lastPoint = data.points.length ? data.points[data.points.length - 1] : null;
+
+    datasets.push({
+      label: 'Mid-parental range',
+      data: [{ x: mp.month, y: mp.low }, { x: mp.month, y: mp.high }],
+      borderColor: info,
+      borderWidth: 3,
+      pointRadius: 0,
+      fill: false,
+      order: 2
+    });
+
+    datasets.push({
+      label: 'Mid-parental target',
+      data: [{ x: mp.month, y: mp.target }],
+      borderColor: info,
+      backgroundColor: info,
+      showLine: false,
+      pointStyle: 'circle',
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      order: 0
+    });
+
+    // A dashed guide from the child's latest height across to the target's
+    // x position, so the gap between where the child is and the
+    // mid-parental range is something to look at, not something to work out.
+    if (lastPoint) {
+      datasets.push({
+        label: '',
+        _isGuide: true,
+        data: [
+          { x: lastPoint.month, y: lastPoint.value },
+          { x: mp.month, y: lastPoint.value }
+        ],
+        borderColor: muted,
+        borderWidth: 1,
+        borderDash: [3, 3],
+        pointRadius: 0,
+        fill: false,
+        order: 2
+      });
+    }
+  }
 
   // A second reading of the same height, positioned at the bone-age x
   // rather than the chronological one — points only, never a line, since
@@ -235,7 +334,7 @@ function buildGrowthChartConfig(data, colours) {
         y: {
           position: 'left',
           title: { display: true, text: data.unit, color: muted, font: { size: 11 } },
-          ticks: Object.assign({ color: muted, font: { size: 10 } }, yDomain ? { stepSize: yDomain.step } : {}),
+          ticks: buildValueAxisTicks(yDomain, isDenseGridIndicator(data.indicator), muted),
           grid: { color: border },
           min: yDomain ? yDomain.min : undefined,
           max: yDomain ? yDomain.max : undefined
@@ -246,7 +345,7 @@ function buildGrowthChartConfig(data, colours) {
         y2: {
           position: 'right',
           title: { display: true, text: data.unit, color: muted, font: { size: 11 } },
-          ticks: Object.assign({ color: muted, font: { size: 10 } }, yDomain ? { stepSize: yDomain.step } : {}),
+          ticks: buildValueAxisTicks(yDomain, isDenseGridIndicator(data.indicator), muted),
           grid: { drawOnChartArea: false },
           min: yDomain ? yDomain.min : undefined,
           max: yDomain ? yDomain.max : undefined
@@ -269,6 +368,10 @@ function buildGrowthChartConfig(data, colours) {
           }
         },
         tooltip: {
+          // The dashed guide line connecting the child's latest height to
+          // the mid-parental marker is a visual aid, not a data point — it
+          // repeats a height already shown by "This patient" itself.
+          filter: function (item) { return !item.dataset._isGuide; },
           callbacks: {
             title: function (items) {
               const raw = items[0].raw;
