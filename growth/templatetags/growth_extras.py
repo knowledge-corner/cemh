@@ -19,6 +19,7 @@ def chart_json(chart):
     break out. The browser un-escapes it when reading the attribute.
     """
     payload = {
+        "indicator": chart["indicator"],
         "label": chart["label"],
         "unit": chart["unit"],
         "points": chart["points"],
@@ -30,5 +31,8 @@ def chart_json(chart):
         # rather than the chronological one. Only the height chart ever has
         # any; empty elsewhere.
         "bone_age_points": chart.get("bone_age_points", []),
+        # The mid-parental target height and its ±range, at the chart's right
+        # edge. Only the height chart ever has one.
+        "mid_parental": chart.get("mid_parental"),
     }
     return mark_safe(escape(json.dumps(payload, separators=(",", ":"))))

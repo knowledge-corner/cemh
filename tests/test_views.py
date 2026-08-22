@@ -282,7 +282,7 @@ class TestDashboardTabs(TestCase):
         # 8.3 years is 99.6 months — round-tripped through the chart JSON.
         self.assertIn('&quot;month&quot;:99.6', content)
 
-    def test_mid_parental_target_is_a_line_on_the_height_chart(self):
+    def test_mid_parental_target_is_a_point_with_a_range_on_the_height_chart(self):
         make_measurement(
             self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"),
             mother_height_cm=Decimal("152"), father_height_cm=Decimal("165"),
@@ -290,15 +290,16 @@ class TestDashboardTabs(TestCase):
         response = self._tab("growth")
         content = response.content.decode()
 
-        self.assertEqual(content.count('&quot;key&quot;:&quot;MPH&quot;'), 1)
-        self.assertIn('&quot;label&quot;:&quot;Mid-parental target&quot;', content)
-        # Boy: (152 + 165 + 13) / 2 = 165.0.
-        self.assertIn('&quot;value&quot;:165.0', content)
+        self.assertEqual(content.count('&quot;mid_parental&quot;:{'), 1)
+        # Boy: (152 + 165 + 13) / 2 = 165.0, ±6 either side.
+        self.assertIn('&quot;target&quot;:165.0', content)
+        self.assertIn('&quot;low&quot;:159.0', content)
+        self.assertIn('&quot;high&quot;:171.0', content)
 
-    def test_no_mid_parental_line_without_both_parental_heights(self):
+    def test_no_mid_parental_target_without_both_parental_heights(self):
         make_measurement(self.patient, height_cm=Decimal("123.1"), weight_kg=Decimal("23.6"))
         response = self._tab("growth")
-        self.assertNotIn("MPH", response.content.decode())
+        self.assertIn('&quot;mid_parental&quot;:null', response.content.decode())
 
     def test_growth_tab_shows_no_bone_age_comparison_when_none_was_recorded(self):
         # "Bone age" itself still appears as the history table's column
