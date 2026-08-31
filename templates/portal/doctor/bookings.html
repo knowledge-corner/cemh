@@ -36,6 +36,21 @@ are Visit rows like any other, just started without a prior booking.
 
   {% if active_tab == 'upcoming' %}
 
+    <form method="get" class="filters"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      <input type="hidden" name="tab" value="upcoming">
+      <div class="field" style="margin:0">
+        <label class="field__label" for="u-from">From</label>
+        <input class="input" type="date" id="u-from" name="from" value="{{ filters.from }}">
+      </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="u-to">To</label>
+        <input class="input" type="date" id="u-to" name="to" value="{{ filters.to }}">
+      </div>
+      <button class="btn btn--primary" type="submit">Filter</button>
+      <a class="btn btn--secondary" href="?tab=upcoming">Clear</a>
+    </form>
+
     {% if today_rows or ahead_rows %}
       {% include "portal/doctor/_bookings_group.html" with title="Today" rows=today_rows show_date=0 empty_hint="Nothing else booked for today." %}
       {% include "portal/doctor/_bookings_group.html" with title="Ahead" rows=ahead_rows show_date=1 empty_hint="Nothing booked beyond today." %}
@@ -43,11 +58,32 @@ are Visit rows like any other, just started without a prior booking.
       <div class="empty">
         <div class="empty__icon">📅</div>
         <div class="empty__title">No upcoming appointments</div>
-        <div class="empty__hint">New bookings appear here as soon as they are taken.</div>
+        <div class="empty__hint">
+          {% if filters.from or filters.to %}
+            Nothing matches that date range. Clear it to see everything booked.
+          {% else %}
+            New bookings appear here as soon as they are taken.
+          {% endif %}
+        </div>
       </div>
     {% endif %}
 
   {% elif active_tab == 'completed' %}
+
+    <form method="get" class="filters"
+          style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+      <input type="hidden" name="tab" value="completed">
+      <div class="field" style="margin:0">
+        <label class="field__label" for="f-from">From</label>
+        <input class="input" type="date" id="f-from" name="from" value="{{ filters.from }}">
+      </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="f-to">To</label>
+        <input class="input" type="date" id="f-to" name="to" value="{{ filters.to }}">
+      </div>
+      <button class="btn btn--primary" type="submit">Filter</button>
+      <a class="btn btn--secondary" href="?tab=completed">Clear</a>
+    </form>
 
     <p class="faint small" style="margin:0 0 .75rem">
       {{ completed_count }} visit{{ completed_count|pluralize }}
@@ -93,7 +129,13 @@ are Visit rows like any other, just started without a prior booking.
       <div class="empty">
         <div class="empty__icon">🔍</div>
         <div class="empty__title">Nothing completed yet</div>
-        <div class="empty__hint">Visits appear here once seen, billed and paid for.</div>
+        <div class="empty__hint">
+          {% if filters.from or filters.to %}
+            Nothing matches that date range. Clear it to see everything completed.
+          {% else %}
+            Visits appear here once seen, billed and paid for.
+          {% endif %}
+        </div>
       </div>
     {% endif %}
 

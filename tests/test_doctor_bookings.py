@@ -18,9 +18,15 @@ from billing.models import Charge, Payment
 from .factories import make_doctor, make_patient, make_receptionist, make_visit
 
 
-def _seen_and_billed(patient, doctor, receptionist, *, paid=Decimal("800.00"), fee=Decimal("800.00"), **visit_kwargs):
+def _seen_and_billed(
+    patient, doctor, receptionist, *,
+    paid=Decimal("800.00"), fee=Decimal("800.00"),
+    start=None, **visit_kwargs,
+):
     """A visit taken all the way to BILLED, with a charge and a payment against it."""
-    visit = make_visit(patient, doctor, start=timezone.now() - timedelta(days=1), **visit_kwargs)
+    visit = make_visit(
+        patient, doctor, start=start or timezone.now() - timedelta(days=1), **visit_kwargs
+    )
     for status in (VisitStatus.CONFIRMED, VisitStatus.ARRIVED, VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
         visit.transition_to(status, by_user=doctor)
     charge = Charge.objects.create(
@@ -74,6 +80,21 @@ class TestDoctorBookings(TestCase):
         self.assertIn(patient.full_name, content)
         self.assertIn("Nothing else booked for today.", content)
 
+    def test_upcoming_date_filter_excludes_a_booking_outside_the_range(self):
+        in_range = make_patient(first_name="InRange")
+        out_of_range = make_patient(first_name="OutOfRange", phone="9820011111")
+        make_visit(in_range, self.doctor, start=timezone.now() + timedelta(days=2))
+        make_visit(out_of_range, self.doctor, start=timezone.now() + timedelta(days=10))
+
+        today = timezone.localdate()
+        response = self.client.get(
+            self.url("upcoming")
+            + f"&from={today.isoformat()}&to={(today + timedelta(days=3)).isoformat()}"
+        )
+        content = response.content.decode()
+        self.assertIn(in_range.full_name, content)
+        self.assertNotIn(out_of_range.full_name, content)
+
     def test_another_doctors_upcoming_booking_does_not_appear(self):
         patient = make_patient()
         make_visit(patient, self.other_doctor, start=timezone.now() + timedelta(hours=2))
@@ -94,6 +115,20 @@ class TestDoctorBookings(TestCase):
         _seen_and_billed(patient, self.doctor, self.receptionist, paid=Decimal("300.00"))
         response = self.client.get(self.url("completed"))
         self.assertNotContains(response, patient.full_name)
+
+    def test_completed_date_filter_excludes_a_visit_outside_the_range(self):
+        recent = make_patient(first_name="Recent")
+        old = make_patient(first_name="LongAgo", phone="9820022222")
+        _seen_and_billed(recent, self.doctor, self.receptionist, start=timezone.now() - timedelta(days=2))
+        _seen_and_billed(old, self.doctor, self.receptionist, start=timezone.now() - timedelta(days=60))
+
+        today = timezone.localdate()
+        response = self.client.get(
+            self.url("completed") + f"&from={(today - timedelta(days=5)).isoformat()}&to={today.isoformat()}"
+        )
+        content = response.content.decode()
+        self.assertIn(recent.full_name, content)
+        self.assertNotIn(old.full_name, content)
 
     def test_a_direct_consultation_appears_on_completed_with_its_tag(self):
         patient = make_patient()

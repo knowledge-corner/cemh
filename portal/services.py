@@ -472,31 +472,36 @@ def todays_queue(doctor):
     return ordered
 
 
-def doctor_upcoming_bookings(doctor):
+def doctor_upcoming_bookings(doctor, *, start=None, end=None):
     """
     This doctor's own diary ahead — split into today and the days after it,
     same "still to come" rule reception's own Bookings screen uses (see
     views_reception._upcoming_filters), scoped to one doctor. Today's group
     is not narrowed to slots that have not passed yet, for the same reason as
     reception's: a patient running late is exactly who this is for.
+
+    ``start``/``end`` narrow the range further — chained onto the "not yet
+    happened" filter rather than replacing it, so a ``start`` in the past
+    still shows only today onward, exactly like reception's own date filter.
     """
     today = timezone.localdate()
-    visits = list(
-        Visit.objects.filter(
-            doctor=doctor,
-            status__in=(VisitStatus.BOOKED, VisitStatus.CONFIRMED),
-            scheduled_start__date__gte=today,
-        )
-        .with_related()
-        .order_by("scheduled_start")
+    visits = Visit.objects.filter(
+        doctor=doctor,
+        status__in=(VisitStatus.BOOKED, VisitStatus.CONFIRMED),
+        scheduled_start__date__gte=today,
     )
+    if start:
+        visits = visits.filter(scheduled_start__date__gte=start)
+    if end:
+        visits = visits.filter(scheduled_start__date__lte=end)
+    visits = list(visits.with_related().order_by("scheduled_start"))
     return (
         [v for v in visits if timezone.localtime(v.scheduled_start).date() == today],
         [v for v in visits if timezone.localtime(v.scheduled_start).date() > today],
     )
 
 
-def doctor_completed_bookings(doctor, limit=300):
+def doctor_completed_bookings(doctor, *, start=None, end=None, limit=300):
     """
     This doctor's own finished, paid-up visits — same "nothing left owing"
     rule as reception's Completed tab (see views_reception._past_filters),
@@ -519,6 +524,10 @@ def doctor_completed_bookings(doctor, limit=300):
             ),
         )
         .filter(Q(charge__isnull=True) | Q(_paid__gte=total_due))
-        .order_by("-scheduled_start")
     )
+    if start:
+        visits = visits.filter(scheduled_start__date__gte=start)
+    if end:
+        visits = visits.filter(scheduled_start__date__lte=end)
+    visits = visits.order_by("-scheduled_start")
     return visits[:limit], visits.count()
