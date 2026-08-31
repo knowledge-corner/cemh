@@ -4,6 +4,8 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import include, path
 
+handler500 = "config.views.server_error"
+
 urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     # /admin/ is a decoy: it reveals nothing about where the real admin lives.
