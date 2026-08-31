@@ -51,6 +51,14 @@ body.printable {
 .sheet__contact { text-align: right; font-size: .6875rem; color: var(--text-muted); max-width: 240px; }
 .sheet__contact p { margin: 0 0 .125rem; }
 
+/* For printing on the clinic's own pre-printed letterhead stationery: the
+   logo, name, tagline and address are hidden rather than removed, so the
+   header keeps the exact same height and the rest of the sheet lands in the
+   same place it would on a normal printout — just with nothing of its own
+   printed over the paper's existing letterhead. */
+.sheet__head--blank .sheet__brand,
+.sheet__head--blank .sheet__contact { visibility: hidden; }
+
 .sheet__title {
   margin: 1.25rem 0 .75rem;
   font-size: 1.125rem;

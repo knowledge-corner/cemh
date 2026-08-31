@@ -28,6 +28,13 @@ nobody in the cabin; it just stands alone rather than attaching to a visit.
             {% endif %}
             <a class="btn-edit" target="_blank"
                href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
+            {% comment %}
+            For printing onto stationery that already carries the clinic's
+            letterhead — same sheet, same layout, just without the software
+            printing its own logo/name/address over the paper's own.
+            {% endcomment %}
+            <a class="btn-edit" target="_blank"
+               href="{% url 'print_prescription_record' prescription.pk %}?letterhead=0">Print (no letterhead)</a>
             {% if forloop.first %}
               {% include "portal/doctor/_edit_button.html" with kind="prescription" pk=prescription.pk label="Edit" %}
             {% endif %}

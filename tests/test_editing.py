@@ -368,6 +368,33 @@ class TestPrescriptionWorkflow(EditingTestCase):
         response = self.client.get(reverse("print_prescription_record", args=[prescription.pk]))
         self.assertContains(response, "Levothyroxine")
 
+    def test_the_no_letterhead_button_is_offered_on_the_tab(self):
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        prescription = Prescription.objects.get()
+        response = self.client.get(
+            reverse("doctor_patient_tab", args=[self.patient.patient_id, "prescriptions"])
+        )
+        self.assertContains(
+            response,
+            reverse("print_prescription_record", args=[prescription.pk]) + "?letterhead=0",
+        )
+
+    def test_letterhead_0_blanks_the_clinic_header_but_keeps_the_rest(self):
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), self._item_formset())
+        prescription = Prescription.objects.get()
+        url = reverse("print_prescription_record", args=[prescription.pk])
+
+        normal = self.client.get(url)
+        blanked = self.client.get(url + "?letterhead=0")
+
+        self.assertNotContains(normal, "sheet__head--blank")
+        self.assertContains(blanked, "sheet__head--blank")
+        # The medication itself, and everything else on the sheet, is
+        # untouched — only the header is affected.
+        self.assertContains(blanked, "Levothyroxine")
+
     def test_the_printed_sheet_says_gender_not_sex(self):
         self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
