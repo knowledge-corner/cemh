@@ -335,17 +335,42 @@ class PrescriptionForm(StyledModelForm):
         model = Prescription
         fields = [
             "investigations_advised", "follow_up_number", "follow_up_unit", "follow_up_notes",
+            "scanned_file",
         ]
         widgets = {
             "investigations_advised": forms.Textarea(attrs=TEXTAREA),
             "follow_up_unit": forms.Select(attrs=INPUT),
             "follow_up_notes": forms.TextInput(attrs=INPUT),
+            "scanned_file": forms.ClearableFileInput(attrs={"accept": "image/*,.pdf"}),
         }
         labels = {
+            "scanned_file": "Handwritten prescription (photo or scan)",
             "follow_up_number": "Follow up after",
             "follow_up_unit": " ",
             "follow_up_notes": "Follow-up notes",
         }
+        help_texts = {
+            "scanned_file": "Attach instead of typing the medication list below, if this "
+                            "prescription was written on paper.",
+        }
+
+
+class PrescriptionScanForm(StyledModelForm):
+    """
+    Reception's own narrow edit of a prescription: attach or replace the
+    scanned file, nothing else. Used from the settled-visit page, which is
+    otherwise entirely read-only — see
+    ``views_reception.upload_prescription_scan`` for why this one exception
+    exists.
+    """
+
+    class Meta:
+        model = Prescription
+        fields = ["scanned_file"]
+        widgets = {
+            "scanned_file": forms.ClearableFileInput(attrs={"accept": "image/*,.pdf"}),
+        }
+        labels = {"scanned_file": "Photo or scan of the prescription"}
 
 
 PrescriptionItemFormSet = inlineformset_factory(

@@ -536,6 +536,123 @@ class TestSettledIsReadOnly(TestCase):
         )
 
 
+class TestAttachingAScannedPrescription(TestCase):
+    """
+    The one exception to the settled page being read-only: attaching a photo
+    or scan of a handwritten prescription is filing paperwork, not editing a
+    clinical decision — see views_reception.upload_prescription_scan.
+    """
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.receptionist = make_receptionist()
+        self.client.force_login(self.receptionist)
+        self.visit = _arrived(make_patient(), self.doctor, self.receptionist)
+        for status in (VisitStatus.IN_CABIN, VisitStatus.CONSULTED):
+            self.visit.transition_to(status, by_user=self.doctor)
+        self.charge = Charge.objects.create(
+            visit=self.visit, patient=self.visit.patient,
+            consultation_fee=Decimal("800.00"), set_by=self.doctor,
+        )
+        payment = Payment.objects.create(
+            charge=self.charge, amount=Decimal("800.00"), received_by=self.receptionist
+        )
+        Receipt.objects.create(payment=payment)
+        self.visit.transition_to(VisitStatus.BILLED, by_user=self.receptionist)
+
+    def _scan(self, name="rx.jpg", content=b"not-really-a-jpeg", content_type="image/jpeg"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return SimpleUploadedFile(name, content, content_type=content_type)
+
+    def test_the_settled_page_offers_an_upload_button(self):
+        response = self.client.get(reverse("reception_settled_visit", args=[self.visit.pk]))
+        self.assertContains(
+            response, reverse("reception_upload_prescription_scan", args=[self.visit.pk])
+        )
+        self.assertContains(response, "Upload scanned prescription")
+
+    def test_uploading_creates_a_prescription_when_none_exists(self):
+        # The doctor never opened the chart for this visit at all — the scan
+        # is the entire record.
+        self.assertFalse(Prescription.objects.exists())
+        response = self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan()},
+        )
+        self.assertRedirects(
+            response, reverse("reception_settled_visit", args=[self.visit.pk])
+        )
+        prescription = Prescription.objects.get()
+        self.assertEqual(prescription.visit, self.visit)
+        self.assertEqual(prescription.patient, self.visit.patient)
+        # Attributed to the visit's own doctor, not the receptionist who
+        # uploaded it.
+        self.assertEqual(prescription.doctor, self.doctor)
+        self.assertTrue(prescription.scanned_file)
+
+    def test_uploading_replaces_the_scan_on_an_existing_prescription(self):
+        Prescription.objects.create(
+            visit=self.visit, patient=self.visit.patient, doctor=self.doctor,
+        )
+        self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan("rx2.jpg")},
+        )
+        self.assertEqual(Prescription.objects.count(), 1)
+        prescription = Prescription.objects.get()
+        self.assertIn("rx2", prescription.scanned_file.name)
+
+    def test_a_pdf_scan_is_accepted(self):
+        response = self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan("rx.pdf", b"%PDF-1.4", "application/pdf")},
+        )
+        self.assertRedirects(
+            response, reverse("reception_settled_visit", args=[self.visit.pk])
+        )
+        self.assertTrue(Prescription.objects.get().scanned_file_is_pdf)
+
+    def test_an_unsupported_file_type_is_refused(self):
+        response = self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan("rx.exe", b"MZ", "application/octet-stream")},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Prescription.objects.exists())
+
+    def test_the_upload_is_audited(self):
+        from audit.models import AccessLog
+
+        self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan()},
+        )
+        self.assertTrue(
+            AccessLog.objects.filter(
+                description="Attached scanned prescription"
+            ).exists()
+        )
+
+    def test_a_doctor_can_also_upload(self):
+        self.client.force_login(self.doctor)
+        response = self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan()},
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_a_patient_cannot_reach_it(self):
+        from .factories import make_user
+
+        self.client.force_login(make_user(username="patientuser"))
+        response = self.client.post(
+            reverse("reception_upload_prescription_scan", args=[self.visit.pk]),
+            {"scanned_file": self._scan()},
+        )
+        self.assertEqual(response.status_code, 403)
+
+
 class TestBackwardMovement(TestCase):
     """KAN-9 — FR-3, FR-4, FR-6, FR-7 and AC-3 to AC-7."""
 

@@ -17,6 +17,7 @@ as a single object).
 import calendar
 
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.utils import timezone
 
@@ -68,6 +69,17 @@ class Prescription(models.Model):
     follow_up_unit = models.CharField(max_length=10, choices=FollowUpUnit.choices, blank=True)
     follow_up_notes = models.CharField(max_length=300, blank=True)
 
+    #: A photo or scan of a prescription written on paper, in place of typing
+    #: the medication list above — some doctors hand-write and never open this
+    #: screen at all, and reception can attach the scan later from the
+    #: settled visit rather than the record going undocumented.
+    scanned_file = models.FileField(
+        upload_to="prescriptions/scans/%Y/%m/",
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "pdf"])],
+    )
+
     #: Set when the doctor finalises the prescription. Until then it is a
     #: draft the receptionist must not print.
     generated_at = models.DateTimeField(null=True, blank=True)
@@ -86,6 +98,11 @@ class Prescription(models.Model):
     @property
     def is_generated(self):
         return self.generated_at is not None
+
+    @property
+    def scanned_file_is_pdf(self):
+        """Whether the scan should be offered as a download rather than drawn as an image."""
+        return bool(self.scanned_file) and self.scanned_file.name.lower().endswith(".pdf")
 
     @property
     def tentative_follow_up_date(self):

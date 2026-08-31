@@ -14,6 +14,8 @@ urlpatterns = [
          name="reception_move_visit_back"),
     path("reception/visit/<int:pk>/settled/", views_reception.settled_visit,
          name="reception_settled_visit"),
+    path("reception/visit/<int:pk>/prescription/upload/",
+         views_reception.upload_prescription_scan, name="reception_upload_prescription_scan"),
 
     path("reception/bookings/", views_reception.bookings, name="reception_bookings"),
     path("reception/bookings/export/", views_reception.export_bookings,

@@ -1582,3 +1582,51 @@ def settled_visit(request, pk):
         "prescription": getattr(visit, "prescription", None),
         "events": visit.status_events.select_related("changed_by").order_by("created_at"),
     })
+
+
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
+def upload_prescription_scan(request, pk):
+    """
+    Attach a photo or scan of the paper prescription to a settled visit.
+
+    The one narrow exception to "nothing on the settled page can be changed"
+    (see settled_visit above): the doctor's handwritten original is a
+    physical document this system never saw a typed copy of, and filing a
+    photo of it is not editing a clinical decision the way changing the
+    dosage or the doctor of record would be. Everything else about the
+    prescription stays exactly as locked as before — PrescriptionScanForm
+    offers only the file field, and a prescription that did not already
+    exist (the doctor never opened the chart for this visit at all) is
+    created bare, attributed to the visit's own doctor.
+    """
+    visit = get_object_or_404(Visit.objects.select_related("patient", "doctor"), pk=pk)
+    prescription = getattr(visit, "prescription", None)
+    is_new = prescription is None
+
+    if request.method == "POST":
+        form = clinic_forms.PrescriptionScanForm(
+            request.POST, request.FILES, instance=prescription, patient=visit.patient,
+        )
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if is_new:
+                obj.visit = visit
+                obj.patient = visit.patient
+                obj.doctor = visit.doctor
+            obj.save()
+            record(
+                request,
+                AuditAction.CREATE if is_new else AuditAction.UPDATE,
+                obj=obj, patient=visit.patient,
+                description="Attached scanned prescription",
+            )
+            messages.success(request, "Scanned prescription attached.")
+            return redirect("reception_settled_visit", pk=visit.pk)
+    else:
+        form = clinic_forms.PrescriptionScanForm(instance=prescription, patient=visit.patient)
+
+    return render(request, "portal/reception/upload_prescription_scan.html", {
+        "visit": visit,
+        "patient": visit.patient,
+        "form": form,
+    })

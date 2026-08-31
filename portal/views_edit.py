@@ -324,7 +324,7 @@ def edit_record(request, patient_id, kind, pk=None):
     show_items = kind == "prescription"
 
     if request.method == "POST":
-        form = form_class(request.POST, instance=instance, patient=patient)
+        form = form_class(request.POST, request.FILES, instance=instance, patient=patient)
         if show_items:
             formset = clinic_forms.PrescriptionItemFormSet(request.POST, instance=instance)
 

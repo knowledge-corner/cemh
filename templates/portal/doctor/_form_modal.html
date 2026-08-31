@@ -12,8 +12,14 @@ returns _saved.html, which closes this and refreshes the chart in place.
               onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
     </div>
 
-    <form method="post" action="{{ action }}"
+    {% comment %}
+    enctype is the native fallback; htmx ignores it and needs hx-encoding
+    spelled out separately or a file input's contents never leave the
+    browser — see the prescription scan field this modal can now carry.
+    {% endcomment %}
+    <form method="post" action="{{ action }}" enctype="multipart/form-data"
           hx-post="{{ action }}"
+          hx-encoding="multipart/form-data"
           hx-target="#modal-host"
           hx-swap="innerHTML">
       {% csrf_token %}

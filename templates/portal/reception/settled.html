@@ -49,6 +49,24 @@
         <button class="btn btn--secondary" disabled
                 title="No receipt was issued for this visit">Print receipt</button>
       {% endif %}
+
+      {% comment %}
+      The one thing on this otherwise read-only page that can still change —
+      see upload_prescription_scan for why attaching a photo of the paper
+      original isn't the kind of edit this page exists to forbid.
+      {% endcomment %}
+      {% if prescription and prescription.scanned_file %}
+        <a class="btn btn--secondary" target="_blank"
+           href="{{ prescription.scanned_file.url }}">View scanned prescription</a>
+      {% endif %}
+      <a class="btn btn--secondary"
+         href="{% url 'reception_upload_prescription_scan' visit.pk %}">
+        {% if prescription and prescription.scanned_file %}
+          Replace scanned prescription
+        {% else %}
+          Upload scanned prescription
+        {% endif %}
+      </a>
     </div>
   </div>
 
