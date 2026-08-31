@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Bookings — {{ clinic_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-header__title">Bookings</h1>
+    <p class="page-header__sub">{{ request.user.display_name }}'s own diary — ahead, and already seen</p>
+  </div>
+</div>
+
+{% include "portal/doctor/_nav.html" with nav_active="bookings" %}
+
+{% comment %}
+Two tabs, the same shape as reception's own Bookings screen — what is still
+to come, and what is finished and paid for. Scoped to this one doctor, so
+there is no doctor filter here the way reception's version needs one.
+Direct consultations need no tag or filter to appear on either tab — they
+are Visit rows like any other, just started without a prior booking.
+{% endcomment %}
+<div class="tabs" role="tablist">
+  <a class="tab" role="tab" href="?tab=upcoming"
+     aria-selected="{% if active_tab == 'upcoming' %}true{% else %}false{% endif %}">
+    Upcoming appointments
+    {% if upcoming_count %}<span class="badge badge--info">{{ upcoming_count }}</span>{% endif %}
+  </a>
+  <a class="tab" role="tab" href="?tab=completed"
+     aria-selected="{% if active_tab == 'completed' %}true{% else %}false{% endif %}">
+    Completed appointments
+  </a>
+</div>
+
+<div class="tab-panel">
+
+  {% if active_tab == 'upcoming' %}
+
+    {% if today_rows or ahead_rows %}
+      {% include "portal/doctor/_bookings_group.html" with title="Today" rows=today_rows show_date=0 empty_hint="Nothing else booked for today." %}
+      {% include "portal/doctor/_bookings_group.html" with title="Ahead" rows=ahead_rows show_date=1 empty_hint="Nothing booked beyond today." %}
+    {% else %}
+      <div class="empty">
+        <div class="empty__icon">📅</div>
+        <div class="empty__title">No upcoming appointments</div>
+        <div class="empty__hint">New bookings appear here as soon as they are taken.</div>
+      </div>
+    {% endif %}
+
+  {% elif active_tab == 'completed' %}
+
+    <p class="faint small" style="margin:0 0 .75rem">
+      {{ completed_count }} visit{{ completed_count|pluralize }}
+      {% if completed_count > 300 %}· showing the most recent 300{% endif %}
+    </p>
+
+    {% if completed_rows %}
+      <div class="table-scroll">
+        <table class="table table--middle">
+          <thead>
+            <tr><th>Date</th><th>Patient</th><th>{{ patient_id_label }}</th>
+                <th>Type</th><th>Reason</th><th class="table__num">Total</th>
+                <th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for visit in completed_rows %}
+              <tr>
+                <td class="nowrap mono">{{ visit.scheduled_start|date:"j M Y" }}</td>
+                <td class="strong">{{ visit.patient.full_name }}</td>
+                <td class="mono faint">{{ visit.patient.patient_id }}</td>
+                <td>
+                  {% if visit.is_direct %}
+                    <span class="badge badge--teal">Direct</span>
+                  {% elif visit.is_walk_in %}
+                    <span class="badge badge--info">Walk-in</span>
+                  {% else %}
+                    <span class="badge badge--grey">Appointment</span>
+                  {% endif %}
+                </td>
+                <td>{{ visit.reason|default:"—" }}</td>
+                <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.total }}{% else %}—{% endif %}</td>
+                <td><span class="badge badge--grey">{{ visit.get_status_display }}</span></td>
+                <td class="row-actions">
+                  <a class="btn btn--secondary"
+                     href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open chart</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <div class="empty__icon">🔍</div>
+        <div class="empty__title">Nothing completed yet</div>
+        <div class="empty__hint">Visits appear here once seen, billed and paid for.</div>
+      </div>
+    {% endif %}
+
+  {% endif %}
+
+</div>
+
+{% endblock %}

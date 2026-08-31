@@ -1,0 +1,47 @@
+{% comment %}
+One group of this doctor's upcoming appointments — Today, or Ahead.
+
+No "Reschedule / cancel" here — that is reception's diary to manage, not the
+doctor's. Opening the patient's own chart is the useful thing to do with an
+upcoming appointment from this screen: reviewing the history before they
+arrive.
+{% endcomment %}
+
+<h2 class="section-title">
+  {{ title }}
+  <span class="badge badge--grey">{{ rows|length }}</span>
+</h2>
+
+{% if rows %}
+  <div class="table-scroll" style="margin-bottom:1.25rem">
+    <table class="table table--middle">
+      <thead>
+        <tr>
+          <th>{% if show_date %}When{% else %}Time{% endif %}</th>
+          <th>Patient</th><th>{{ patient_id_label }}</th>
+          <th>Reason</th><th>Contact</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for visit in rows %}
+          <tr>
+            <td class="nowrap mono">
+              {% if show_date %}{{ visit.scheduled_start|date:"j M" }} {% endif %}
+              {{ visit.scheduled_start|time:"H:i" }}
+            </td>
+            <td class="strong">{{ visit.patient.full_name }}</td>
+            <td class="mono faint">{{ visit.patient.patient_id }}</td>
+            <td>{{ visit.reason|default:"—" }}</td>
+            <td class="mono">{{ visit.patient.contact_phone|default:"—" }}</td>
+            <td class="row-actions">
+              <a class="btn btn--secondary"
+                 href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open chart</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="faint small" style="margin:0 0 1.25rem">{{ empty_hint }}</p>
+{% endif %}

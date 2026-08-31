@@ -9,6 +9,7 @@ urlpatterns = [
          name="doctor_import_schedule"),
     path("analytics/", views_doctor.analytics_view, name="doctor_analytics"),
     path("analytics/export.csv", views_doctor.analytics_export, name="doctor_analytics_export"),
+    path("bookings/", views_doctor.doctor_bookings, name="doctor_bookings"),
     path("queue/", views_doctor.doctor_queue, name="doctor_queue"),
     path("unconfirmed/", views_doctor.unconfirmed_appointments,
          name="doctor_unconfirmed_appointments"),

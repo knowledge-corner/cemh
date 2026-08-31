@@ -258,6 +258,34 @@ def doctor_queue(request):
 
 
 @role_required(Role.DOCTOR)
+def doctor_bookings(request):
+    """
+    This doctor's own bookings, past and ahead — Today's Clinic only ever
+    shows today. Two sub-tabs, the same shape as reception's own Bookings
+    screen (see views_reception.bookings), scoped to this one doctor and
+    without reception's filter form, which manages every doctor's diary and
+    does not belong here. Direct consultations need no special handling —
+    see doctor_completed_bookings's own docstring for why they already
+    appear on the Completed tab like any other visit.
+    """
+    tab = request.GET.get("tab", "upcoming")
+    if tab not in ("upcoming", "completed"):
+        tab = "upcoming"
+
+    today_rows, ahead_rows = services.doctor_upcoming_bookings(request.user)
+    completed_rows, completed_count = services.doctor_completed_bookings(request.user)
+
+    return render(request, "portal/doctor/bookings.html", {
+        "active_tab": tab,
+        "today_rows": today_rows,
+        "ahead_rows": ahead_rows,
+        "upcoming_count": len(today_rows) + len(ahead_rows),
+        "completed_rows": completed_rows,
+        "completed_count": completed_count,
+    })
+
+
+@role_required(Role.DOCTOR)
 def unconfirmed_appointments(request):
     """
     Today's confirmed bookings not yet arrived, in a pop-up off Today's
