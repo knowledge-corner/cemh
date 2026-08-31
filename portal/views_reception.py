@@ -1320,6 +1320,15 @@ def _mark_printed(request, prescription):
         prescription.save(update_fields=["printed_at", "updated_at"])
 
 
+def _hide_letterhead(request):
+    """
+    ``?letterhead=0`` on any print URL blanks the clinic name/logo/address —
+    see base_print.html and .sheet__head--blank in print.css — for printing
+    onto stationery that already has the clinic's letterhead on paper.
+    """
+    return request.GET.get("letterhead") == "0"
+
+
 @role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def print_prescription(request, pk):
     """Print-ready prescription on the clinic's letterhead, reached from a visit."""
@@ -1342,6 +1351,7 @@ def print_prescription(request, pk):
         "items": prescription.items.all(),
         "display_date": visit.scheduled_start,
         "printed_note": _printed_note(prescription),
+        "hide_letterhead": _hide_letterhead(request),
     })
 
 
@@ -1373,6 +1383,7 @@ def print_prescription_record(request, pk):
         "items": prescription.items.all(),
         "display_date": prescription.visit.scheduled_start if prescription.visit else prescription.created_at,
         "printed_note": _printed_note(prescription),
+        "hide_letterhead": _hide_letterhead(request),
     })
 
 

@@ -18,7 +18,7 @@
 
 <div class="sheet">
 
-  <header class="sheet__head">
+  <header class="sheet__head{% if hide_letterhead %} sheet__head--blank{% endif %}">
     <div class="sheet__brand">
       {% include "branding/logo.html" with css_class="sheet__logo" %}
       <div>
