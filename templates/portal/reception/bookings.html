@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Bookings — {{ clinic_name }}{% endblock %}
 
@@ -220,4 +221,11 @@ was.
 </div>
 
 <div id="modal-host"></div>
+
+{% comment %}
+Left open on the desk all day, same reasoning as the reception board's own
+30-second poll — just slower, since this screen is the diary rather than the
+live queue and does not need to be quite that current.
+{% endcomment %}
+<script src="{% static 'js/auto_refresh.js' %}" data-refresh-ms="120000" defer></script>
 {% endblock %}

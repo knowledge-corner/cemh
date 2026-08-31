@@ -194,4 +194,12 @@ it.
 
 {% block extra_scripts %}
   <script src="{% static 'js/calendar.js' %}" defer></script>
+  {% comment %}
+  Left open on the desk all day, same reasoning as the reception board's own
+  30-second poll — just slower, since a rota does not change minute to minute
+  the way the live queue does.
+  {% endcomment %}
+  {% if not is_doctor_view %}
+    <script src="{% static 'js/auto_refresh.js' %}" data-refresh-ms="120000" defer></script>
+  {% endif %}
 {% endblock %}
