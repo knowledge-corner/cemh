@@ -50,4 +50,13 @@ EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = True
+
+# Django leaves this socket unbounded by default, so a mail server that never
+# answers — a network block silently dropping the connection, rather than
+# refusing it outright — hangs the request until gunicorn's own worker timeout
+# kills the whole process. Ten seconds is generous for a real SMTP handshake
+# and turns that crash into an ordinary, caught OSError the invitation and
+# sign-off screens already know how to report.
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
+
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@example.com")
