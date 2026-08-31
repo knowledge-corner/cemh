@@ -525,6 +525,75 @@ class TestTheSendButtonWaitsForTheCabin(TestCase):
         self.assertEqual(self.second.status, VisitStatus.ARRIVED)
 
 
+# ── KAN-49: reception's side ─────────────────────────────────────────────────
+#
+# "Send to cabin" is offered on the board too — reception is often the one
+# actually walking the patient in — with the same one-per-cabin greying the
+# doctor's own queue already has, computed across every doctor's visits on
+# the board at once rather than one doctor's queue.
+
+class TestReceptionCanAlsoSendToTheCabin(TestCase):
+
+    def setUp(self):
+        self.doctor = make_doctor()
+        self.other_doctor = make_doctor(
+            username="drother", email="other@example.in", phone="9820000009"
+        )
+        self.receptionist = make_receptionist()
+        self.client.force_login(self.receptionist)
+        self.first = make_visit(make_patient(), self.doctor, start=today_at(9))
+        self.second = make_visit(
+            make_patient(phone="9820088888"), self.doctor, start=today_at(11)
+        )
+        self.elsewhere = make_visit(
+            make_patient(phone="9820077777"), self.other_doctor, start=today_at(9)
+        )
+        for visit in (self.first, self.second, self.elsewhere):
+            visit.transition_to(VisitStatus.ARRIVED, by_user=self.receptionist)
+
+    def test_the_board_offers_a_live_button_while_the_cabin_is_empty(self):
+        response = self.client.get(reverse("reception_home"))
+        content = response.content.decode()
+        self.assertIn("Send to cabin", content)
+        self.assertNotIn("disabled", content)
+
+    def test_the_board_greys_the_others_out_once_somebody_is_in(self):
+        self.first.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        response = self.client.get(reverse("reception_home"))
+        content = response.content.decode()
+        self.assertIn("disabled", content)
+        self.assertIn(self.first.patient.full_name, content)
+
+    def test_a_different_doctors_arrived_patient_is_not_blocked(self):
+        # Two doctors' patients share one board — occupying one doctor's
+        # cabin must not grey out the other's.
+        self.first.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        response = self.client.get(reverse("reception_home"))
+        self.assertContains(response, "Send to cabin")
+        content = response.content.decode()
+        elsewhere_row_start = content.index(self.elsewhere.patient.full_name)
+        # The button nearest this patient's own card is the live one — a
+        # loose "disabled somewhere on the page" check would pass even if
+        # this patient's own button were wrongly greyed.
+        self.assertNotIn(
+            "disabled", content[elsewhere_row_start:elsewhere_row_start + 600]
+        )
+
+    def test_sending_to_the_cabin_from_the_board_moves_the_visit(self):
+        self.client.post(reverse("reception_move_visit", args=[self.first.pk, "IN_CABIN"]))
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.status, VisitStatus.IN_CABIN)
+
+    def test_the_rule_is_still_enforced_underneath(self):
+        # The greying is presentation. This is the rule — see
+        # Visit.transition_to, which refuses this regardless of which screen
+        # the click came from.
+        self.first.transition_to(VisitStatus.IN_CABIN, by_user=self.doctor)
+        self.client.post(reverse("reception_move_visit", args=[self.second.pk, "IN_CABIN"]))
+        self.second.refresh_from_db()
+        self.assertEqual(self.second.status, VisitStatus.ARRIVED)
+
+
 class TestTheClinicIsToldWhenNothingActuallyLeft(SignOffTestCase):
     """
     The most useful-sounding lie the system could tell.

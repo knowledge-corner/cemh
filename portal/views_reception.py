@@ -170,6 +170,18 @@ def _queue_context(request, day=None):
             and STAGE_OF_STATUS.get(previous) != STAGE_OF_STATUS.get(visit.status)
         )
 
+    # "Send to cabin" — same one-per-cabin rule the doctor's own queue shows
+    # (see portal.services.todays_queue), computed here instead across every
+    # doctor's visits on the board at once, since one receptionist's board
+    # covers all of them. The rule itself is enforced in Visit.transition_to
+    # regardless of which screen the click comes from; this only decides
+    # whether the button reads as live or as "finish with so-and-so first".
+    occupied_by_doctor = {v.doctor_id: v for v in visits if v.status == VisitStatus.IN_CABIN}
+    for visit in visits:
+        if visit.status == VisitStatus.ARRIVED:
+            occupant = occupied_by_doctor.get(visit.doctor_id)
+            visit.send_blocked_by = occupant if occupant and occupant.pk != visit.pk else None
+
     columns = []
     for key, label, statuses in QUEUE_COLUMNS:
         rows = [v for status in statuses for v in by_status.get(status, [])]
