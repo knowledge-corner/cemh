@@ -23,9 +23,6 @@ nobody in the cabin; it just stands alone rather than attaching to a visit.
         <div class="card__header">
           <h3 class="card__title">{{ prescription.created_at|date:"j F Y" }}</h3>
           <span>
-            {% if prescription.is_generated %}
-              <span class="badge badge--success">Sent to reception</span>
-            {% endif %}
             <a class="btn-edit" target="_blank"
                href="{% url 'print_prescription_record' prescription.pk %}">Print</a>
             {% comment %}
