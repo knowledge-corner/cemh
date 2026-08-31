@@ -8,6 +8,7 @@ form class plus a registry entry rather than a new view.
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from django import forms
 from django.db import transaction
@@ -227,28 +228,49 @@ class ReferenceLetterForm(StyledModelForm):
         }
 
 
+#: Suggestions for the unit field's <datalist> — not an enforced choice list.
+#: A lab report can legitimately use a unit not on this list, and an existing
+#: record's unit must never be blanked just because it doesn't match one of
+#: these exactly, so this stays advisory rather than a ChoiceField.
+LAB_UNIT_CHOICES = [
+    "mg/dL", "g/dL", "mg/L", "g/L", "µg/dL", "µg/L", "ng/mL", "ng/dL", "ng/L",
+    "pg/mL", "pg/dL", "mmol/L", "µmol/L", "nmol/L", "pmol/L",
+    "U/L", "IU/L", "mIU/L", "µIU/mL", "IU/mL", "mIU/mL",
+    "mEq/L", "%", "mm/hr", "sec",
+    "cells/µL", "/µL", "x10^3/µL", "x10^6/µL", "x10^9/L", "x10^12/L", "fL",
+    "mg/24hr", "g/24hr", "mg/g creatinine",
+]
+
+
 class InvestigationForm(StyledModelForm):
     #: Set by picking a suggestion from the test-name autocomplete (see
     #: portal.views_doctor.lab_test_search and _lab_test_results.html).
     #: Not required: a test typed free-hand, with no match in the master
     #: list, still saves — this only records which master-list test was
-    #: actually meant, when one was.
+    #: actually meant, when one was. Carries its own hx-get so picking a
+    #: suggestion can trigger the evaluate lookup directly (see
+    #: _lab_test_results.html's pickLabTest) — value and unit still trigger
+    #: it too, for a value corrected or a unit changed after that first fill.
     lab_test = forms.ModelChoiceField(
-        queryset=LabTest.objects.all(), required=False, widget=forms.HiddenInput,
+        queryset=LabTest.objects.all(), required=False, widget=forms.HiddenInput(attrs={
+            "hx-trigger": "change",
+            "hx-target": "#lab-evaluation",
+            "hx-include": "#id_value, #id_unit",
+        }),
     )
 
     class Meta:
         model = Investigation
         fields = [
-            "lab_test", "test_name", "category", "performed_on", "value", "value_numeric",
+            "lab_test", "test_name", "category", "performed_on", "value",
             "unit", "reference_range", "is_abnormal", "lab_name", "notes",
         ]
         widgets = {
             # Typing here looks up matching tests from the master list (see
             # portal.views_doctor.lab_test_search) — picking one fills
-            # lab_test above, and triggers the same evaluate call value_numeric
-            # and unit already trigger, so the unit and reference range show
-            # up before a value is even typed.
+            # lab_test above, which fires the same evaluate lookup value and
+            # unit trigger themselves, so category, unit and reference range
+            # show up before a value is even typed.
             "test_name": forms.TextInput(attrs={
                 **INPUT,
                 "autocomplete": "off",
@@ -257,14 +279,16 @@ class InvestigationForm(StyledModelForm):
                 "hx-target": "#lab-test-suggestions",
             }),
             "performed_on": forms.DateInput(attrs=DATE, format="%Y-%m-%d"),
-            # Both trigger the same "evaluate against the reference range"
-            # lookup — value_numeric because that's what gets compared, unit
-            # because changing it (say, correcting mg/dL to mmol/L) can change
-            # what the comparison should be. The hx-get URL itself is patient-
-            # scoped (the match depends on the patient's age and sex) and so
-            # can't be known here at class-definition time — see __init__,
-            # which fills it in from self.patient.
-            "value_numeric": forms.NumberInput(attrs={
+            # value and unit both trigger the same "evaluate against the
+            # reference range" lookup — value because that's what gets
+            # compared (parsed as a number where it can be; see save() below
+            # for the value_numeric it derives), unit because changing it
+            # (say, correcting mg/dL to mmol/L) can change what the
+            # comparison should be. The hx-get URL itself is patient-scoped
+            # (the match depends on the patient's age and sex) and so can't
+            # be known here at class-definition time — see __init__, which
+            # fills it in from self.patient.
+            "value": forms.TextInput(attrs={
                 **INPUT,
                 "hx-trigger": "keyup changed delay:400ms, change",
                 "hx-target": "#lab-evaluation",
@@ -272,22 +296,42 @@ class InvestigationForm(StyledModelForm):
             }),
             "unit": forms.TextInput(attrs={
                 **INPUT,
+                "list": "lab-unit-options",
                 "hx-trigger": "change",
                 "hx-target": "#lab-evaluation",
-                "hx-include": "#id_lab_test, #id_value_numeric",
+                "hx-include": "#id_lab_test, #id_value",
             }),
             "notes": forms.Textarea(attrs={**TEXTAREA, "rows": 2}),
         }
         help_texts = {
-            "value_numeric": "Fill in when the result is a number — this is what gets trended.",
+            "value": "A number where possible (e.g. 5.69) — that's what gets trended "
+                     "and compared to the reference range. Free text (e.g. \"Negative\") "
+                     "is fine when a test doesn't report one.",
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.unit_choices = LAB_UNIT_CHOICES
         if self.patient is not None:
             evaluate_url = reverse("doctor_lab_evaluate", args=[self.patient.patient_id])
-            self.fields["value_numeric"].widget.attrs["hx-get"] = evaluate_url
+            self.fields["lab_test"].widget.attrs["hx-get"] = evaluate_url
+            self.fields["value"].widget.attrs["hx-get"] = evaluate_url
             self.fields["unit"].widget.attrs["hx-get"] = evaluate_url
+
+    def save(self, commit=True):
+        # The one field the doctor actually fills in. value_numeric is
+        # derived here rather than typed separately — auto-flagging
+        # (clinical.lab_reference.evaluate_value) and the analytics trend
+        # chart both read value_numeric directly, so this is what keeps them
+        # working without asking for a second box.
+        instance = super().save(commit=False)
+        try:
+            instance.value_numeric = Decimal(instance.value)
+        except (InvalidOperation, TypeError):
+            instance.value_numeric = None
+        if commit:
+            instance.save()
+        return instance
 
 
 class ClinicalNoteForm(StyledModelForm):

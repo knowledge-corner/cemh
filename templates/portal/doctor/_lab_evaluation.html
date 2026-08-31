@@ -24,12 +24,23 @@ docstring for the one rule this follows.
     const unit_field = document.getElementById('id_unit');
     const range_field = document.getElementById('id_reference_range');
     const abnormal_field = document.getElementById('id_is_abnormal');
+    const category_field = document.getElementById('id_category');
 
     {% if evaluation.reference_range %}
       if (unit_field && !unit_field.value) {
         unit_field.value = "{{ evaluation.reference_range.unit|escapejs }}";
       }
       if (range_field) range_field.value = "{{ evaluation.formatted_range|escapejs }}";
+    {% endif %}
+
+    {% if category_code %}
+      // Only while Category is still sitting on its default — once a doctor
+      // has deliberately picked something else, picking a test (or
+      // correcting the value/unit afterwards) should not silently override
+      // their choice.
+      if (category_field && category_field.value === "OTHER") {
+        category_field.value = "{{ category_code|escapejs }}";
+      }
     {% endif %}
 
     {% if evaluation.is_abnormal is True %}

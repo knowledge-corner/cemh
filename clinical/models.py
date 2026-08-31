@@ -99,13 +99,25 @@ class ClinicalNote(models.Model):
 
 
 class InvestigationCategory(models.TextChoices):
-    THYROID = "THYROID", "Thyroid"
-    DIABETES = "DIABETES", "Diabetes / Glycaemic"
-    HORMONE = "HORMONE", "Hormone assay"
-    BONE = "BONE", "Bone & mineral"
-    LIPID = "LIPID", "Lipid profile"
-    IMAGING = "IMAGING", "Imaging"
+    """
+    The same 8 categories LabTest itself is filed under (see
+    clinical/data/lab_tests.tsv) — not an independent list, so that picking a
+    test off the master list can set this exactly rather than approximately.
+    """
+
+    CLINICAL_CHEMISTRY = "CLINICAL_CHEMISTRY", "Clinical Chemistry"
+    ENDOCRINOLOGY = "ENDOCRINOLOGY", "Endocrinology"
+    HEMATOLOGY = "HEMATOLOGY", "Hematology"
+    CARDIAC_MUSCLE = "CARDIAC_MUSCLE", "Cardiac and Muscle"
+    COAGULATION = "COAGULATION", "Coagulation"
+    INFECTIOUS_SEROLOGY = "INFECTIOUS_SEROLOGY", "Infectious Disease and Serology"
+    INFLAMMATION_IMMUNOLOGY = "INFLAMMATION_IMMUNOLOGY", "Inflammation and Immunology"
     OTHER = "OTHER", "Other"
+
+    @classmethod
+    def from_label(cls, label):
+        """The choice whose label matches LabTest.category's free text, or None."""
+        return next((value for value, lbl in cls.choices if lbl == label), None)
 
 
 class LabTest(models.Model):
@@ -282,11 +294,16 @@ class Investigation(models.Model):
     )
     test_name = models.CharField(max_length=200, db_index=True)
     category = models.CharField(
-        max_length=20, choices=InvestigationCategory.choices, default=InvestigationCategory.OTHER
+        max_length=32, choices=InvestigationCategory.choices, default=InvestigationCategory.OTHER
     )
 
     # Kept as text so free-form results ("Negative", "<0.01") survive alongside
-    # numbers; `value_numeric` carries the machine-readable copy for charting.
+    # numbers. The doctor only ever sees and types `value` — InvestigationForm
+    # derives `value_numeric` from it automatically on save, attempting a
+    # Decimal parse and leaving it null when the result isn't a number. This
+    # is what auto-flagging (clinical.lab_reference.evaluate_value) and the
+    # analytics trend chart actually read; direct ORM creation (seed_demo,
+    # fixtures) may still set both explicitly.
     value = models.CharField(max_length=100)
     value_numeric = models.DecimalField(
         max_digits=12, decimal_places=4, null=True, blank=True,

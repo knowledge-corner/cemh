@@ -92,9 +92,9 @@ class TestSaving(EditingTestCase):
     def test_adding_an_investigation_persists_it(self):
         self.open_visit()
         self.client.post(self.add_url("investigation"), {
-            "test_name": "TSH", "category": "THYROID",
+            "test_name": "TSH", "category": "ENDOCRINOLOGY",
             "performed_on": timezone.localdate().isoformat(),
-            "value": "6.2", "value_numeric": "6.2", "unit": "µIU/mL",
+            "value": "6.2", "unit": "µIU/mL",
             "reference_range": "0.5 – 4.5", "is_abnormal": "on",
             "lab_name": "Metropolis", "notes": "",
         })
@@ -102,6 +102,8 @@ class TestSaving(EditingTestCase):
         self.assertEqual(result.patient, self.patient)
         self.assertTrue(result.is_abnormal)
         self.assertEqual(result.recorded_by, self.doctor)
+        # value_numeric is no longer a form field — derived from value.
+        self.assertEqual(result.value_numeric, Decimal("6.2"))
 
     def test_adding_a_measurement_persists_it(self):
         self.open_visit()
@@ -468,9 +470,9 @@ class TestAlwaysEditableTabsNeedNoOpenVisit(EditingTestCase):
 
     def test_an_investigation_result_can_be_added(self):
         response = self.client.post(self.add_url("investigation"), {
-            "test_name": "TSH", "category": "THYROID",
+            "test_name": "TSH", "category": "ENDOCRINOLOGY",
             "performed_on": timezone.localdate().isoformat(),
-            "value": "6.2", "value_numeric": "6.2", "unit": "µIU/mL",
+            "value": "6.2", "unit": "µIU/mL",
             "reference_range": "0.5 – 4.5", "is_abnormal": "on",
             "lab_name": "Metropolis", "notes": "",
         })

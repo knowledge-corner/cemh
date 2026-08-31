@@ -1,8 +1,8 @@
 {% comment %}
 Type-ahead results for the investigation form's test name field. Picking one
 fills test_name and the hidden lab_test field, then immediately asks for an
-evaluation (see doctor_lab_evaluate) so the unit and reference range show up
-before the doctor has even typed a value.
+evaluation (see doctor_lab_evaluate) so category, unit and reference range
+show up before the doctor has even typed a value.
 {% endcomment %}
 
 {% if results %}
@@ -31,10 +31,9 @@ before the doctor has even typed a value.
     if (lab_test_field) lab_test_field.value = pk;
     const suggestions = document.getElementById('lab-test-suggestions');
     if (suggestions) suggestions.innerHTML = '';
-    // Ask for the reference range straight away, before any value is typed —
-    // this is the same request the value/unit fields trigger themselves, see
-    // InvestigationForm's widgets.
-    const value_field = document.getElementById('id_value_numeric');
-    if (value_field && window.htmx) htmx.trigger(value_field, 'change');
+    // Ask for the reference range (and category, and unit) straight away,
+    // before any value is typed — triggered on the hidden lab_test field
+    // itself, which carries its own hx-get, see InvestigationForm.
+    if (lab_test_field && window.htmx) htmx.trigger(lab_test_field, 'change');
   }
 </script>
