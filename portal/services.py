@@ -8,10 +8,12 @@ the growth tab can be skipped entirely when that app is not installed.
 
 from collections import OrderedDict
 from datetime import timedelta
+from decimal import Decimal
 
 from django.apps import apps
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import DecimalField, F, Prefetch, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from appointments.models import Visit, VisitStatus
@@ -468,3 +470,55 @@ def todays_queue(doctor):
         visit.send_blocked_by = occupied if occupied and occupied.pk != visit.pk else None
 
     return ordered
+
+
+def doctor_upcoming_bookings(doctor):
+    """
+    This doctor's own diary ahead — split into today and the days after it,
+    same "still to come" rule reception's own Bookings screen uses (see
+    views_reception._upcoming_filters), scoped to one doctor. Today's group
+    is not narrowed to slots that have not passed yet, for the same reason as
+    reception's: a patient running late is exactly who this is for.
+    """
+    today = timezone.localdate()
+    visits = list(
+        Visit.objects.filter(
+            doctor=doctor,
+            status__in=(VisitStatus.BOOKED, VisitStatus.CONFIRMED),
+            scheduled_start__date__gte=today,
+        )
+        .with_related()
+        .order_by("scheduled_start")
+    )
+    return (
+        [v for v in visits if timezone.localtime(v.scheduled_start).date() == today],
+        [v for v in visits if timezone.localtime(v.scheduled_start).date() > today],
+    )
+
+
+def doctor_completed_bookings(doctor, limit=300):
+    """
+    This doctor's own finished, paid-up visits — same "nothing left owing"
+    rule as reception's Completed tab (see views_reception._past_filters),
+    scoped to one doctor. Direct consultations are included without any
+    special-casing: nothing here filters on is_direct or is_walk_in, only on
+    status and what is still owed, so a direct consultation appears exactly
+    like any other visit once it reaches the same state.
+    """
+    total_due = (
+        F("charge__consultation_fee") + F("charge__procedure_fee") - F("charge__discount")
+    )
+    visits = (
+        Visit.objects.filter(doctor=doctor, status__in=(VisitStatus.BILLED, VisitStatus.COMPLETED))
+        .with_related()
+        .select_related("charge")
+        .annotate(
+            _paid=Coalesce(
+                Sum("charge__payments__amount"), Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=10, decimal_places=2),
+            ),
+        )
+        .filter(Q(charge__isnull=True) | Q(_paid__gte=total_due))
+        .order_by("-scheduled_start")
+    )
+    return visits[:limit], visits.count()
