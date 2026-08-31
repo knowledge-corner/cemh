@@ -164,6 +164,25 @@ class DoctorProfile(models.Model):
                   "paragraphs.",
     )
 
+    #: The public website's "Areas of focus" bullet list, one doctor's own
+    #: curated subset of what the clinic as a whole treats — not the same list
+    #: as the Services section, which is the same nine conditions for every
+    #: doctor in that half of the practice.
+    areas_of_focus = models.TextField(
+        blank=True,
+        help_text="Shown on the public website as a bullet list. One per line.",
+    )
+
+    #: Fellowships, observerships and the like — the public website's "Further
+    #: training" bullet list. Most doctors have none; the block simply does not
+    #: render rather than showing an empty heading.
+    further_training = models.TextField(
+        blank=True,
+        help_text="Shown on the public website as a bullet list, e.g. "
+                  "'Clinical Observership — Royal Children's Hospital, "
+                  "Melbourne'. One per line. Leave blank if none.",
+    )
+
     #: What the calendar filters on (KAN-21 FR-9, as revised by KAN-37).
     #:
     #: PROTECT, so a specialisation cannot be deleted out from under the
@@ -188,6 +207,21 @@ class DoctorProfile(models.Model):
         blank=True,
         null=True,
         help_text="Scanned signature placed on generated prescriptions.",
+    )
+
+    #: The public website's "Meet our specialists" photograph.
+    #:
+    #: Uploaded here rather than only through the photos/ folder convention
+    #: (see website/photos.py), which needed a file placed on the server and a
+    #: rebuild to take effect — fine for the placeholder images that shipped
+    #: with the app, not something to ask a clinic to do for every new doctor.
+    #: The folder convention still works as a fallback when this is blank.
+    photo = models.ImageField(
+        upload_to="doctor_photos/",
+        blank=True,
+        null=True,
+        help_text="Shown on the public website. Portrait orientation, face in "
+                  "the upper third, works best.",
     )
 
     class Meta:

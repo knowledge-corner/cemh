@@ -44,7 +44,21 @@ def candidate_names(user):
 
 
 def photo_url(user):
-    """The URL of this doctor's photograph, or ``None`` if there is not one."""
+    """
+    The URL of this doctor's photograph, or ``None`` if there is not one.
+
+    An uploaded ``DoctorProfile.photo`` wins when there is one — uploading
+    through the doctor's own admin page needs no server access and no
+    rebuild, unlike the folder convention below. That convention still
+    resolves photos placed directly in the photos/ folder (how the two
+    placeholder images that ship with the app are found), so it stays as the
+    fallback rather than being replaced.
+    """
+    profile = getattr(user, "doctor_profile", None)
+    photo = getattr(profile, "photo", None)
+    if photo:
+        return photo.url
+
     for name in candidate_names(user):
         for extension in EXTENSIONS:
             path = f"{PHOTO_DIR}/{name}{extension}"

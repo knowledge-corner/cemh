@@ -51,9 +51,8 @@ PAEDIATRIC_SERVICES = [
 FAQS = [
     (
         "Do I need a referral to book an appointment?",
-        "No referral is required. You can telephone the clinic directly, send a "
-        "WhatsApp message, or fill in the callback form on this page and our "
-        "team will ring you back to schedule a visit.",
+        "No referral is required. You can telephone the clinic directly or "
+        "send a WhatsApp message, and our team will find you a time.",
     ),
     (
         "What should I bring to my first visit?",
@@ -75,26 +74,28 @@ FAQS = [
     ),
     (
         "How do I reach the clinic for appointments?",
-        "Telephone the clinic on the number at the top of this page, or send a "
-        "WhatsApp message. You can also leave your number in the callback form "
-        "and we will ring you.",
+        "Telephone the clinic on the number at the top of this page, or send "
+        "a WhatsApp message. You can also ring either doctor directly on the "
+        "numbers beside their names.",
     ),
 ]
 
 
-def _whatsapp_link():
+def _whatsapp_link(number, message=None):
     """
     A wa.me link with the message pre-typed.
 
     wa.me expects the number in international format with no punctuation, so a
     locally-written number is normalised here rather than in configuration.
+    Shared by the clinic-wide button and each doctor's own contact card.
     """
-    number = "".join(ch for ch in settings.CLINIC.WHATSAPP_NUMBER if ch.isdigit())
-    if not number:
+    digits = "".join(ch for ch in (number or "") if ch.isdigit())
+    if not digits:
         return ""
-    if len(number) == 10:  # A bare Indian mobile number.
-        number = f"91{number}"
-    return f"https://wa.me/{number}?text={quote(settings.CLINIC.WHATSAPP_MESSAGE)}"
+    if len(digits) == 10:  # A bare Indian mobile number.
+        digits = f"91{digits}"
+    text = message if message is not None else settings.CLINIC.WHATSAPP_MESSAGE
+    return f"https://wa.me/{digits}?text={quote(text)}"
 
 
 def _doctors():
@@ -116,6 +117,9 @@ def _doctors():
     for doctor in people:
         profile = getattr(doctor, "doctor_profile", None)
         bio = (getattr(profile, "bio", "") or "").strip()
+        qualification = (getattr(profile, "qualification", "") or "").strip()
+        areas = (getattr(profile, "areas_of_focus", "") or "").strip()
+        training = (getattr(profile, "further_training", "") or "").strip()
         introduced.append({
             "doctor": doctor,
             "profile": profile,
@@ -124,6 +128,13 @@ def _doctors():
             # Split on blank lines so a bio reads as paragraphs rather than one
             # unbroken wall, without the template needing to know how many.
             "paragraphs": [p.strip() for p in bio.split("\n\n") if p.strip()],
+            # The single "MBBS · DNB (Medicine)" line is kept for the summary
+            # under the doctor's name; split here too so the detail card can
+            # list the same credentials as bullets without a second field.
+            "qualification_list": [q.strip() for q in qualification.split("·") if q.strip()],
+            "areas_of_focus": [a.strip() for a in areas.splitlines() if a.strip()],
+            "further_training": [t.strip() for t in training.splitlines() if t.strip()],
+            "whatsapp_url": _whatsapp_link(doctor.phone),
         })
     return introduced
 
@@ -171,11 +182,21 @@ def home(request):
             description=description,
         ),
         **seo.meta(request, description=description),
-        "whatsapp_url": _whatsapp_link(),
-        "consulting_hours": settings.CLINIC.CONSULTING_HOURS_DISPLAY,
-        "working_days": settings.CLINIC.WORKING_DAYS_DISPLAY,
+        "whatsapp_url": _whatsapp_link(settings.CLINIC.WHATSAPP_NUMBER),
         "maps_url": (
             "https://www.google.com/maps/search/?api=1&query="
             + quote(settings.CLINIC.CLINIC_ADDRESS)
         ),
+        # An inline embed, not just the link-out above — a visitor sees exactly
+        # where the clinic is without leaving the page. output=embed is the
+        # key-free Maps embed; no API key to manage or bill for.
+        "maps_embed_url": (
+            "https://www.google.com/maps?q="
+            + quote(settings.CLINIC.CLINIC_ADDRESS)
+            + "&output=embed"
+        ),
+        # Never on a laptop running the dev server or the test suite — that
+        # traffic is not a real visitor, and it would sit in the same GA4
+        # property as the clinic's actual numbers with no way to tell them apart.
+        "ga_measurement_id": "" if settings.DEBUG else settings.CLINIC.GA_MEASUREMENT_ID,
     })
