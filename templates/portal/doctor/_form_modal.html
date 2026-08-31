@@ -72,7 +72,7 @@ returns _saved.html, which closes this and refreshes the chart in place.
                   <th>Frequency</th><th>Duration</th><th>Instructions</th><th>Remove</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="medication-rows">
                 {% for item_form in formset %}
                   <tr>
                     {{ item_form.id }}
@@ -88,6 +88,51 @@ returns _saved.html, which closes this and refreshes the chart in place.
               </tbody>
             </table>
           </div>
+          <button type="button" class="btn-edit" style="margin-top:.5rem"
+                  onclick="addMedicationRow()">+ Add row</button>
+
+          {% comment %}
+          The blank row a new "+ Add row" click clones. formset.empty_form
+          renders the same fields as every other row, with __prefix__ in
+          place of a real index — addMedicationRow() below swaps that for
+          the formset's current TOTAL_FORMS count, so Django accepts it as
+          just another extra form on submit. A <template> rather than a
+          hidden <tr>: browsers never render its contents or count its
+          inputs as part of the page until it is cloned out, so it can carry
+          real name/id attributes without a stray blank row appearing, and
+          without the untouched original ever getting submitted twice.
+          {% endcomment %}
+          <template id="medication-empty-row">
+            <tr>
+              <td>{{ formset.empty_form.drug_name }}</td>
+              <td>{{ formset.empty_form.strength }}</td>
+              <td>{{ formset.empty_form.dosage }}</td>
+              <td>{{ formset.empty_form.frequency }}</td>
+              <td>{{ formset.empty_form.duration }}</td>
+              <td>{{ formset.empty_form.instructions }}</td>
+              <td></td>
+            </tr>
+          </template>
+          <script>
+            function addMedicationRow() {
+              const totalInput = document.getElementById('id_items-TOTAL_FORMS');
+              const template = document.getElementById('medication-empty-row');
+              const tbody = document.getElementById('medication-rows');
+              if (!totalInput || !template || !tbody) return;
+
+              const index = parseInt(totalInput.value, 10);
+              const row = template.content.cloneNode(true);
+              row.querySelectorAll('[name], [id]').forEach(function (el) {
+                ['name', 'id'].forEach(function (attr) {
+                  if (el.hasAttribute(attr)) {
+                    el.setAttribute(attr, el.getAttribute(attr).replace('__prefix__', index));
+                  }
+                });
+              });
+              tbody.appendChild(row);
+              totalInput.value = index + 1;
+            }
+          </script>
         {% endif %}
 
       </div>

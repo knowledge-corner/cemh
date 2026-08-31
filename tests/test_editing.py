@@ -279,6 +279,34 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertFalse(prescription.is_generated, "Must not auto-issue on save")
         self.assertEqual(prescription.items.count(), 1)
 
+    def test_the_form_offers_an_add_row_button_and_its_template(self):
+        self.open_visit()
+        response = self.client.get(self.add_url("prescription"))
+        self.assertContains(response, "addMedicationRow()")
+        self.assertContains(response, 'id="medication-empty-row"')
+        # The clonable row's inputs carry __prefix__, which the button's own
+        # script swaps for the real index — this is what makes a row it adds
+        # acceptable to the same formset a saved page already has.
+        self.assertContains(response, "items-__prefix__-drug_name")
+
+    def test_a_fourth_medication_row_saves_alongside_the_first_three(self):
+        # What clicking "+ Add row" a second time produces once the initial
+        # three are full: a fourth form, same shape, one higher TOTAL_FORMS —
+        # exactly what the formset already accepts from any other row.
+        self.open_visit()
+        self.client.post(self.add_url("prescription"), self._item_formset(**{
+            "items-TOTAL_FORMS": "2",
+            "items-1-drug_name": "Metformin", "items-1-strength": "500 mg",
+            "items-1-dosage": "1 tablet", "items-1-frequency": "Twice daily",
+            "items-1-duration": "3 months", "items-1-instructions": "After meals",
+        }))
+        prescription = Prescription.objects.get()
+        self.assertEqual(prescription.items.count(), 2)
+        self.assertEqual(
+            set(prescription.items.values_list("drug_name", flat=True)),
+            {"Levothyroxine", "Metformin"},
+        )
+
     def test_a_prescription_cannot_be_created_without_an_open_visit(self):
         # Unlike a reference letter, a prescription is clinical: it needs the
         # chart unlocked the same way everything else on it does.
