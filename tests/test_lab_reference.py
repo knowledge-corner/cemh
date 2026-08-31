@@ -247,7 +247,7 @@ class TestTheEvaluateEndpoint(TestCase):
         make_range(self.test, sex=ReferenceSex.FEMALE, low=Decimal("1"), high=Decimal("10"), unit="U")
         make_range(self.test, sex=ReferenceSex.MALE, low=Decimal("100"), high=Decimal("200"), unit="U")
         response = self.client.get(self.evaluate_url(), {
-            "lab_test": self.test.pk, "value_numeric": "5", "unit": "U",
+            "lab_test": self.test.pk, "value": "5", "unit": "U",
         })
         self.assertContains(response, "Within range")
 
@@ -260,6 +260,27 @@ class TestTheEvaluateEndpoint(TestCase):
         self.client.force_login(self.doctor)
         url = reverse("doctor_lab_evaluate", args=["CEMH-NO-SUCH"])
         self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_picking_a_test_offers_its_own_category_to_auto_fill(self):
+        # TSH (LAB0213) is filed under Endocrinology in the master catalogue
+        # — the response should carry that exact code for the auto-fill
+        # script to apply, only while Category is still on its default.
+        self.client.force_login(self.doctor)
+        response = self.client.get(self.evaluate_url(), {"lab_test": self.test.pk})
+        self.assertContains(response, "ENDOCRINOLOGY")
+        self.assertContains(response, 'category_field.value === "OTHER"')
+
+    def test_a_non_numeric_value_still_returns_the_range(self):
+        # evaluate_value tolerates a non-numeric string — the live preview
+        # should still show the range on file, just no in/out-of-range badge.
+        self.client.force_login(self.doctor)
+        make_range(self.test, sex=ReferenceSex.ANY, low=Decimal("1"), high=Decimal("10"), unit="U")
+        response = self.client.get(self.evaluate_url(), {
+            "lab_test": self.test.pk, "value": "Negative", "unit": "U",
+        })
+        self.assertContains(response, "Reference range on file")
+        self.assertNotContains(response, "Within range")
+        self.assertNotContains(response, "Outside range")
 
 
 class TestTheInvestigationFormIntegration(TestCase):
@@ -283,15 +304,33 @@ class TestTheInvestigationFormIntegration(TestCase):
         response = self.client.get(self.add_url())
         self.assertContains(response, reverse("doctor_lab_evaluate", args=[self.patient.patient_id]))
 
+    def test_the_unit_field_offers_a_suggestion_list_not_a_strict_choice(self):
+        response = self.client.get(self.add_url())
+        self.assertContains(response, '<datalist id="lab-unit-options">')
+        self.assertContains(response, '<option value="mg/dL">')
+
+    def test_an_off_list_unit_still_saves_and_displays(self):
+        # The whole point of a datalist over a <select>: a unit that is not
+        # one of the suggestions is still accepted, not rejected or blanked.
+        self.client.post(self.add_url(), {
+            "test_name": "Something obscure", "category": "OTHER",
+            "performed_on": timezone.localdate().isoformat(),
+            "value": "3", "unit": "a very unusual unit",
+            "reference_range": "", "notes": "", "lab_name": "",
+        })
+        investigation = Investigation.objects.get()
+        self.assertEqual(investigation.unit, "a very unusual unit")
+
     def test_saving_with_a_picked_test_links_it(self):
         self.client.post(self.add_url(), {
             "lab_test": self.test.pk, "test_name": "TSH", "category": "OTHER",
             "performed_on": timezone.localdate().isoformat(),
-            "value": "2.1", "value_numeric": "2.1", "unit": "mIU/L",
+            "value": "2.1", "unit": "mIU/L",
             "reference_range": "", "notes": "", "lab_name": "",
         })
         investigation = Investigation.objects.get()
         self.assertEqual(investigation.lab_test, self.test)
+        self.assertEqual(investigation.value_numeric, Decimal("2.1"))
 
     def test_saving_with_no_matching_test_still_works(self):
         # The "doesn't have to match the master list" path — free text, no
@@ -304,3 +343,4 @@ class TestTheInvestigationFormIntegration(TestCase):
         investigation = Investigation.objects.get()
         self.assertIsNone(investigation.lab_test)
         self.assertEqual(investigation.value, "Negative")
+        self.assertIsNone(investigation.value_numeric)

@@ -46,8 +46,13 @@ returns _saved.html, which closes this and refreshes the chart in place.
                 {% if kind == "investigation" and field.name == "test_name" %}
                   <div id="lab-test-suggestions"></div>
                 {% endif %}
-                {% if kind == "investigation" and field.name == "value_numeric" %}
+                {% if kind == "investigation" and field.name == "value" %}
                   <div id="lab-evaluation"></div>
+                {% endif %}
+                {% if kind == "investigation" and field.name == "unit" %}
+                  <datalist id="lab-unit-options">
+                    {% for choice in form.unit_choices %}<option value="{{ choice }}">{% endfor %}
+                  </datalist>
                 {% endif %}
                 {% if field.help_text %}<div class="field__help">{{ field.help_text }}</div>{% endif %}
                 {% for error in field.errors %}<div class="field__error">{{ error }}</div>{% endfor %}

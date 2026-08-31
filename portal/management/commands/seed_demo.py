@@ -261,12 +261,12 @@ class Command(BaseCommand):
         for days, tsh, igf in [(740, "3.1", "84"), (400, "2.8", "92"), (35, "2.6", "88")]:
             performed = today - timedelta(days=days)
             Investigation.objects.create(
-                patient=patient, test_name="TSH", category=InvestigationCategory.THYROID,
+                patient=patient, test_name="TSH", category=InvestigationCategory.ENDOCRINOLOGY,
                 value=tsh, value_numeric=Decimal(tsh), unit="µIU/mL",
                 reference_range="0.5 – 4.5", performed_on=performed, lab_name="Metropolis",
             )
             Investigation.objects.create(
-                patient=patient, test_name="IGF-1", category=InvestigationCategory.HORMONE,
+                patient=patient, test_name="IGF-1", category=InvestigationCategory.ENDOCRINOLOGY,
                 value=igf, value_numeric=Decimal(igf), unit="ng/mL",
                 reference_range="110 – 565", is_abnormal=True,
                 performed_on=performed, lab_name="Metropolis",
@@ -314,7 +314,7 @@ class Command(BaseCommand):
 
         for days, hba1c in [(1090, "11.2"), (720, "8.9"), (360, "8.1"), (25, "7.4")]:
             Investigation.objects.create(
-                patient=patient, test_name="HbA1c", category=InvestigationCategory.DIABETES,
+                patient=patient, test_name="HbA1c", category=InvestigationCategory.CLINICAL_CHEMISTRY,
                 value=hba1c, value_numeric=Decimal(hba1c), unit="%",
                 reference_range="< 7.0 (target)", is_abnormal=float(hba1c) >= 7.0,
                 performed_on=today - timedelta(days=days), lab_name="SRL Diagnostics",
@@ -347,13 +347,13 @@ class Command(BaseCommand):
         for days, tsh, abnormal in [(1480, "11.4", True), (1100, "6.2", True),
                                     (700, "3.8", False), (300, "2.9", False), (20, "2.4", False)]:
             Investigation.objects.create(
-                patient=patient, test_name="TSH", category=InvestigationCategory.THYROID,
+                patient=patient, test_name="TSH", category=InvestigationCategory.ENDOCRINOLOGY,
                 value=tsh, value_numeric=Decimal(tsh), unit="µIU/mL",
                 reference_range="0.5 – 4.5", is_abnormal=abnormal,
                 performed_on=today - timedelta(days=days), lab_name="Thyrocare",
             )
         Investigation.objects.create(
-            patient=patient, test_name="Vitamin D (25-OH)", category=InvestigationCategory.BONE,
+            patient=patient, test_name="Vitamin D (25-OH)", category=InvestigationCategory.CLINICAL_CHEMISTRY,
             value="18", value_numeric=Decimal("18"), unit="ng/mL",
             reference_range="30 – 100", is_abnormal=True,
             performed_on=today - timedelta(days=300), lab_name="Thyrocare",
@@ -400,13 +400,13 @@ class Command(BaseCommand):
 
         for days, hba1c in [(890, "9.4"), (540, "8.6"), (240, "8.2"), (30, "7.8")]:
             Investigation.objects.create(
-                patient=patient, test_name="HbA1c", category=InvestigationCategory.DIABETES,
+                patient=patient, test_name="HbA1c", category=InvestigationCategory.CLINICAL_CHEMISTRY,
                 value=hba1c, value_numeric=Decimal(hba1c), unit="%",
                 reference_range="< 7.0 (target)", is_abnormal=True,
                 performed_on=today - timedelta(days=days), lab_name="SRL Diagnostics",
             )
         Investigation.objects.create(
-            patient=patient, test_name="LDL Cholesterol", category=InvestigationCategory.LIPID,
+            patient=patient, test_name="LDL Cholesterol", category=InvestigationCategory.CLINICAL_CHEMISTRY,
             value="142", value_numeric=Decimal("142"), unit="mg/dL",
             reference_range="< 100", is_abnormal=True,
             performed_on=today - timedelta(days=30), lab_name="SRL Diagnostics",
@@ -445,13 +445,13 @@ class Command(BaseCommand):
             diagnosed_on=today - timedelta(days=190),
         )
         Investigation.objects.create(
-            patient=patient, test_name="Fasting Insulin", category=InvestigationCategory.HORMONE,
+            patient=patient, test_name="Fasting Insulin", category=InvestigationCategory.ENDOCRINOLOGY,
             value="24.6", value_numeric=Decimal("24.6"), unit="µIU/mL",
             reference_range="2.6 – 24.9", performed_on=today - timedelta(days=190),
             lab_name="Metropolis", notes="Upper end of range; insulin resistance likely.",
         )
         Investigation.objects.create(
-            patient=patient, test_name="Testosterone (total)", category=InvestigationCategory.HORMONE,
+            patient=patient, test_name="Testosterone (total)", category=InvestigationCategory.ENDOCRINOLOGY,
             value="68", value_numeric=Decimal("68"), unit="ng/dL",
             reference_range="15 – 70", performed_on=today - timedelta(days=190),
             lab_name="Metropolis",

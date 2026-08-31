@@ -22,7 +22,7 @@ from appointments.models import InvalidTransition, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from clinical import lab_reference
-from clinical.models import ICD10Code, LabTest
+from clinical.models import ICD10Code, InvestigationCategory, LabTest
 from patients import matching
 from patients.models import Patient
 
@@ -369,16 +369,22 @@ def lab_evaluate(request, patient_id):
     if lab_test_id:
         lab_test = LabTest.objects.filter(pk=lab_test_id).first()
 
-    value_numeric = (request.GET.get("value_numeric") or "").strip() or None
+    # The single Value field the form now offers — evaluate_value already
+    # tolerates a non-numeric string (see its own try/except), so whatever
+    # was typed goes straight through unparsed here.
+    value = (request.GET.get("value") or "").strip() or None
     unit = (request.GET.get("unit") or "").strip()
 
     evaluation = lab_reference.evaluate_value(
-        lab_test, value_numeric, unit,
+        lab_test, value, unit,
         sex=patient.sex, age_years=patient.age_years,
     )
 
+    category_code = InvestigationCategory.from_label(lab_test.category) if lab_test else None
+
     return render(request, "portal/doctor/_lab_evaluation.html", {
         "evaluation": evaluation,
+        "category_code": category_code,
     })
 
 
