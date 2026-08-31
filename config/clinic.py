@@ -153,16 +153,18 @@ DEFAULT_CONSULTATION_FEE = os.environ.get("DEFAULT_CONSULTATION_FEE", "800")
 
 # Whether the clinic day has to be signed off (KAN-48, KAN-49).
 #
-# **On.** It was switched off while the design was wrong — the alert did the
-# billing inside a warning strip and gave no way to work through the list. The
-# clinic has since specified how it should behave, so it is on again.
+# **Off, at the clinic's request (again).** It was on for a while once the
+# alert/worklist design was fixed, but the clinic asked for the whole
+# "Unclosed appointments" tab, its board alert and buttons, and the sign-off
+# action itself to stop appearing for now. Nothing was removed to do this —
+# see appointments.signoff.is_enabled().
 #
 # Off, nothing about sign-offs appears: no alert, no held-up arrivals, no
 # button. The end-of-day sweep that clears yesterday's leftovers still works,
 # because that predates all of this and the board needs it.
 #
-# Set to "0" to switch it off again without removing anything.
-DAY_SIGN_OFF_ENABLED = os.environ.get("DAY_SIGN_OFF_ENABLED", "1") == "1"
+# Set to "1" to switch it back on.
+DAY_SIGN_OFF_ENABLED = os.environ.get("DAY_SIGN_OFF_ENABLED", "0") == "1"
 
 # Whether the sign-off tries to email the day sheet at all.
 #
