@@ -84,6 +84,14 @@ WHATSAPP_MESSAGE = os.environ.get(
     "Centre for Endocrine & Metabolic Health.",
 )
 
+# The public page's GA4 property. Blank means no tracking script is written at
+# all, not a script that fires with no destination — a clinic without its own
+# property should not be sending traffic into someone else's.
+#
+# Never fires when DEBUG is on (see website/views.py), so a laptop running the
+# test suite or a developer's local server cannot pollute production analytics.
+GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "G-VXWDCFRJHN")
+
 # ── Patient identifiers ───────────────────────────────────────────────────────
 
 # The clinic's paper file calls this the UHID (Unique Health Identification

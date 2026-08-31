@@ -15,5 +15,9 @@ urlpatterns = [
     path("", include("portal.urls")),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Not gated on DEBUG. This is a single small-clinic deployment with one
+# gunicorn process behind Caddy and no separate file host — WhiteNoise already
+# serves /static/ the same way, straight out of the app process. Without this,
+# nothing serves an uploaded doctor photo or prescription scan in production at
+# all: the file saves, and every ``.url`` pointing at it 404s.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

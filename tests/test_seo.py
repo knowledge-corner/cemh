@@ -165,12 +165,10 @@ class TestTheStructuredData(SeoTestCase):
         self.assertEqual(address["postalCode"], "400092")
         self.assertEqual(address["addressCountry"], "IN")
 
-    def test_the_opening_hours_match_what_the_page_prints(self):
-        # Markup that contradicts the visible page is markup that gets ignored,
-        # and it misleads anybody who reads it first.
-        hours = self.node("MedicalClinic")["openingHoursSpecification"][0]
-        self.assertEqual(hours["opens"], "10:00")
-        self.assertEqual(hours["closes"], "18:00")
+    def test_no_opening_hours_are_claimed(self):
+        # At the clinic's request — consulting hours appear nowhere on the
+        # public page, so the structured data must not claim any either.
+        self.assertNotIn("openingHoursSpecification", self.node("MedicalClinic"))
 
     def test_the_doctors_are_named_as_physicians(self):
         names = [e["name"] for e in self.node("MedicalClinic")["employee"]]

@@ -122,11 +122,15 @@ def _physician(request, entry, clinic_id):
         "worksFor": {"@id": clinic_id},
     }
 
-    specialisation = getattr(profile, "specialisation", None)
-    if specialisation is not None:
-        # Free text, because the clinic maintains this list and it will contain
-        # names schema.org's fixed enumeration has never heard of.
-        person["knowsAbout"] = specialisation.name
+    if entry.get("areas_of_focus"):
+        # The doctor's own curated list, when the clinic has entered one.
+        person["knowsAbout"] = entry["areas_of_focus"]
+    else:
+        specialisation = getattr(profile, "specialisation", None)
+        if specialisation is not None:
+            # Free text, because the clinic maintains this list and it will
+            # contain names schema.org's fixed enumeration has never heard of.
+            person["knowsAbout"] = specialisation.name
     if getattr(profile, "qualification", ""):
         person["hasCredential"] = profile.qualification
     if entry.get("photo_url"):
@@ -137,6 +141,19 @@ def _physician(request, entry, clinic_id):
         person["telephone"] = doctor.phone
     if entry.get("paragraphs"):
         person["description"] = " ".join(entry["paragraphs"])
+
+    # Fellowships/observerships named "<title> — <institution>" contribute the
+    # institution half as an alumniOf organisation. A line with no dash (e.g.
+    # a short course with no named host) is skipped rather than guessed at.
+    institutions = [
+        line.rsplit("—", 1)[-1].strip()
+        for line in entry.get("further_training", [])
+        if "—" in line
+    ]
+    if institutions:
+        person["alumniOf"] = [
+            {"@type": "Organization", "name": name} for name in institutions
+        ]
 
     return person
 
@@ -173,9 +190,9 @@ def _clinic(request, doctors, services):
     if geo:
         organisation["geo"] = geo
 
-    hours = _opening_hours()
-    if hours:
-        organisation["openingHoursSpecification"] = hours
+    # No opening-hours claim, at the clinic's request — see the module note.
+    # WORKING_DAYS/CONSULTING_START/END still drive the booking calendar
+    # elsewhere; this is only about what the public page tells a search engine.
 
     if clinic.SOCIAL_PROFILES:
         organisation["sameAs"] = list(clinic.SOCIAL_PROFILES)
