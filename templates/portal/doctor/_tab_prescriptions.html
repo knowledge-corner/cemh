@@ -57,8 +57,20 @@ nobody in the cabin; it just stands alone rather than attaching to a visit.
                 </tbody>
               </table>
             </div>
-          {% else %}
+          {% elif not prescription.scanned_file %}
             <p class="faint">No medication on this prescription.</p>
+          {% endif %}
+
+          {% if prescription.scanned_file %}
+            <h4 style="margin-top:1rem">Handwritten prescription</h4>
+            {% if prescription.scanned_file_is_pdf %}
+              <a class="btn-edit" target="_blank" href="{{ prescription.scanned_file.url }}">View scanned PDF</a>
+            {% else %}
+              <a target="_blank" href="{{ prescription.scanned_file.url }}">
+                <img src="{{ prescription.scanned_file.url }}" alt="Scanned prescription"
+                     style="max-width:220px;border-radius:8px;border:1px solid var(--border)">
+              </a>
+            {% endif %}
           {% endif %}
 
           {% if prescription.printed_note %}

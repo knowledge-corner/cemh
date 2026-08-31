@@ -345,6 +345,20 @@ class TestPrescriptionWorkflow(EditingTestCase):
         self.assertEqual(Prescription.objects.count(), 1)
         self.assertEqual(prescription.investigations_advised, "Repeat TSH in 6 weeks")
 
+    def test_a_doctor_can_attach_a_scanned_prescription_instead_of_typing_items(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self.open_visit()
+        scan = SimpleUploadedFile("rx.jpg", b"not-really-a-jpeg", content_type="image/jpeg")
+        blank_item = {f"items-0-{field}": "" for field in
+                      ("drug_name", "strength", "dosage", "frequency", "duration", "instructions")}
+        self.client.post(self.add_url("prescription"), self._item_formset(
+            **blank_item, scanned_file=scan,
+        ))
+        prescription = Prescription.objects.get()
+        self.assertTrue(prescription.scanned_file)
+        self.assertEqual(prescription.items.count(), 0)
+
     def test_it_can_be_printed_from_its_own_tab(self):
         self.open_visit()
         self.client.post(self.add_url("prescription"), self._item_formset())
