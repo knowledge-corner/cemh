@@ -210,30 +210,3 @@ PAEDIATRIC_AGE_LIMIT = int(os.environ.get("PAEDIATRIC_AGE_LIMIT", "18"))
 # so the fallback is visible rather than silent. See
 # growth/reference/SOURCES.md for how to install them.
 GROWTH_REFERENCE = os.environ.get("GROWTH_REFERENCE", "IAP")
-
-# Conditions this clinic treats, taken from its own services list. Used to
-# offer sensible diagnosis choices rather than a free-text box every time.
-CONDITION_SUGGESTIONS = {
-    "Adult endocrinology": [
-        "Diabetes and metabolic disorders",
-        "Thyroid disorders",
-        "Obesity and lipid disorders",
-        "Pituitary and adrenal disorders",
-        "Polycystic ovarian syndrome (PCOS)",
-        "Reproductive endocrine disorders",
-        "Calcium, vitamin D and bone disorders",
-        "Endocrine hypertension",
-        "Endocrine oncology",
-    ],
-    "Paediatric endocrinology": [
-        "Growth and short stature",
-        "Early or delayed puberty",
-        "Childhood diabetes",
-        "Thyroid disorders in children",
-        "Childhood obesity",
-        "Bone and mineral disorders",
-        "Adrenal and pituitary disorders",
-        "Differences in sex development",
-        "Late endocrine effects of cancer survivors",
-    ],
-}
