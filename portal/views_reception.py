@@ -1430,7 +1430,7 @@ def print_reference_letter(request, pk):
     })
 
 
-@role_required(Role.RECEPTIONIST)
+@role_required(Role.RECEPTIONIST, Role.DOCTOR)
 def print_receipt(request, pk):
     """Print-ready receipt."""
     receipt = get_object_or_404(
