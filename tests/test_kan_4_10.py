@@ -461,6 +461,14 @@ class TestSettledIsReadOnly(TestCase):
         self.assertContains(response, self.receipt.receipt_number)
         self.assertContains(response, reverse("print_receipt", args=[self.receipt.pk]))
 
+    def test_the_treating_doctor_can_also_open_the_receipt(self):
+        # The settled visit's own view already permits a doctor — the print
+        # link it offers has to actually work for them too, not just show.
+        self.client.force_login(self.doctor)
+        response = self.client.get(reverse("print_receipt", args=[self.receipt.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.receipt.receipt_number)
+
     def test_print_prescription_is_unavailable_when_there_is_none(self):
         # AC-6 — disabled rather than producing a blank document.
         response = self.client.get(reverse("reception_settled_visit", args=[self.visit.pk]))
