@@ -7,6 +7,7 @@ the growth chart does not reload the whole file.
 """
 
 import csv
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
@@ -258,6 +259,27 @@ def doctor_queue(request):
     )
 
 
+#: Mirrors views_reception.VISIT_TYPE_CHOICES — this page's own copy rather
+#: than an import, the same reasoning website.views gives for its own
+#: services list: a shared constant serving two different screens is how a
+#: change meant for one of them silently changes the other too.
+VISIT_TYPE_CHOICES = [
+    ("APPOINTMENT", "Appointment"),
+    ("WALK_IN", "Walk-in"),
+    ("DIRECT", "Direct"),
+]
+
+
+def _doctor_booking_filters(request):
+    return {
+        "from": request.GET.get("from", "").strip(),
+        "to": request.GET.get("to", "").strip(),
+        "patient_id": request.GET.get("patient_id", "").strip(),
+        "condition": request.GET.get("condition", "").strip(),
+        "visit_type": request.GET.get("visit_type", "").strip(),
+    }
+
+
 @role_required(Role.DOCTOR)
 def doctor_bookings(request):
     """
@@ -269,15 +291,17 @@ def doctor_bookings(request):
     ever looking at their own diary. Direct consultations need no special
     handling — see doctor_completed_bookings's own docstring for why they
     already appear on the Completed tab like any other visit.
+
+    The Completed tab carries the same patient/condition/appointment-type
+    filters, and the same "View & reprint" link into the settled visit, as
+    reception's own Completed tab — that view already permits a doctor
+    (see settled_visit's role_required), so nothing new was needed there.
     """
     tab = request.GET.get("tab", "upcoming")
     if tab not in ("upcoming", "completed"):
         tab = "upcoming"
 
-    filters = {
-        "from": request.GET.get("from", "").strip(),
-        "to": request.GET.get("to", "").strip(),
-    }
+    filters = _doctor_booking_filters(request)
     start = parse_date(filters["from"]) if filters["from"] else None
     end = parse_date(filters["to"]) if filters["to"] else None
 
@@ -285,7 +309,13 @@ def doctor_bookings(request):
         request.user, start=start, end=end
     )
     completed_rows, completed_count = services.doctor_completed_bookings(
-        request.user, start=start, end=end
+        request.user, start=start, end=end,
+        patient_id=filters["patient_id"], condition=filters["condition"],
+        visit_type=filters["visit_type"],
+    )
+    total_collected = sum(
+        (v.charge.amount_paid for v in completed_rows if getattr(v, "charge", None)),
+        Decimal("0.00"),
     )
 
     return render(request, "portal/doctor/bookings.html", {
@@ -296,7 +326,68 @@ def doctor_bookings(request):
         "upcoming_count": len(today_rows) + len(ahead_rows),
         "completed_rows": completed_rows,
         "completed_count": completed_count,
+        "total_collected": total_collected,
+        "visit_type_choices": VISIT_TYPE_CHOICES,
     })
+
+
+@role_required(Role.DOCTOR)
+def doctor_export_bookings(request):
+    """
+    This doctor's own filtered Completed history as a CSV — the same shape
+    as views_reception.export_bookings, scoped to one doctor and without the
+    Doctor column that screen needs and this one does not.
+    """
+    filters = _doctor_booking_filters(request)
+    start = parse_date(filters["from"]) if filters["from"] else None
+    end = parse_date(filters["to"]) if filters["to"] else None
+    visits, _ = services.doctor_completed_bookings(
+        request.user, start=start, end=end,
+        patient_id=filters["patient_id"], condition=filters["condition"],
+        visit_type=filters["visit_type"], limit=None,
+    )
+
+    response = HttpResponse(content_type="text/csv")
+    stamp = timezone.localdate().strftime("%Y-%m-%d")
+    response["Content-Disposition"] = f'attachment; filename="bookings-{stamp}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "Date", "Time", settings.CLINIC.PATIENT_ID_LABEL, "Patient",
+        "Age", "Sex", "Type", "Reason", "Diagnoses", "Consultation fee",
+        "Procedure fee", "Discount", "Total", "Paid", "Balance", "Status",
+    ])
+
+    for visit in visits.iterator(chunk_size=200):
+        charge = getattr(visit, "charge", None)
+        diagnoses = ", ".join(
+            d.description for d in visit.patient.diagnoses.all()[:5]
+        )
+        local = timezone.localtime(visit.scheduled_start)
+        writer.writerow([
+            local.strftime("%Y-%m-%d"),
+            local.strftime("%H:%M"),
+            visit.patient.patient_id,
+            visit.patient.full_name,
+            visit.patient.age_years,
+            visit.patient.get_sex_display(),
+            visit.visit_type_label,
+            visit.reason,
+            diagnoses,
+            charge.consultation_fee if charge else "",
+            charge.procedure_fee if charge else "",
+            charge.discount if charge else "",
+            charge.total if charge else "",
+            charge.amount_paid if charge else "",
+            charge.balance if charge else "",
+            visit.get_status_display(),
+        ])
+
+    record(
+        request, AuditAction.PRINT,
+        description=f"Exported {visits.count()} bookings to CSV",
+    )
+    return response
 
 
 @role_required(Role.DOCTOR)

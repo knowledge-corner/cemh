@@ -7,9 +7,9 @@ REM  Does three things in order, so nobody has to remember the steps or
 REM  type a command by hand:
 REM    1. Exports the patient from the local database to a file.
 REM    2. Sends that file to the server over the same secure connection
-REM       used to manage the server — never through GitHub or email,
+REM       used to manage the server - never through GitHub or email,
 REM       since this file holds a real patient's medical record.
-REM    3. Tells the server to read the file in and stops there — nothing
+REM    3. Tells the server to read the file in and stops there - nothing
 REM       else needs doing on the server afterwards.
 REM
 REM  Refuses to overwrite an existing patient there: if someone with the
@@ -19,7 +19,7 @@ REM ====================================================================
 title Move a patient to the live clinic system
 cd /d "%~dp0"
 
-REM --- Settings — change these if the server ever moves ---------------
+REM --- Settings - change these if the server ever moves ---------------
 set DROPLET_IP=64.227.145.188
 set DROPLET_SSH_KEY=%USERPROFILE%\.ssh\id_ed25519
 set REMOTE_APP_DIR=/opt/cemh

@@ -69,7 +69,12 @@ are Visit rows like any other, just started without a prior booking.
     {% endif %}
 
   {% elif active_tab == 'completed' %}
-
+    {% comment %}
+    Same shape as reception's own Completed tab — filters, the count-and-
+    collected line, the table, "View & reprint" into the settled visit — minus
+    the Doctor column and filter that screen needs and this one does not,
+    since every row here is already this doctor's own.
+    {% endcomment %}
     <form method="get" class="filters"
           style="display:flex;gap:.625rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
       <input type="hidden" name="tab" value="completed">
@@ -81,13 +86,37 @@ are Visit rows like any other, just started without a prior booking.
         <label class="field__label" for="f-to">To</label>
         <input class="input" type="date" id="f-to" name="to" value="{{ filters.to }}">
       </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="f-patient">Patient or {{ patient_id_label }}</label>
+        <input class="input" type="text" id="f-patient" name="patient_id"
+               value="{{ filters.patient_id }}" placeholder="Name, {{ patient_id_label }} or mobile">
+      </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="f-condition">Condition</label>
+        <input class="input" type="text" id="f-condition" name="condition"
+               value="{{ filters.condition }}" placeholder="e.g. thyroid">
+      </div>
+      <div class="field" style="margin:0">
+        <label class="field__label" for="f-visit-type">Appointment type</label>
+        <select class="input" id="f-visit-type" name="visit_type">
+          <option value="">Any</option>
+          {% for value, label in visit_type_choices %}
+            <option value="{{ value }}" {% if filters.visit_type == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <button class="btn btn--primary" type="submit">Filter</button>
       <a class="btn btn--secondary" href="?tab=completed">Clear</a>
+      <a class="btn btn--dark"
+         href="{% url 'doctor_export_bookings' %}?{{ request.GET.urlencode }}">Download CSV</a>
     </form>
 
     <p class="faint small" style="margin:0 0 .75rem">
-      {{ completed_count }} visit{{ completed_count|pluralize }}
-      {% if completed_count > 300 %}· showing the most recent 300{% endif %}
+      {{ completed_count }} visit{{ completed_count|pluralize }} match ·
+      {{ clinic_currency }}{{ total_collected|floatformat:2 }} collected
+      {% if completed_count > 300 %}· showing the most recent 300, the CSV has all of them{% endif %}
     </p>
 
     {% if completed_rows %}
@@ -96,7 +125,7 @@ are Visit rows like any other, just started without a prior booking.
           <thead>
             <tr><th>Date</th><th>Patient</th><th>{{ patient_id_label }}</th>
                 <th>Type</th><th>Reason</th><th class="table__num">Total</th>
-                <th>Status</th><th></th></tr>
+                <th class="table__num">Paid</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {% for visit in completed_rows %}
@@ -115,10 +144,16 @@ are Visit rows like any other, just started without a prior booking.
                 </td>
                 <td>{{ visit.reason|default:"—" }}</td>
                 <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.total }}{% else %}—{% endif %}</td>
+                <td class="table__num">{% if visit.charge %}{{ clinic_currency }}{{ visit.charge.amount_paid }}{% else %}—{% endif %}</td>
                 <td><span class="badge badge--grey">{{ visit.get_status_display }}</span></td>
+                {% comment %}
+                settled_visit already permits a doctor (see its own
+                role_required) — a patient ringing about an old receipt is
+                answered from whichever screen finds the row first.
+                {% endcomment %}
                 <td class="row-actions">
                   <a class="btn btn--secondary"
-                     href="{% url 'doctor_patient_dashboard' visit.patient.patient_id %}">Open chart</a>
+                     href="{% url 'reception_settled_visit' visit.pk %}">View &amp; reprint</a>
                 </td>
               </tr>
             {% endfor %}
@@ -128,10 +163,10 @@ are Visit rows like any other, just started without a prior booking.
     {% else %}
       <div class="empty">
         <div class="empty__icon">🔍</div>
-        <div class="empty__title">Nothing completed yet</div>
+        <div class="empty__title">Nothing matches those filters</div>
         <div class="empty__hint">
-          {% if filters.from or filters.to %}
-            Nothing matches that date range. Clear it to see everything completed.
+          {% if filters.from or filters.to or filters.patient_id or filters.condition or filters.visit_type %}
+            Widen the filters, or clear them to see everything completed.
           {% else %}
             Visits appear here once seen, billed and paid for.
           {% endif %}

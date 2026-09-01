@@ -501,14 +501,17 @@ def doctor_upcoming_bookings(doctor, *, start=None, end=None):
     )
 
 
-def doctor_completed_bookings(doctor, *, start=None, end=None, limit=300):
+def doctor_completed_bookings(
+    doctor, *, start=None, end=None, patient_id="", condition="", visit_type="", limit=300
+):
     """
     This doctor's own finished, paid-up visits — same "nothing left owing"
-    rule as reception's Completed tab (see views_reception._past_filters),
-    scoped to one doctor. Direct consultations are included without any
-    special-casing: nothing here filters on is_direct or is_walk_in, only on
-    status and what is still owed, so a direct consultation appears exactly
-    like any other visit once it reaches the same state.
+    rule, and the same patient/condition/appointment-type filters, as
+    reception's Completed tab (see views_reception._past_filters), scoped to
+    one doctor. Direct consultations are included without any special-casing:
+    nothing here filters on is_direct or is_walk_in by default, only on status
+    and what is still owed, so a direct consultation appears exactly like any
+    other visit once it reaches the same state.
     """
     total_due = (
         F("charge__consultation_fee") + F("charge__procedure_fee") - F("charge__discount")
@@ -529,5 +532,23 @@ def doctor_completed_bookings(doctor, *, start=None, end=None, limit=300):
         visits = visits.filter(scheduled_start__date__gte=start)
     if end:
         visits = visits.filter(scheduled_start__date__lte=end)
+    if patient_id:
+        visits = visits.filter(
+            Q(patient__patient_id__icontains=patient_id)
+            | Q(patient__phone__icontains=patient_id)
+            | Q(patient__first_name__icontains=patient_id)
+            | Q(patient__last_name__icontains=patient_id)
+        )
+    if condition:
+        visits = visits.filter(
+            Q(patient__diagnoses__description__icontains=condition)
+            | Q(reason__icontains=condition)
+        ).distinct()
+    if visit_type == "DIRECT":
+        visits = visits.filter(is_direct=True)
+    elif visit_type == "WALK_IN":
+        visits = visits.filter(is_walk_in=True, is_direct=False)
+    elif visit_type == "APPOINTMENT":
+        visits = visits.filter(is_walk_in=False, is_direct=False)
     visits = visits.order_by("-scheduled_start")
     return visits[:limit], visits.count()
