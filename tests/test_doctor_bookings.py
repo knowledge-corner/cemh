@@ -150,10 +150,64 @@ class TestDoctorBookings(TestCase):
         response = self.client.get(self.url("completed"))
         self.assertNotContains(response, patient.full_name)
 
-    def test_opening_the_chart_from_a_completed_row(self):
+    def test_reprinting_a_completed_row(self):
         patient = make_patient()
-        _seen_and_billed(patient, self.doctor, self.receptionist)
+        visit = _seen_and_billed(patient, self.doctor, self.receptionist)
         response = self.client.get(self.url("completed"))
         self.assertContains(
-            response, reverse("doctor_patient_dashboard", args=[patient.patient_id])
+            response, reverse("reception_settled_visit", args=[visit.pk])
         )
+
+    def test_the_patient_or_uhid_filter_narrows_completed(self):
+        found = make_patient(phone="9820055501")
+        other = make_patient(first_name="Other", phone="9820055502")
+        now = timezone.now()
+        _seen_and_billed(found, self.doctor, self.receptionist, start=now - timedelta(days=1))
+        _seen_and_billed(other, self.doctor, self.receptionist, start=now - timedelta(days=2))
+        response = self.client.get(
+            f"{self.url('completed')}&patient_id={found.patient_id}"
+        )
+        self.assertContains(response, found.full_name)
+        self.assertNotContains(response, other.full_name)
+
+    def test_the_appointment_type_filter_narrows_completed(self):
+        walk_in = make_patient(phone="9820055503")
+        appointment = make_patient(first_name="Booked", phone="9820055504")
+        now = timezone.now()
+        _seen_and_billed(
+            walk_in, self.doctor, self.receptionist, is_walk_in=True,
+            start=now - timedelta(days=1),
+        )
+        _seen_and_billed(
+            appointment, self.doctor, self.receptionist,
+            start=now - timedelta(days=2),
+        )
+        response = self.client.get(f"{self.url('completed')}&visit_type=WALK_IN")
+        self.assertContains(response, walk_in.full_name)
+        self.assertNotContains(response, appointment.full_name)
+
+    def test_the_collected_total_only_counts_what_is_shown(self):
+        patient = make_patient()
+        _seen_and_billed(
+            patient, self.doctor, self.receptionist,
+            fee=Decimal("650.00"), paid=Decimal("650.00"),
+        )
+        response = self.client.get(self.url("completed"))
+        self.assertContains(response, "650.00 collected")
+
+    def test_the_csv_export_matches_the_screen(self):
+        patient = make_patient()
+        _seen_and_billed(patient, self.doctor, self.receptionist)
+        other_patient = make_patient(first_name="NotMine", phone="9820055505")
+        _seen_and_billed(
+            other_patient, self.other_doctor, self.receptionist,
+            start=timezone.now() - timedelta(days=2),
+        )
+
+        response = self.client.get(reverse("doctor_export_bookings"))
+        body = response.content.decode()
+        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertIn(patient.patient_id, body)
+        self.assertNotIn(other_patient.patient_id, body)
+        # No Doctor column — every row is already this doctor's own.
+        self.assertNotIn("Doctor", body.splitlines()[0])
