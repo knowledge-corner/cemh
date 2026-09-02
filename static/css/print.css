@@ -164,8 +164,20 @@ body.printable {
    * header on any page, or running into the fixed signature block on
    * whichever page turns out to be the last — without knowing in advance how
    * many pages a given document will need.
+   *
+   * By default a fragmented box's top padding only applies to its first
+   * printed page and its bottom padding only to its last — so without
+   * box-decoration-break: clone, page 2 onward gets no reserved top gap at
+   * all and its content starts flush against the fixed header. Cloning the
+   * padding is what makes every page reserve the same header/footer
+   * clearance, not just the first and last one.
    */
-  .sheet { padding-top: 34mm; padding-bottom: 42mm; }
+  .sheet {
+    padding-top: 34mm;
+    padding-bottom: 55mm;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
 
   .sheet__head {
     position: fixed;
