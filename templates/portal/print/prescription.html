@@ -17,36 +17,14 @@
   <p class="sheet__allergy"><strong>Allergies:</strong> {{ patient.history.allergies }}</p>
 {% endif %}
 
-<div class="rx">
-  <span class="rx__mark">&#8478;</span>
-
-  {% if items %}
-    <table class="sheet__table">
-      <thead>
-        <tr><th>Medication</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th></tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-          <tr>
-            <td class="strong">{{ item.drug_name }}</td>
-            <td>{{ item.strength|default:"" }}</td>
-            <td>{{ item.dosage|default:"" }}</td>
-            <td>{{ item.frequency|default:"" }}</td>
-            <td>{{ item.duration|default:"" }}</td>
-          </tr>
-          {% if item.instructions %}
-            <tr class="sheet__subrow"><td colspan="5">{{ item.instructions }}</td></tr>
-          {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
-  {% elif prescription.scanned_file and not prescription.scanned_file_is_pdf %}
-    <img src="{{ prescription.scanned_file.url }}" alt="Scanned prescription"
-         style="max-width:100%;max-height:600px">
-  {% elif prescription.scanned_file %}
-    <p class="muted">Handwritten prescription scanned — see the attached PDF.</p>
-  {% endif %}
-</div>
+{% comment %}
+Notes, then investigations advised, then medications — whichever of the
+three actually have something to say, in the order a doctor talks through a
+consultation: what was found, what needs checking, what to take. Each
+section is silent when there is nothing in it, medications included — an
+empty Rx mark with nothing under it read as a prescription that had
+something go wrong with it rather than one where nothing was needed.
+{% endcomment %}
 
 {% if printed_note %}
   <section class="sheet__section">
@@ -60,6 +38,39 @@
     <h2>Investigations advised</h2>
     <p>{{ prescription.investigations_advised|linebreaksbr }}</p>
   </section>
+{% endif %}
+
+{% if items or prescription.scanned_file %}
+  <div class="rx">
+    <span class="rx__mark">&#8478;</span>
+
+    {% if items %}
+      <table class="sheet__table">
+        <thead>
+          <tr><th>Medication</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td class="strong">{{ item.drug_name }}</td>
+              <td>{{ item.strength|default:"" }}</td>
+              <td>{{ item.dosage|default:"" }}</td>
+              <td>{{ item.frequency|default:"" }}</td>
+              <td>{{ item.duration|default:"" }}</td>
+            </tr>
+            {% if item.instructions %}
+              <tr class="sheet__subrow"><td colspan="5">{{ item.instructions }}</td></tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    {% elif prescription.scanned_file_is_pdf %}
+      <p class="muted">Handwritten prescription scanned — see the attached PDF.</p>
+    {% else %}
+      <img src="{{ prescription.scanned_file.url }}" alt="Scanned prescription"
+           style="max-width:100%;max-height:600px">
+    {% endif %}
+  </div>
 {% endif %}
 
 {% if prescription.tentative_follow_up_date %}
