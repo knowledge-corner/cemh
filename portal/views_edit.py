@@ -507,6 +507,7 @@ def end_consultation(request, patient_id):
                 # nothing to record here — the charge itself already reads as
                 # settled with nothing owed, the same as reception's own
                 # "closed with no fee" case.
+                receipt = None
                 if charge.total > 0:
                     payment = Payment.objects.create(
                         charge=charge,
@@ -515,7 +516,7 @@ def end_consultation(request, patient_id):
                         received_by=request.user,
                         notes="Collected directly by the doctor",
                     )
-                    Receipt.objects.create(payment=payment)
+                    receipt = Receipt.objects.create(payment=payment)
 
                 visit.transition_to(VisitStatus.BILLED, by_user=request.user)
                 visit.transition_to(VisitStatus.COMPLETED, by_user=request.user)
@@ -524,7 +525,25 @@ def end_consultation(request, patient_id):
                 request, AuditAction.UPDATE, obj=visit, patient=patient,
                 description="Direct consultation ended; fee taken and billed by the doctor",
             )
-            return HttpResponse(_refreshed_panels(request, patient, "summary"))
+            panels_html = _refreshed_panels(request, patient, "summary")
+            if receipt is None:
+                # A free consultation issues nothing to print — closing the
+                # modal (the panel refresh above is entirely out-of-band) is
+                # the whole response, same as before this prompt existed.
+                return HttpResponse(panels_html)
+
+            # There was no reception step to hand this receipt to the patient
+            # from later — the doctor is the only one who can, right now,
+            # while they are still in the room. The panel refresh above stays
+            # out-of-band; this prompt is the response's only *non*-oob
+            # content, which is what fills the modal host instead of leaving
+            # it empty.
+            prompt_html = render_to_string(
+                "portal/doctor/_receipt_prompt_modal.html",
+                {"patient": patient, "receipt": receipt},
+                request=request,
+            )
+            return HttpResponse(prompt_html + panels_html)
     else:
         initial = {}
         if charge is None:

@@ -53,9 +53,9 @@ class TestDoctorBookings(TestCase):
         self.client.force_login(self.receptionist)
         self.assertEqual(self.client.get(self.url()).status_code, 403)
 
-    def test_defaults_to_the_upcoming_tab(self):
+    def test_defaults_to_the_completed_tab(self):
         response = self.client.get(self.url())
-        self.assertContains(response, 'href="?tab=upcoming"')
+        self.assertContains(response, 'href="?tab=completed"')
         self.assertContains(response, 'aria-selected="true"')
 
     def test_bookings_is_offered_in_the_nav(self):
