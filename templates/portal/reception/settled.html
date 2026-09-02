@@ -20,7 +20,17 @@
         &middot; {{ visit.scheduled_start|date:"j M Y" }} at {{ visit.scheduled_start|time:"H:i" }}
       </p>
     </div>
-    <a class="btn btn--secondary" href="{% url 'reception_home' %}">Back to the board</a>
+    {% comment %}
+    A doctor reaching this page came from their own Bookings screen, not
+    reception's board — settled_visit permits both roles (see its own
+    role_required), and sending a doctor "back" to a screen refused to them
+    entirely would read as the link itself being broken.
+    {% endcomment %}
+    {% if request.user.is_doctor %}
+      <a class="btn btn--secondary" href="{% url 'doctor_bookings' %}?tab=completed">Back to bookings</a>
+    {% else %}
+      <a class="btn btn--secondary" href="{% url 'reception_home' %}">Back to the board</a>
+    {% endif %}
   </div>
 
   <div class="alert-strip" style="margin-bottom:1rem">

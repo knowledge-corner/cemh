@@ -21,14 +21,14 @@ Direct consultations need no tag or filter to appear on either tab — they
 are Visit rows like any other, just started without a prior booking.
 {% endcomment %}
 <div class="tabs" role="tablist">
+  <a class="tab" role="tab" href="?tab=completed"
+     aria-selected="{% if active_tab == 'completed' %}true{% else %}false{% endif %}">
+    Completed appointments
+  </a>
   <a class="tab" role="tab" href="?tab=upcoming"
      aria-selected="{% if active_tab == 'upcoming' %}true{% else %}false{% endif %}">
     Upcoming appointments
     {% if upcoming_count %}<span class="badge badge--info">{{ upcoming_count }}</span>{% endif %}
-  </a>
-  <a class="tab" role="tab" href="?tab=completed"
-     aria-selected="{% if active_tab == 'completed' %}true{% else %}false{% endif %}">
-    Completed appointments
   </a>
 </div>
 
