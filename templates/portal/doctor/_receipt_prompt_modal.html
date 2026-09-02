@@ -1,0 +1,33 @@
+{% comment %}
+Shown once, right after a direct consultation is ended and its receipt
+issued — the whole reason this consultation had no reception step behind it
+is that the doctor is the only one who can hand the patient anything, so the
+receipt is offered here rather than left for a trip to Bookings later.
+{% endcomment %}
+
+<div class="modal-backdrop" onclick="if (event.target === this) document.getElementById('modal-host').innerHTML = '';">
+  <div class="modal modal--narrow" role="dialog" aria-modal="true" aria-labelledby="receipt-prompt-title">
+
+    <div class="modal__header">
+      <h2 class="modal__title" id="receipt-prompt-title">Consultation ended</h2>
+      <button type="button" class="modal__close" aria-label="Close"
+              onclick="document.getElementById('modal-host').innerHTML = '';">&times;</button>
+    </div>
+
+    <div class="modal__body">
+      <p class="muted">
+        {{ patient.full_name }}'s fee has been taken and receipt
+        {{ receipt.receipt_number }} issued. Print it now if they are still
+        with you.
+      </p>
+    </div>
+
+    <div class="modal__footer">
+      <button type="button" class="btn btn--secondary"
+              onclick="document.getElementById('modal-host').innerHTML = '';">Done</button>
+      <a class="btn btn--primary" target="_blank"
+         href="{% url 'print_receipt' receipt.pk %}">Print receipt</a>
+    </div>
+
+  </div>
+</div>

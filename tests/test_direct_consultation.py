@@ -192,15 +192,29 @@ class TestEndingADirectConsultation(DirectConsultationTestCase):
         self.assertEqual(payment.received_by, self.doctor)
         self.assertTrue(Receipt.objects.filter(payment=payment).exists())
 
+    def test_ending_a_paid_consultation_offers_to_print_the_receipt(self):
+        # There was no reception step behind this one — the doctor is the
+        # only one who can hand the patient their receipt, right now.
+        visit = self._start()
+        response = self.client.post(self.end_url(), {
+            "consultation_fee": "600", "procedure_fee": "0",
+            "discount": "0", "notes": "",
+        })
+        receipt = Receipt.objects.get(payment__charge__visit=visit)
+        self.assertContains(response, "Print receipt")
+        self.assertContains(response, reverse("print_receipt", args=[receipt.pk]))
+
     def test_a_free_consultation_completes_with_no_payment_recorded(self):
         visit = self._start()
-        self.client.post(self.end_url(), {
+        response = self.client.post(self.end_url(), {
             "consultation_fee": "0", "procedure_fee": "0",
             "discount": "0", "notes": "Follow-up review, no charge",
         })
         visit.refresh_from_db()
         self.assertEqual(visit.status, VisitStatus.COMPLETED)
         self.assertFalse(Payment.objects.filter(charge__visit=visit).exists())
+        # Nothing was issued, so nothing is offered to print.
+        self.assertNotContains(response, "Print receipt")
 
     def test_another_doctor_cannot_end_it(self):
         self._start()

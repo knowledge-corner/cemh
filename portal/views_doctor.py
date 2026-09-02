@@ -297,9 +297,9 @@ def doctor_bookings(request):
     reception's own Completed tab — that view already permits a doctor
     (see settled_visit's role_required), so nothing new was needed there.
     """
-    tab = request.GET.get("tab", "upcoming")
+    tab = request.GET.get("tab", "completed")
     if tab not in ("upcoming", "completed"):
-        tab = "upcoming"
+        tab = "completed"
 
     filters = _doctor_booking_filters(request)
     start = parse_date(filters["from"]) if filters["from"] else None
