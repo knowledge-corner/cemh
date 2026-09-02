@@ -154,15 +154,28 @@ body.printable {
   /*
    * A long prescription (or any other sheet) can run to a second printed
    * page. Fixed positioning under print repeats an element identically on
-   * every page the browser paginates into, so the doctor's signature block
-   * is there to sign on each one rather than only on the last — without
-   * knowing in advance how many pages a given prescription will need.
+   * every page the browser paginates into, so the letterhead is there at the
+   * top and the doctor's signature at the bottom of each one — the clinic
+   * asked for this to read as a real multi-page letterhead document, not a
+   * long single page with a signature stuck on wherever it happened to end.
    *
-   * The extra bottom padding on .sheet keeps flowing content (the
-   * medication table, notes) from running underneath the fixed block on
-   * whichever page turns out to be the last.
+   * The extra top and bottom padding on .sheet keeps flowing content (notes,
+   * investigations, the medication table) from starting underneath the fixed
+   * header on any page, or running into the fixed signature block on
+   * whichever page turns out to be the last — without knowing in advance how
+   * many pages a given document will need.
    */
-  .sheet { padding-bottom: 42mm; }
+  .sheet { padding-top: 34mm; padding-bottom: 42mm; }
+
+  .sheet__head {
+    position: fixed;
+    top: 12mm;
+    left: 16mm;
+    right: 16mm;
+    margin: 0;
+    background: #fff;
+  }
+
   .sheet__sign {
     position: fixed;
     bottom: 12mm;
@@ -170,5 +183,17 @@ body.printable {
     right: 16mm;
     margin-top: 0;
     padding-top: 0;
+  }
+
+  /* The medication list is the one section that must never split — a dose
+     table with its second half stranded on the next page, after a signature
+     block has already appeared once between them, is not a document a
+     pharmacist can safely read. Notes, investigations advised and follow-up
+     are prose rather than a table a reader has to line up row against row,
+     so those are left free to break wherever they naturally run long. */
+  .rx,
+  .sheet__patient,
+  .sheet__allergy {
+    break-inside: avoid;
   }
 }
