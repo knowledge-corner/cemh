@@ -450,6 +450,16 @@ function openGrowthChartZoom(sourceCanvasId, title) {
     return;
   }
 
+  // A double-click on "Zoom", or zooming straight from one chart to another,
+  // calls this again before the modal has been closed. Overwriting the host's
+  // markup below would detach the canvas the previous Chart instance is still
+  // attached to without ever destroying it — an orphaned instance that keeps
+  // its resize listener registered on window for the rest of the page's life.
+  // Closing first is the same "destroy before you replace" rule
+  // renderOneGrowthChart already applies to a single canvas, just at the
+  // level of the whole zoom host.
+  closeGrowthChartZoom();
+
   host.innerHTML =
     '<div class="modal-backdrop" onclick="if (event.target === this) closeGrowthChartZoom();">' +
     '  <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="zoom-modal-title">' +
