@@ -83,7 +83,7 @@ covers the visit-by-visit view of the diary.
   <strong>{{ download_count }}</strong> patient{{ download_count|pluralize }}
   match{{ download_count|pluralize:"es," }} these filters
   <a class="btn btn--primary" style="margin-left:.75rem"
-     href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download CSV</a>
+     href="{% url 'doctor_analytics_export' %}?{{ filter_qs }}">Download Excel backup</a>
 </p>
 
 {% if rows %}

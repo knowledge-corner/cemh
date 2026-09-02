@@ -8,6 +8,9 @@ the growth chart does not reload the whole file.
 
 import csv
 from decimal import Decimal
+from io import BytesIO
+
+from openpyxl import Workbook
 
 from django.conf import settings
 from django.contrib import messages
@@ -24,9 +27,10 @@ from appointments.models import InvalidTransition, Visit, VisitStatus
 from audit.models import AuditAction
 from audit.services import record, record_patient_view
 from clinical import lab_reference
-from clinical.models import ICD10Code, InvestigationCategory, LabTest
+from clinical.models import ClinicalNote, ICD10Code, Investigation, InvestigationCategory, LabTest
 from patients import matching
 from patients.models import Patient
+from pharmacy.models import PrescriptionItem
 
 from . import analytics
 from . import forms as clinic_forms
@@ -746,54 +750,176 @@ def analytics_view(request):
     return render(request, "portal/doctor/analytics.html", context)
 
 
+def _write_sheet(wb, title, header, rows):
+    ws = wb.create_sheet(title)
+    ws.append(header)
+    for row in rows:
+        ws.append(row)
+    ws.freeze_panes = "A2"
+    return ws
+
+
+def _iso(value):
+    """A date/datetime as plain text, or '' — openpyxl writes real dates fine,
+    but this keeps every sheet's date columns one consistent format to read
+    and to filter on later in a spreadsheet."""
+    if not value:
+        return ""
+    if getattr(value, "tzinfo", None):
+        value = timezone.localtime(value)
+    return value.strftime("%Y-%m-%d")
+
+
+def _patient_row(patient):
+    # patient.history is a reverse OneToOne — accessing it directly raises
+    # when a patient has none, so it has to be fetched through getattr rather
+    # than chained onto the attribute lookups below.
+    history = getattr(patient, "history", None)
+    return [
+        patient.patient_id, patient.first_name, patient.last_name,
+        _iso(patient.date_of_birth), patient.age_years,
+        patient.get_sex_display(), patient.get_blood_group_display(),
+        patient.phone, patient.alternate_phone, patient.email,
+        patient.address, patient.city, patient.pincode,
+        patient.guardian_name, patient.guardian_phone,
+        ", ".join(d.description for d in patient.diagnoses.all() if d.is_active),
+        getattr(history, "allergies", "") or "",
+        getattr(history, "past_medical_history", "") or "",
+        getattr(history, "family_history", "") or "",
+        _iso(patient.registered_on),
+    ]
+
+
 @role_required(Role.DOCTOR)
 def analytics_export(request):
     """
-    The filtered patient set as a CSV, one row per patient.
+    A local backup of the filtered patient set as one Excel workbook — the
+    clinical record without the booking/scheduling history around it, which
+    is not what a doctor reaching for a backup actually wants back.
 
-    Written straight to the response rather than built in memory, the same
-    reason reception's own bookings export is: a doctor pulling years of
-    history should not be limited by how much of it fits in RAM.
+    One sheet per kind of record: the patient summary (the same facts the
+    chart's left-hand pane shows), then clinical notes, investigations and
+    prescriptions, each one row per record rather than per patient, since a
+    patient with six visits has six of each to keep.
+
+    The patient set uses the same filters Analytics itself is already
+    showing (age, condition, sex, the visit-date range) — this is the same
+    "Download" button that screen already had. The date range additionally
+    trims which *records* land on the three detail sheets, so a doctor
+    backing up "everything since I last did this" gets exactly that rather
+    than every patient's full history every time.
     """
     chosen = _own_patients_only(request, analytics.parse_filters(request.GET))
-    patients = analytics.filtered_patients(chosen).select_related().order_by(
-        "last_name", "first_name"
+    patients = list(
+        analytics.filtered_patients(chosen)
+        .select_related("history")
+        .prefetch_related("diagnoses")
+        .order_by("last_name", "first_name")
+    )
+    date_from, date_to = chosen["date_from"], chosen["date_to"]
+
+    wb = Workbook()
+    wb.remove(wb.active)  # the default blank sheet Workbook() ships with
+
+    _write_sheet(
+        wb, "Patients",
+        [
+            settings.CLINIC.PATIENT_ID_LABEL, "First name", "Last name",
+            "Date of birth", "Age", "Gender", "Blood group", "Phone",
+            "Alternate phone", "Email", "Address", "City", "Pincode",
+            "Guardian name", "Guardian phone", "Active diagnoses",
+            "Allergies", "Past medical history", "Family history",
+            "Registered on",
+        ],
+        (_patient_row(patient) for patient in patients),
     )
 
-    response = HttpResponse(content_type="text/csv")
+    notes = (
+        ClinicalNote.objects.filter(patient__in=patients)
+        .select_related("patient", "author").order_by("created_at")
+    )
+    if date_from:
+        notes = notes.filter(created_at__date__gte=date_from)
+    if date_to:
+        notes = notes.filter(created_at__date__lte=date_to)
+    _write_sheet(
+        wb, "Clinical Notes",
+        [settings.CLINIC.PATIENT_ID_LABEL, "Patient", "Date", "Doctor", "Notes"],
+        (
+            [
+                note.patient.patient_id, note.patient.full_name, _iso(note.created_at),
+                note.author.display_name if note.author else "",
+                "\n\n".join(
+                    filter(None, [note.clinical_notes, note.prescription_note])
+                ),
+            ]
+            for note in notes.iterator(chunk_size=200)
+        ),
+    )
+
+    investigations = (
+        Investigation.objects.filter(patient__in=patients)
+        .select_related("patient").order_by("performed_on")
+    )
+    if date_from:
+        investigations = investigations.filter(performed_on__gte=date_from)
+    if date_to:
+        investigations = investigations.filter(performed_on__lte=date_to)
+    _write_sheet(
+        wb, "Investigations",
+        [
+            settings.CLINIC.PATIENT_ID_LABEL, "Patient", "Date", "Test", "Category",
+            "Value", "Unit", "Reference range", "Abnormal",
+        ],
+        (
+            [
+                inv.patient.patient_id, inv.patient.full_name, _iso(inv.performed_on),
+                inv.test_name, inv.get_category_display(), inv.value, inv.unit,
+                inv.reference_range, "Yes" if inv.is_abnormal else "",
+            ]
+            for inv in investigations.iterator(chunk_size=200)
+        ),
+    )
+
+    items = (
+        PrescriptionItem.objects.filter(prescription__patient__in=patients)
+        .select_related("prescription__patient", "prescription__doctor")
+        .order_by("prescription__created_at", "order", "id")
+    )
+    if date_from:
+        items = items.filter(prescription__created_at__date__gte=date_from)
+    if date_to:
+        items = items.filter(prescription__created_at__date__lte=date_to)
+    _write_sheet(
+        wb, "Prescriptions",
+        [
+            settings.CLINIC.PATIENT_ID_LABEL, "Patient", "Date", "Doctor", "Medication",
+            "Strength", "Dose", "Frequency", "Duration", "Instructions",
+        ],
+        (
+            [
+                item.prescription.patient.patient_id, item.prescription.patient.full_name,
+                _iso(item.prescription.created_at),
+                item.prescription.doctor.display_name if item.prescription.doctor else "",
+                item.drug_name, item.strength, item.dosage, item.frequency,
+                item.duration, item.instructions,
+            ]
+            for item in items.iterator(chunk_size=200)
+        ),
+    )
+
+    buffer = BytesIO()
+    wb.save(buffer)
+
     stamp = timezone.localdate().strftime("%Y-%m-%d")
-    response["Content-Disposition"] = f'attachment; filename="patient-analysis-{stamp}.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow([
-        settings.CLINIC.PATIENT_ID_LABEL, "Name", "Age", "Gender", "Phone",
-        "Active diagnoses", "Visit count", "Last visit",
-    ])
-
-    count = 0
-    for patient in patients.iterator(chunk_size=200):
-        diagnoses = ", ".join(
-            d.description for d in patient.diagnoses.filter(status="ACTIVE")[:5]
-        )
-        patient_visits = patient.visits.order_by("-scheduled_start")
-        last_visit = patient_visits.first()
-        writer.writerow([
-            patient.patient_id,
-            patient.full_name,
-            patient.age_years,
-            patient.get_sex_display(),
-            patient.phone,
-            diagnoses,
-            patient_visits.count(),
-            timezone.localtime(last_visit.scheduled_start).strftime("%Y-%m-%d")
-            if last_visit else "",
-        ])
-        count += 1
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="patient-backup-{stamp}.xlsx"'
 
     record(
         request, AuditAction.PRINT,
-        description=f"Exported {count} patients from Analytics to CSV",
+        description=f"Exported {len(patients)} patients' records to Excel",
     )
     return response
-
-    return redirect("doctor_home")
