@@ -481,11 +481,20 @@ function openGrowthChartZoom(sourceCanvasId, title) {
 }
 
 function closeGrowthChartZoom() {
-  const canvas = document.getElementById('growth-chart-zoomed');
-  if (canvas) {
-    const chart = Chart.getChart(canvas);
-    if (chart) chart.destroy();
-  }
   const host = document.getElementById('modal-host');
-  if (host) host.innerHTML = '';
+  if (host) {
+    // Chart.getChart(canvas) looks up one specific element by exact identity.
+    // That missed instances often enough in practice — after several open/
+    // close cycles the zoom stopped rendering at all, a blank canvas rather
+    // than a chart, which is what an orphaned instance still holding the 2D
+    // context looks like from the outside. Scanning Chart.js's own instance
+    // registry for anything whose canvas sits anywhere inside this modal,
+    // however it ended up there, is the version of "destroy before you
+    // replace" that cannot miss.
+    Object.keys(Chart.instances || {}).forEach(function (id) {
+      const chart = Chart.instances[id];
+      if (chart && chart.canvas && host.contains(chart.canvas)) chart.destroy();
+    });
+    host.innerHTML = '';
+  }
 }
