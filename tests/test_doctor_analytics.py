@@ -12,15 +12,18 @@ shows the records list, unpaged sub-tab UI included, 10 patients per page.
 """
 
 from datetime import timedelta
+from io import BytesIO
 
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from accounts.models import DoctorProfile, Specialisation
 from audit.models import AccessLog, AuditAction
-from clinical.models import Diagnosis
+from clinical.models import ClinicalNote, Diagnosis, Investigation
 from patients.models import Sex
+from pharmacy.models import Prescription, PrescriptionItem
 
 from .factories import make_doctor, make_patient, make_receptionist, make_visit, today_at
 
@@ -241,7 +244,13 @@ class TestDateRangeFilter(AnalyticsTestCase):
         self.assertEqual(response.context["download_count"], 1)
 
 
-class TestTheCsvExport(AnalyticsTestCase):
+class TestTheExcelExport(AnalyticsTestCase):
+    """
+    The "Download" button is a local backup, not the CSV list export: one
+    workbook, one sheet per kind of clinical record, booking history left
+    out since a backup for a doctor's own reference has no use for it.
+    """
+
     def setUp(self):
         super().setUp()
         self.patient = make_patient(first_name="Downloadable", phone="9820000701")
@@ -250,25 +259,86 @@ class TestTheCsvExport(AnalyticsTestCase):
             status=Diagnosis.Status.ACTIVE,
         )
         excluded = make_patient(first_name="ExcludedByFilter", phone="9820000702")
-        make_visit(self.patient, self.doctor, start=today_at(9))
+        self.visit = make_visit(self.patient, self.doctor, start=today_at(9))
         make_visit(excluded, self.doctor, start=today_at(10))
 
-    def test_it_downloads_a_csv(self):
+    def _workbook(self, **params):
+        response = self._export(**params)
+        return response, load_workbook(BytesIO(response.content))
+
+    def test_it_downloads_an_excel_workbook(self):
         response = self._export()
-        self.assertEqual(response["Content-Type"], "text/csv")
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".xlsx", response["Content-Disposition"])
+
+    def test_it_has_one_sheet_per_kind_of_record(self):
+        _, wb = self._workbook()
+        self.assertEqual(
+            wb.sheetnames, ["Patients", "Clinical Notes", "Investigations", "Prescriptions"]
+        )
+
+    def test_booking_history_is_not_a_sheet(self):
+        _, wb = self._workbook()
+        self.assertNotIn("Bookings", wb.sheetnames)
+        self.assertNotIn("Visits", wb.sheetnames)
 
     def test_only_the_filtered_patients_are_rows(self):
-        response = self._export(condition="thyroid")
-        body = response.content.decode()
-        self.assertIn("Downloadable", body)
-        self.assertNotIn("ExcludedByFilter", body)
+        _, wb = self._workbook(condition="thyroid")
+        names = [row[1].value for row in wb["Patients"].iter_rows(min_row=2)]
+        self.assertIn("Downloadable", names)
+        self.assertNotIn("ExcludedByFilter", names)
 
-    def test_the_header_row_names_the_columns(self):
-        response = self._export()
-        first_line = response.content.decode().splitlines()[0]
-        self.assertIn("Gender", first_line)
-        self.assertIn("Active diagnoses", first_line)
+    def test_the_patients_sheet_header_names_the_columns(self):
+        _, wb = self._workbook()
+        header = [cell.value for cell in next(wb["Patients"].iter_rows(max_row=1))]
+        self.assertIn("Gender", header)
+        self.assertIn("Active diagnoses", header)
+
+    def test_a_clinical_note_appears_on_its_own_sheet(self):
+        ClinicalNote.objects.create(
+            visit=self.visit, patient=self.patient, author=self.doctor,
+            prescription_note="Take rest.",
+        )
+        _, wb = self._workbook()
+        body = [[c.value for c in row] for row in wb["Clinical Notes"].iter_rows(min_row=2)]
+        self.assertTrue(any("Take rest." in (row[-1] or "") for row in body))
+
+    def test_an_investigation_appears_on_its_own_sheet(self):
+        Investigation.objects.create(
+            patient=self.patient, visit=self.visit, test_name="TSH", value="2.1",
+        )
+        _, wb = self._workbook()
+        body = [[c.value for c in row] for row in wb["Investigations"].iter_rows(min_row=2)]
+        self.assertTrue(any(row[3] == "TSH" for row in body))
+
+    def test_a_prescription_item_appears_on_its_own_sheet(self):
+        prescription = Prescription.objects.create(
+            visit=self.visit, patient=self.patient, doctor=self.doctor,
+        )
+        PrescriptionItem.objects.create(prescription=prescription, drug_name="Levothyroxine")
+        _, wb = self._workbook()
+        body = [[c.value for c in row] for row in wb["Prescriptions"].iter_rows(min_row=2)]
+        self.assertTrue(any(row[4] == "Levothyroxine" for row in body))
+
+    def test_date_range_trims_records_outside_it(self):
+        old_note = ClinicalNote.objects.create(
+            visit=self.visit, patient=self.patient, author=self.doctor,
+            prescription_note="Old note.",
+        )
+        ClinicalNote.objects.filter(pk=old_note.pk).update(
+            created_at=timezone.now() - timedelta(days=400)
+        )
+        today = timezone.localdate()
+        _, wb = self._workbook(
+            date_from=(today - timedelta(days=1)).isoformat(),
+            date_to=(today + timedelta(days=1)).isoformat(),
+        )
+        body = [[c.value for c in row] for row in wb["Clinical Notes"].iter_rows(min_row=2)]
+        self.assertFalse(any("Old note." in (row[-1] or "") for row in body))
 
     def test_exporting_is_audited(self):
         self._export()
